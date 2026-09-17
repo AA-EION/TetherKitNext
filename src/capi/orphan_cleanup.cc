@@ -17,6 +17,7 @@
 #include <cerrno>
 #include <charconv>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
@@ -27,6 +28,7 @@
 #include <vector>
 
 #include "capi_support.h"
+#include "managed_network_service.h"
 #include "tetherkit/capi/tetherkit_c.h"
 #include "tetherkit/common/i18n.h"
 #include "tetherkit/common/logging.h"
@@ -35,6 +37,7 @@
 namespace {
 
 using tetherkit::Msg;
+using tetherkit::Text;
 using tetherkit::Tr;
 using tetherkit::capi::ClearError;
 using tetherkit::capi::FillGenericError;
@@ -130,21 +133,35 @@ void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
 /// 而换成「只追加」就得处理销毁时的行删除与文件增长，复杂度不值得。
 void OnInterfaceChanged(std::string_view name, bool created) noexcept {
   // 整个回调必须 noexcept —— 销毁路径可能在析构里。fstream 默认不抛异常
-  // （没有 exceptions() 设置），所以这里只要不自己 throw 就是安全的。
-  const std::lock_guard<std::mutex> guard(RegistryMutex());
-  std::vector<RegistryEntry> entries = ReadRegistry();
+  // （没有 exceptions() 设置），SystemConfiguration 的清理则显式兜住异常。
+  {
+    const std::lock_guard<std::mutex> guard(RegistryMutex());
+    std::vector<RegistryEntry> entries = ReadRegistry();
 
-  if (created) {
-    for (const RegistryEntry& existing : entries) {
-      if (existing.name == name) {
-        return;
+    if (created) {
+      for (const RegistryEntry& existing : entries) {
+        if (existing.name == name) {
+          return;
+        }
       }
+      entries.push_back(RegistryEntry{.name = std::string{name}, .owner = ::getpid()});
+    } else {
+      std::erase_if(entries, [name](const RegistryEntry& entry) { return entry.name == name; });
     }
-    entries.push_back(RegistryEntry{.name = std::string{name}, .owner = ::getpid()});
-  } else {
-    std::erase_if(entries, [name](const RegistryEntry& entry) { return entry.name == name; });
+    WriteRegistry(entries);
   }
-  WriteRegistry(entries);
+
+  if (!created) {
+    // 网卡没了，为它注册的网络服务也该跟着走，否则会在「系统设置 → 网络」里
+    // 留下一条指向不存在接口的死条目。
+    try {
+      if (const auto status = tetherkit::capi::RemoveManagedNetworkService(name); !status) {
+        TETHERKIT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, status.error().ToString());
+      }
+    } catch (...) {
+      TETHERKIT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, Text(Msg::kCapiCommandNoOutput));
+    }
+  }
 }
 
 }  // namespace
@@ -175,6 +192,25 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
     const std::lock_guard<std::mutex> guard(RegistryMutex());
     entries = ReadRegistry();
   }
+
+  // Setup:/Network/Service 会跨进程乃至重启持久化。先扫掉带 TetherKit 标记的
+  // feth 服务，才能兜住上次 helper 被 SIGKILL、系统随后又重启的情况：那时
+  // /var/run 的接口登记已经没了，但网络偏好设置里的服务仍可能留着。
+  //
+  // Skipped while another live process still owns registered interfaces: its
+  // services are not stale, and deleting them would cut that session's
+  // network. The next cleanup after it exits catches anything left behind.
+  //
+  // 失败只记日志：清网卡比清服务重要得多，不能让一个服务删不掉就把整轮兜底
+  // 清理挡住（残留的 feth 会一直占着内核资源）。
+  const bool another_session_alive = std::ranges::any_of(
+      entries, [](const RegistryEntry& entry) { return IsOtherLiveProcess(entry.owner); });
+  if (!another_session_alive) {
+    if (const auto status = tetherkit::capi::RemoveAllManagedNetworkServices(); !status) {
+      TETHERKIT_WARN_TR(Msg::kCapiStaleServiceCleanupFailed, status.error().ToString());
+    }
+  }
+
   if (entries.empty()) {
     return TK_OK;
   }
