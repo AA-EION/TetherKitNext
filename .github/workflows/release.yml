@@ -1,15 +1,19 @@
-# Release: push a v* tag to publish a signed, notarized DMG.
+# Release: push a v* tag to publish a DMG.
 #
-#   git tag -a v0.2.0 -m "TetherKit 0.2.0" && git push origin v0.2.0
+#   Stable:      git tag -a v0.2.0 -m "TetherKit 0.2.0"        && git push origin v0.2.0
+#   Prerelease:  git tag -a v0.2.0-beta.1 -m "TetherKit 0.2.0 beta 1" && git push origin v0.2.0-beta.1
 #
-# Required repository secrets for a distributable build:
+# A tag with a suffix after the version (v0.2.0-beta.1, v0.2.0-rc.1) publishes a
+# GitHub *prerelease*. Prereleases may be built without signing secrets: the
+# DMG is then ad-hoc signed and not notarized, and only the DMG is uploaded.
+#
+# Stable tags require these repository secrets and refuse to publish without
+# them (an unsigned DMG is blocked by Gatekeeper on every user's Mac):
 #   MACOS_CERTIFICATE_P12        base64 of "Developer ID Application" cert + key (.p12)
 #   MACOS_CERTIFICATE_PASSWORD   .p12 export password
 #   NOTARY_KEY_P8                base64 of an App Store Connect API key (.p8)
 #   NOTARY_KEY_ID                that key's ID
 #   NOTARY_ISSUER_ID             App Store Connect issuer ID
-# The workflow refuses to publish without them: an unsigned DMG would be
-# blocked by Gatekeeper on every user's Mac.
 
 name: Release
 
@@ -28,20 +32,36 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Tag must match CMakeLists VERSION
+      - name: Classify tag; version must match CMakeLists VERSION
+        id: tag
         run: |
           tag_ver="${GITHUB_REF_NAME#v}"
+          base_ver="${tag_ver%%-*}"
           cmake_ver=$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)
-          echo "tag=${tag_ver} CMakeLists.txt=${cmake_ver}"
-          [ "$tag_ver" = "$cmake_ver" ] || { echo "::error::tag and VERSION differ"; exit 1; }
+          echo "tag=${tag_ver} base=${base_ver} CMakeLists.txt=${cmake_ver}"
+          [ "$base_ver" = "$cmake_ver" ] || { echo "::error::tag and VERSION differ"; exit 1; }
+          if [ "$tag_ver" != "$base_ver" ]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Signing secrets present
+      - name: Signing secrets
+        id: signing
         env:
           HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
           HAS_NOTARY: ${{ secrets.NOTARY_KEY_P8 != '' && secrets.NOTARY_KEY_ID != '' && secrets.NOTARY_ISSUER_ID != '' }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
         run: |
-          [ "$HAS_CERT" = true ] || { echo "::error::MACOS_CERTIFICATE_P12 is not set"; exit 1; }
-          [ "$HAS_NOTARY" = true ] || { echo "::error::NOTARY_* secrets are not set"; exit 1; }
+          if [ "$HAS_CERT" = true ] && [ "$HAS_NOTARY" = true ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$PRERELEASE" = true ]; then
+            echo "::warning::No signing secrets: publishing an ad-hoc signed, un-notarized prerelease"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Stable releases need MACOS_CERTIFICATE_P12 and the NOTARY_* secrets"
+            exit 1
+          fi
 
       - name: Select the newest Xcode
         run: |
@@ -50,52 +70,72 @@ jobs:
           xcodebuild -version
 
       - name: Import signing certificate
+        if: steps.signing.outputs.signed == 'true'
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
         run: ./scripts/ci-import-certificate.sh
 
-      - name: Build, test, sign, notarize
+      - name: Build, test, package
         env:
           TETHERKIT_BUILD_NUMBER: ${{ github.run_number }}
-          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.NOTARY_KEY_ID || '' }}
+          NOTARY_ISSUER_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.NOTARY_ISSUER_ID || '' }}
         run: ./scripts/build-release.sh
 
       - name: Swift unit tests
         run: TETHERKIT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
 
       - name: Release notes
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           dmg="$(ls dist/TetherKit-*.dmg)"
-          cli="$(ls dist/tetherkit-cli-*.tar.gz)"
-          cat > notes.md <<EOF
-          ## Install
-
-          1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**.
-          2. Open TetherKit from Applications and click **Enable Background Component**.
-             macOS asks you to allow it once in *System Settings › General › Login Items*.
-          3. Optional: *Settings › Command-line tool › Install Command* puts
-             \`tetherkit-cli\` on your PATH (\`/usr/local/bin\`).
-
-          Universal build: Apple Silicon and Intel, macOS 14+ (the CLI alone runs on 13.3+).
-          Signed with Developer ID and notarized by Apple.
-
-          ## Checksums (SHA-256)
-
-          | File | SHA-256 |
-          |---|---|
-          | $(basename "$dmg") | \`$(shasum -a 256 "$dmg" | awk '{print $1}')\` |
-          | $(basename "$cli") | \`$(shasum -a 256 "$cli" | awk '{print $1}')\` |
-          EOF
-          sed -i '' 's/^          //' notes.md
+          {
+            if [ "$SIGNED" != true ]; then
+              echo '> [!WARNING]'
+              echo '> **Test build — not signed with a Developer ID and not notarized.**'
+              echo '> macOS will block it on first open. After copying TetherKit to Applications, either'
+              echo '> open *System Settings › Privacy & Security* and click **Open Anyway**, or run'
+              echo '> `xattr -dr com.apple.quarantine /Applications/TetherKit.app`.'
+              echo '> The background component may refuse to register until the app is signed with a'
+              echo '> real certificate; `sudo /Applications/TetherKit.app/Contents/MacOS/tetherkit-cli`'
+              echo '> works regardless.'
+              echo
+            fi
+            echo '## Install'
+            echo
+            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**."
+            echo '2. Open TetherKit from Applications and click **Enable Background Component**.'
+            echo '   macOS asks you to allow it once in *System Settings › General › Login Items*.'
+            echo '3. Optional: *Settings › Command-line tool › Install Command* puts `tetherkit-cli`'
+            echo '   on your PATH (`/usr/local/bin`).'
+            echo
+            echo 'Universal build: Apple Silicon and Intel, macOS 14+ (the bundled CLI runs on 13.3+).'
+            if [ "$SIGNED" = true ]; then
+              echo 'Signed with Developer ID and notarized by Apple.'
+            fi
+            echo
+            echo '## Checksum (SHA-256)'
+            echo
+            echo "\`$(shasum -a 256 "$dmg" | awk '{print $1}')\`  $(basename "$dmg")"
+          } > notes.md
+          cat notes.md
 
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
         run: |
+          assets=(dist/TetherKit-*.dmg)
+          flags=()
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          else
+            assets+=(dist/tetherkit-cli-*.tar.gz)
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             --title "TetherKit ${GITHUB_REF_NAME}" \
             --notes-file notes.md --generate-notes --verify-tag \
-            dist/TetherKit-*.dmg dist/tetherkit-cli-*.tar.gz
+            "${flags[@]}" "${assets[@]}"
