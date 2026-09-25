@@ -114,6 +114,11 @@ final class AppModel {
     private(set) var throughputHistory: [ThroughputSample] = []
     private(set) var logs: [LogEntry] = []
     private(set) var droppedLogCount: UInt64 = 0
+    /// The daemon is registered but the user has not approved it in System
+    /// Settings › Login Items yet.
+    private(set) var helperNeedsApproval = false
+    /// State of the `/usr/local/bin/tetherkit-cli` link.
+    private(set) var commandLineToolState: CommandLineToolState = .current
 
     /// 用户在设备列表里选中的那台。为 nil 表示「用找到的第一台」。
     var selectedDeviceID: String?
@@ -174,19 +179,8 @@ final class AppModel {
     /// 我们自己算一份只会和系统不一致。以 helper 的复核结果为准更可靠。
     private var cachedAuthorization: AuthorizationToken?
 
-    /// 系统授权框里显示的说明。
-    ///
-    /// 不写这一句的话框里只有「TetherKit 想要进行更改」，用户无从判断该不该批准。
-    /// 用计算属性而不是 `static let`：`static let` 只在类型第一次被用到时求值
-    /// 一次，用户之后切换语言就再也不会更新了。
-    private static var authorizationPrompt: String { L(.authPromptSession) }
 
-    /// 安装特权组件时授权框里的说明。单独一句 —— 这次批准的是「往系统目录里
-    /// 装东西」，和上面的日常操作不是一回事，文案必须说实话。
-    private static var helperInstallPrompt: String { L(.authPromptInstall) }
 
-    /// 卸载特权组件时授权框里的说明。
-    private static var helperUninstallPrompt: String { L(.authPromptUninstall) }
 
     /// 轮询周期。
     ///
@@ -317,9 +311,12 @@ final class AppModel {
             }
             helperAvailability = .available(version: version)
             helperVersionMismatch = Self.versionMismatch(installed: version)
+            helperNeedsApproval = false
+            commandLineToolState = .current
         } catch {
             helperAvailability = .missing(reason: error.localizedDescription)
             helperVersionMismatch = nil
+            helperNeedsApproval = HelperInstaller.needsApproval
             // 连不上就别再发后续请求了 —— 每一个都会重复同样的失败，
             // 只会把日志刷满。
             return
@@ -460,10 +457,58 @@ final class AppModel {
             configuration.deviceAddress = device.deviceAddress
         }
 
-        await authorized { [self] authorization in
+        let started = await authorized { [self] authorization in
             throughputHistory.removeAll()
             try await client.startSession(authorization: authorization,
                                           configuration: configuration)
+        }
+        if started, UserDefaults.standard.object(forKey: Self.autoConfigureNetworkKey) as? Bool
+            ?? true {
+            await configureNetworkAfterConnect()
+        }
+    }
+
+    /// Defaults key for "configure the network automatically on connect".
+    static let autoConfigureNetworkKey = "autoConfigureNetworkOnConnect"
+
+    /// One-click internet: once the virtual interface exists, apply the
+    /// addressing mode chosen on the Network page — DHCP unless the user set
+    /// up something else — so Connect alone brings the tethered link up.
+    ///
+    /// Runs inside startSession's busy window and reuses the authorization
+    /// token Connect just obtained, so there is no second password prompt.
+    /// Skipped when the mode is "don't configure", when a static form is
+    /// incomplete, or when the interface already has an address (e.g. a
+    /// persistent network service picked it up by itself).
+    private func configureNetworkAfterConnect() async {
+        guard networkConfiguration.mode != .none,
+              NetworkValidator.validationMessage(for: networkConfiguration) == nil else { return }
+
+        // The session reaches running (and names its interface) only after the
+        // RNDIS handshake and feth creation; poll for that, bounded.
+        var interface = ""
+        for _ in 0..<60 {
+            guard let fresh = try? await client.sessionStatus() else { return }
+            if fresh.runState == .failed || fresh.runState == .stopped { return }
+            if fresh.runState == .running, !fresh.systemInterface.isEmpty {
+                interface = fresh.systemInterface
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard !interface.isEmpty else { return }
+
+        if let current = try? await client.queryNetwork(interface: interface),
+           current.hasAddress {
+            networkState = current
+            return
+        }
+
+        let configuration = networkConfiguration
+        await authorized { [self] authorization in
+            try await client.applyNetwork(authorization: authorization, interface: interface,
+                                          configuration: configuration)
+            networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
         }
     }
 
@@ -564,77 +609,83 @@ final class AppModel {
         return HelperVersionMismatch(installed: installedVersion, expected: bundledVersion)
     }
 
-    /// 安装 / 更新特权组件（引导卡上的「一键安装」按钮，以及版本对不上时
-    /// 管理行里的「更新特权组件」—— 更新就是照着 .app 里的载荷重装一遍）。
+    /// Registers the daemon with SMAppService (onboarding card), or restarts
+    /// it from this app bundle when its version differs ("Update helper").
+    ///
+    /// No password prompt: macOS asks the user to approve the background item
+    /// in System Settings › Login Items instead. When approval is pending we
+    /// open that pane; polling picks the daemon up as soon as it is enabled.
     func installHelper() async {
-        await maintainHelper(.install, prompt: Self.helperInstallPrompt,
-                             expectAvailable: true,
-                             failureNotice: L(.installScriptRanButUnreachable))
-    }
-
-    /// 卸载特权组件（仪表盘底部的「卸载…」，确认框在 UI 层）。
-    ///
-    /// bootout 给 helper 发 SIGTERM —— 正在跑的会话被优雅停掉、虚拟网卡销毁，
-    /// 这一点必须在确认框里向用户说明。卸载完成后界面自然回到安装引导页。
-    func uninstallHelper() async {
-        await maintainHelper(.uninstall, prompt: Self.helperUninstallPrompt,
-                             expectAvailable: false,
-                             failureNotice: L(.uninstallScriptRanButStillAlive))
-    }
-
-    /// 安装与卸载共用的执行壳：授权（复用缓存令牌）→ AEWP 执行 → XPC 探测
-    /// 兜底确认。
-    ///
-    /// 授权与日常特权操作共用同一条权利（system.privilege.admin），令牌缓存
-    /// 因此天然通用：装完 5 分钟内接着点「连接」不会再弹框。缓存令牌已过期的
-    /// 罕见路径由 AEWP 自己弹系统默认文案的框兜底，不为它专造一次「带自定义
-    /// 文案的重新授权」。
-    ///
-    /// ★ 成败判定 ★
-    ///   AEWP 不给退出码（见 HelperInstaller 的说明），所以脚本跑完后用真实的
-    ///   XPC 往返确认，兜几秒等 launchd 完成登记与按需拉起（或注销生效）。
-    ///   方向由 expectAvailable 决定：安装等「连得上」，卸载等「连不上」。
-    ///   失败时把脚本输出的末尾放进弹窗 —— 真实原因几乎总写在结尾。
-    private func maintainHelper(_ action: HelperInstaller.Action,
-                                prompt: String,
-                                expectAvailable: Bool,
-                                failureNotice: String) async {
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
 
-        // 载荷与 AEWP 先行自检 —— 缺哪样都必须在弹授权框**之前**说清楚。
-        if let failure = HelperInstaller.preflightError() {
-            alertMessage = failure.localizedDescription
-            return
-        }
-
-        let output: String
         do {
-            let token: AuthorizationToken
-            if let cached = cachedAuthorization {
-                token = cached
+            if helperAvailability.isAvailable || HelperInstaller.status == .enabled {
+                try await HelperInstaller.reregister()
             } else {
-                token = try AuthorizationBroker.requestAuthorization(prompt: prompt)
-                cachedAuthorization = token
+                try HelperInstaller.register()
             }
-            defer { withExtendedLifetime(token) {} }
-            output = try await HelperInstaller.run(action, with: token)
-        } catch AuthorizationBroker.Failure.userCancelled {
-            return
-        } catch HelperInstaller.Failure.userCancelled {
-            return
         } catch {
             alertMessage = error.localizedDescription
             return
         }
 
-        for _ in 0..<6 {
+        helperNeedsApproval = HelperInstaller.needsApproval
+        if helperNeedsApproval {
+            HelperInstaller.openApprovalSettings()
+            return
+        }
+        for _ in 0..<10 {
             await refresh()
-            if helperAvailability.isAvailable == expectAvailable { return }
+            if helperAvailability.isAvailable, helperVersionMismatch == nil { return }
             try? await Task.sleep(for: .milliseconds(500))
         }
-        alertMessage = L(.scriptOutput, failureNotice, Self.tail(of: output))
+    }
+
+    /// Unregisters the daemon. launchd sends it SIGTERM, which stops a running
+    /// session and destroys the virtual interfaces (the UI warns first).
+    func uninstallHelper() async {
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+
+        // Remove our CLI link while the daemon can still do it; best effort.
+        if commandLineToolState == .installed {
+            await authorized(prompt: L(.authPromptCommandLineTool)) { [self] authorization in
+                try await client.setCommandLineToolInstalled(authorization: authorization,
+                                                             install: false)
+            }
+        }
+        do {
+            try await HelperInstaller.unregister()
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+        cachedAuthorization = nil
+        helperNeedsApproval = false
+        commandLineToolState = .current
+        await refresh()
+    }
+
+    /// Opens System Settings › Login Items (approval card button).
+    func openHelperApprovalSettings() {
+        HelperInstaller.openApprovalSettings()
+    }
+
+    // MARK: - Command-line tool
+
+    /// Links or unlinks `/usr/local/bin/tetherkit-cli` → the CLI in this bundle.
+    func setCommandLineToolInstalled(_ install: Bool) async {
+        guard !isBusy else { return }
+        isBusy = true
+        defer { isBusy = false }
+
+        await authorized(prompt: L(.authPromptCommandLineTool)) { [self] authorization in
+            try await client.setCommandLineToolInstalled(authorization: authorization,
+                                                         install: install)
+        }
+        commandLineToolState = .current
     }
 
     // MARK: - 检查更新
@@ -691,7 +742,8 @@ final class AppModel {
         guard let current = UpdateChecker.currentVersion,
               let version = UserDefaults.standard.string(forKey: Self.updateKnownVersionKey),
               let page = UserDefaults.standard.string(forKey: Self.updateKnownPageKey),
-              let pageURL = URL(string: page),
+              let pageURL = URL(string: page), pageURL.scheme == "https",
+              pageURL.host == "github.com",
               UpdateChecker.isNewer(version, than: current) else { return }
         availableUpdate = UpdateChecker.Release(version: version, pageURL: pageURL)
     }
@@ -700,20 +752,6 @@ final class AppModel {
     private static let updateLastCheckedKey = "updateLastCheckedAt"
     private static let updateKnownVersionKey = "updateKnownVersion"
     private static let updateKnownPageKey = "updateKnownPageURL"
-
-    /// 取输出的末尾几行给弹窗用 —— 完整输出可能很长，真实原因几乎总在结尾。
-    /// 顺手剥掉脚本里的 ANSI 颜色码，弹窗里那是乱码。
-    private static func tail(of output: String,
-                             maxLines: Int = 10, maxCharacters: Int = 700) -> String {
-        let plain = output.replacingOccurrences(of: "\u{1B}\\[[0-9;]*m", with: "",
-                                                options: .regularExpression)
-        let lines = plain.split(separator: "\n", omittingEmptySubsequences: true)
-        var kept = lines.suffix(maxLines).joined(separator: "\n")
-        if kept.count > maxCharacters {
-            kept = String(kept.suffix(maxCharacters))
-        }
-        return kept.isEmpty ? L(.scriptNoOutput) : kept
-    }
 
     /// 带着授权凭据执行一次特权操作，必要时才弹系统授权框。
     ///
@@ -737,7 +775,10 @@ final class AppModel {
     ///
     /// 用户取消时**不**弹错误提示 —— 取消是正常操作，再弹一个「已取消」的框
     /// 只会烦人。
-    private func authorized(_ body: @escaping (Data) async throws -> Void) async {
+    /// Returns whether `body` ran to completion.
+    @discardableResult
+    private func authorized(prompt: String = L(.authPromptSession),
+                            _ body: @escaping (Data) async throws -> Void) async -> Bool {
         // 第一趟：有缓存就直接用，不打扰用户。
         if let cached = cachedAuthorization {
             // withExtendedLifetime 不能接 async 闭包，所以用 defer 把令牌钉到
@@ -746,27 +787,28 @@ final class AppModel {
             defer { withExtendedLifetime(cached) {} }
             do {
                 try await body(cached.externalForm)
-                return
+                return true
             } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
                 // 凭据过期了。丢掉缓存，往下走「重新授权 + 重试」。
                 cachedAuthorization = nil
             } catch {
                 alertMessage = error.localizedDescription
-                return
+                return false
             }
         }
 
         // 第二趟：弹框取新凭据，然后执行（或重试）。
         do {
-            let token = try AuthorizationBroker.requestAuthorization(
-                prompt: Self.authorizationPrompt)
+            let token = try AuthorizationBroker.requestAuthorization(prompt: prompt)
             defer { withExtendedLifetime(token) {} }
             cachedAuthorization = token
             try await body(token.externalForm)
+            return true
         } catch AuthorizationBroker.Failure.userCancelled {
-            return
+            return false
         } catch {
             alertMessage = error.localizedDescription
+            return false
         }
     }
 }

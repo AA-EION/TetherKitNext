@@ -5,8 +5,9 @@
   Scripts/build-gui.sh 会把 __TETHERKIT_VERSION__ 替换成真实版本号后拷进
   TetherKit.app/Contents/。
 
-  App 本身**不需要任何 entitlement**：它以普通用户身份运行，既不碰 USB 也不碰
-  网卡，全部特权操作都通过 XPC 交给 tetherkit-helper。
+  No entitlements are needed (hardened runtime, Developer ID): the app runs as
+  the user and never touches USB or network interfaces itself; privileged work
+  goes over XPC to the SMAppService daemon (Contents/MacOS/tetherkit-helper).
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,7 +29,11 @@
     <key>CFBundleShortVersionString</key>
     <string>__TETHERKIT_VERSION__</string>
     <key>CFBundleVersion</key>
-    <string>__TETHERKIT_VERSION__</string>
+    <string>__TETHERKIT_BUILD__</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>© XiaoMiku01 and TetherKit contributors. MIT License.</string>
 
     <!-- 支持的界面语言。
          文案本身是编进二进制的（见 TetherKitIPC/Localization.swift 里为什么不
@@ -46,6 +51,10 @@
 
     <!-- Swift 的 Observation 与 ContentUnavailableView 需要 macOS 14。
          命令行部分仍然支持 13.3，两者是各自独立的产物。 -->
+    <!-- GitHub owner/repo whose releases the in-app update check reads. -->
+    <key>TetherKitUpdateRepository</key>
+    <string>AA-EION/TetherKitNext</string>
+
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 

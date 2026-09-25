@@ -23,22 +23,21 @@ enum Design {
     }
 
     enum Radius {
-        static let card: CGFloat = 14
-        static let control: CGFloat = 8
+        static let card: CGFloat = 18
+        static let hero: CGFloat = 24
+        static let control: CGFloat = 10
     }
 
-    /// 窗口尺寸。
-    ///
-    /// 布局的硬目标是**默认尺寸下整页不滚动**（见 ContentView）。
-    /// 宽度的依据：两栏布局，每栏至少放得下静态 IP 表单的一行两格
-    /// （两个「标签 + 255.255.255.255」的输入格并排）。
-    /// 高度的依据：左栏最高的状态 —— 静态模式表单展开且「当前生效」同时
-    /// 显示 —— 也要放得下。
+    /// Window sizes. The window is a sidebar + one detail page, so the minimum
+    /// only has to fit the widest single page (the static-IP form: two
+    /// "label + 255.255.255.255" fields side by side) next to the sidebar.
     enum Window {
-        static let minWidth: CGFloat = 900
-        static let minHeight: CGFloat = 700
-        static let defaultWidth: CGFloat = 990
-        static let defaultHeight: CGFloat = 780
+        static let minWidth: CGFloat = 820
+        static let minHeight: CGFloat = 600
+        static let defaultWidth: CGFloat = 1000
+        static let defaultHeight: CGFloat = 720
+        /// Content column cap: cards stay readable on wide windows.
+        static let contentMaxWidth: CGFloat = 860
     }
 
     // MARK: - 状态色
@@ -123,14 +122,127 @@ struct Card<Content: View>: View {
         }
         .padding(Design.Spacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // 用 material 而不是纯色：它会跟随浅色/深色外观与桌面背景，
-        // 是 macOS 上「现代」最省力也最不容易做错的一步。
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Design.Radius.card))
-        .overlay(
-            RoundedRectangle(cornerRadius: Design.Radius.card)
-                .strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
+        .contentSurface()
     }
 }
+
+// MARK: - Liquid Glass
+//
+// Apple's guidance for Liquid Glass (macOS 26): glass belongs to the
+// *navigation and control* layer that floats above content — sidebars,
+// toolbars, the primary action, status chrome — not to every content card.
+// So the sidebar and toolbar get it from the system automatically; the status
+// hero, primary buttons and menu bar controls use it explicitly; content
+// cards stay on a quiet material surface that the glass refracts.
+//
+// Every API is gated twice: `#if compiler(>=6.2)` so the package still builds
+// with an older toolchain, and `#available(macOS 26, *)` so the app runs on
+// macOS 14/15 with the material look.
+
+extension View {
+    /// Quiet surface for content cards.
+    func contentSurface(cornerRadius: CGFloat = Design.Radius.card) -> some View {
+        background(.regularMaterial,
+                   in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5))
+    }
+
+    /// Liquid Glass on macOS 26+, a tinted material elsewhere.
+    @ViewBuilder
+    func glassSurface(cornerRadius: CGFloat = Design.Radius.card, tint: Color? = nil,
+                      interactive: Bool = false) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            glassEffect(Design.glass(tint: tint, interactive: interactive),
+                        in: .rect(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            materialGlassFallback(cornerRadius: cornerRadius, tint: tint)
+        }
+        #else
+        materialGlassFallback(cornerRadius: cornerRadius, tint: tint)
+        #endif
+    }
+
+    /// Capsule-shaped glass for small chips (status badges, menu bar speeds).
+    @ViewBuilder
+    func glassCapsule(tint: Color? = nil) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            glassEffect(Design.glass(tint: tint, interactive: false), in: .capsule)
+        } else {
+            background((tint ?? .secondary).opacity(0.14), in: Capsule())
+        }
+        #else
+        background((tint ?? .secondary).opacity(0.14), in: Capsule())
+        #endif
+    }
+
+    /// The primary call to action: `.glassProminent` on macOS 26.
+    @ViewBuilder
+    func primaryActionButtonStyle() -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glassProminent)
+        } else {
+            buttonStyle(.borderedProminent)
+        }
+        #else
+        buttonStyle(.borderedProminent)
+        #endif
+    }
+
+    /// Secondary actions: `.glass` on macOS 26.
+    @ViewBuilder
+    func secondaryActionButtonStyle() -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            buttonStyle(.glass)
+        } else {
+            buttonStyle(.bordered)
+        }
+        #else
+        buttonStyle(.bordered)
+        #endif
+    }
+
+    /// Groups adjacent glass shapes so they blend and morph together.
+    @ViewBuilder
+    func glassGroup(spacing: CGFloat = Design.Spacing.small) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { self }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
+    private func materialGlassFallback(cornerRadius: CGFloat, tint: Color?) -> some View {
+        background(.thinMaterial,
+                   in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background((tint ?? .clear).opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+    }
+}
+
+#if compiler(>=6.2)
+extension Design {
+    @available(macOS 26.0, *)
+    static func glass(tint: Color?, interactive: Bool) -> Glass {
+        var glass = Glass.regular
+        if let tint { glass = glass.tint(tint.opacity(0.35)) }
+        if interactive { glass = glass.interactive() }
+        return glass
+    }
+}
+#endif
 
 /// 一格指标：上面是说明，下面是值。
 struct MetricTile: View {
@@ -179,7 +291,7 @@ struct StatusBadge: View {
         }
         .padding(.horizontal, Design.Spacing.small)
         .padding(.vertical, 4)
-        .background(color.opacity(0.12), in: Capsule())
+        .glassCapsule(tint: color)
     }
 }
 
@@ -220,16 +332,11 @@ enum Format {
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
-    /// 菜单栏用的紧凑速率（如 "12.3M"、"999K"）。
-    ///
-    /// 菜单栏寸土寸金：单位压成单字母，1 Kbps 以下一律显示 "0K" ——
-    /// 那点流量在「瞟一眼菜单栏」的语境里就等于没有。
+    /// Fixed-width rate for the menu bar (upstream issue #1): always three
+    /// significant characters plus a unit, so the status item does not jump
+    /// around as the rate changes between 1K and 100K.
     static func compactBitrate(_ bitsPerSecond: Double) -> String {
-        let value = max(0, bitsPerSecond)
-        if value >= 1_000_000_000 { return String(format: "%.1fG", value / 1_000_000_000) }
-        if value >= 1_000_000 { return String(format: "%.1fM", value / 1_000_000) }
-        if value >= 1_000 { return String(format: "%.0fK", value / 1_000) }
-        return "0K"
+        RateFormat.compact(bitsPerSecond)
     }
 
     static func packetsPerSecond(_ value: Double) -> String {
@@ -238,7 +345,9 @@ enum Format {
             : String(format: "%.0f", max(0, value))
     }
 
-    private static let timeFormatter: DateFormatter = {
+    // DateFormatter is not Sendable, but formatting with a fixed format on an
+    // unmutated instance is thread-safe on every supported macOS.
+    nonisolated(unsafe) private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSS"
         return formatter

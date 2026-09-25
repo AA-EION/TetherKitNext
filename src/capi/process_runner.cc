@@ -10,8 +10,6 @@
 #include <format>
 #include <memory>
 
-extern char** environ;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
 namespace tetherkit::capi {
 namespace {
 
@@ -67,9 +65,18 @@ Result<ProcessResult> Spawn(std::string_view executable,
   ::posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
   ::posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
 
+  // Run system tools with a fixed, minimal environment instead of inheriting
+  // ours. This code runs as root; an inherited environment (DYLD_*, locale
+  // overrides, TMPDIR, ...) is attacker-influenced input for no benefit —
+  // ipconfig/route need nothing from it. LANG=C also keeps their error output
+  // stable for the messages we surface.
+  static char kPathVar[] = "PATH=/usr/bin:/bin:/usr/sbin:/sbin";
+  static char kLangVar[] = "LANG=C";
+  std::array<char*, 3> clean_environment{kPathVar, kLangVar, nullptr};
+
   ::pid_t child = -1;
-  const int spawn_rc =
-      ::posix_spawn(&child, executable_path.c_str(), &actions, nullptr, argv.data(), environ);
+  const int spawn_rc = ::posix_spawn(&child, executable_path.c_str(), &actions, nullptr,
+                                     argv.data(), clean_environment.data());
   ::posix_spawn_file_actions_destroy(&actions);
   // 父进程必须立刻关掉写端，否则 ReadAll 永远等不到 EOF —— 自己还握着一个
   // 写端，管道就不会关。这是最经典的 pipe 死锁。

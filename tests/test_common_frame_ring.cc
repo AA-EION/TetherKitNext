@@ -3,6 +3,7 @@
 // FrameRing 是 RX 路径的核心：libusb 回调线程把拆出的以太帧写进去，
 // BPF 写线程取出来 write()。因此这里既测语义，也测并发。
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -128,6 +129,71 @@ TEST_CASE("每帧数据区起始地址按缓存行对齐") {
     CHECK(reinterpret_cast<std::uintptr_t>(dst.data()) % kCacheLineSize == 0);
     ring.CommitWrite(64);
   }
+}
+
+TEST_CASE("parked consumer is woken by a producer publish") {
+  FrameRing ring(8, 64);
+  std::atomic<bool> woke{false};
+  std::thread consumer([&] {
+    while (ring.ReadableApprox() == 0) {
+      ring.WaitForReadable([] { return false; });
+    }
+    woke.store(true);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  CHECK_FALSE(woke.load());  // really parked, not spinning past the empty ring
+  const auto frame = MakeFrame(32, 7);
+  REQUIRE(ring.TryPush(frame));
+  consumer.join();
+  CHECK(woke.load());
+}
+
+TEST_CASE("Wake() releases a parked consumer so it can observe an abort flag") {
+  FrameRing ring(8, 64);
+  std::atomic<bool> abort{false};
+  std::thread consumer([&] {
+    while (!abort.load()) {
+      ring.WaitForReadable([&] { return abort.load(); });
+    }
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  abort.store(true);
+  ring.Wake();
+  consumer.join();  // hangs forever if the wakeup is lost
+  CHECK(ring.ReadableApprox() == 0);
+}
+
+TEST_CASE("park/wake handshake loses no wakeups under a bursty producer") {
+  FrameRing ring(16, 64);
+  constexpr std::uint32_t kFrames = 200'000;
+  std::uint32_t received = 0;
+  std::thread consumer([&] {
+    while (received < kFrames) {
+      auto batch = ring.BeginBatchRead();
+      if (batch.Next().Empty()) {
+        ring.WaitForReadable([] { return false; });
+        continue;
+      }
+      ++received;
+      while (!batch.Next().Empty()) {
+        ++received;
+      }
+    }
+  });
+  const auto frame = MakeFrame(16, 1);
+  for (std::uint32_t sent = 0; sent < kFrames;) {
+    if (ring.TryPush(frame)) {
+      ++sent;
+      if (sent % 4096 == 0) {
+        // Let the consumer drain and park, so the wake path is exercised.
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+      }
+    } else {
+      std::this_thread::yield();
+    }
+  }
+  consumer.join();
+  CHECK(received == kFrames);
 }
 
 TEST_CASE("并发搬运 20 万帧不丢不乱序") {

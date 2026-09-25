@@ -92,6 +92,8 @@ void Bridge::Stop() {
   // ---------------------------------------------------------------------------
   stop_requested_.store(true, std::memory_order_release);
 
+  // Wake the RX injector if it is parked on an empty ring.
+  rx_ring_->Wake();
   link_->Interrupt();
 
   if (receive_injector_.joinable()) {
@@ -121,6 +123,10 @@ void Bridge::SetPaused(bool paused) noexcept {
   //
   // 只在线程确实在跑的时候等 —— Start() 之前或 Stop() 之后没人会来置位，
   // 无条件等会永远不返回。
+  //
+  // The injector may be parked on the ring's doorbell, so ring it first —
+  // otherwise it would never loop around to observe paused_.
+  rx_ring_->Wake();
   while (running_.load(std::memory_order_acquire) &&
          !stop_requested_.load(std::memory_order_acquire) &&
          !rx_paused_ack_.load(std::memory_order_acquire)) {
@@ -145,7 +151,10 @@ void Bridge::RunReceiveInjector() noexcept {
       // 置确认位是给 SetPaused(true) 看的：从这里到下一轮看见 paused_ 变回
       // false 之前，本线程不会碰 rx_ring_，所以这个确认是可信的。
       rx_paused_ack_.store(true, std::memory_order_release);
-      std::this_thread::yield();
+      // Sleep, don't yield: yield() returns immediately when nothing else is
+      // runnable and turns this branch into a 100% CPU spin. Pauses are rare
+      // (RNDIS soft reset) and a 1 ms resume latency is irrelevant there.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
 
@@ -163,13 +172,20 @@ void Bridge::RunReceiveInjector() noexcept {
       }
 
       if (rx_batch_.empty()) {
-        // 队列空。先自旋一小会儿覆盖「生产者正在写下一帧」这种极短空窗，
-        // 再让出 CPU —— 纯自旋会白烧一个核，直接 yield 又会在高吞吐下抬高延迟。
-        if (++idle_spins < config_.rx_spin_before_yield) {
+        // Ring is empty. Spin briefly to cover the "producer is mid-write"
+        // window, then park until a producer publishes (or stop/pause).
+        //
+        // This used to std::this_thread::yield() instead of parking. yield()
+        // returns immediately when no other thread is runnable, so an idle
+        // link burned a full core (upstream XiaoMiku01/TetherKit#5).
+        if (++idle_spins < config_.rx_spin_before_park) {
           continue;
         }
         idle_spins = 0;
-        std::this_thread::yield();
+        rx_ring_->WaitForReadable([this] {
+          return stop_requested_.load(std::memory_order_acquire) ||
+                 paused_.load(std::memory_order_acquire);
+        });
         continue;
       }
       idle_spins = 0;

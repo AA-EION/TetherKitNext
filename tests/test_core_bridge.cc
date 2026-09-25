@@ -75,7 +75,7 @@ bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = std::chron
   config.rx_ring_frames = 256;
   config.max_frame_bytes = 1518;
   config.rx_write_batch = 16;
-  config.rx_spin_before_yield = 4;  // 让测试里的空转快点让出 CPU
+  config.rx_spin_before_park = 4;  // park quickly in tests
   config.tx_submit_batch = 32;
   return config;
 }

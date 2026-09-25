@@ -1,41 +1,46 @@
 #!/usr/bin/env bash
 #
-# 卸载 tetherkit-helper。**必须用 sudo 运行。**
+# Remove TetherKit's privileged pieces by hand. **Run with sudo.**
 #
 #   sudo ./gui/Scripts/uninstall-helper.sh
+#
+# Normally unnecessary: "Disable Background Component…" in the app (or moving
+# TetherKit.app to the Trash) unregisters the SMAppService daemon. This script
+# is for recovery, and for cleaning up installs made by older versions
+# (com.tetherkit.helper LaunchDaemon + /Library/PrivilegedHelperTools).
 set -euo pipefail
 
-LABEL="com.tetherkit.helper"
-TOOLS_DIR="/Library/PrivilegedHelperTools"
-INSTALL_PATH="${TOOLS_DIR}/${LABEL}"
-PLIST_PATH="/Library/LaunchDaemons/${LABEL}.plist"
-STATE_FILE="/var/run/tetherkit-interfaces"
-
 log() { printf '\033[32m==>\033[0m %s\n' "$1"; }
+[[ "${EUID}" -eq 0 ]] || { echo "Run this with sudo." >&2; exit 1; }
 
-[[ "${EUID}" -eq 0 ]] || { printf '需要 root 权限，请用 sudo 运行\n' >&2; exit 1; }
+for label in com.tetherkit.helperd com.tetherkit.helper; do
+  if launchctl print "system/${label}" >/dev/null 2>&1; then
+    log "Stopping ${label}"
+    launchctl bootout "system/${label}" 2>/dev/null || true
+  fi
+done
+sleep 1  # let the daemon finish tearing down its interfaces
 
-# bootout 发的是 SIGTERM，helper 接住后会停会话并销毁虚拟网卡。
-# 必须在删文件**之前**做 —— 二进制没了它就没法优雅退出了。
-if launchctl print "system/${LABEL}" >/dev/null 2>&1; then
-  log "停止并注销服务"
-  launchctl bootout "system/${LABEL}" 2>/dev/null || true
-  # 给它一点时间跑完停机拆除。
-  sleep 1
+log "Removing legacy files"
+rm -f /Library/LaunchDaemons/com.tetherkit.helper.plist \
+      /Library/PrivilegedHelperTools/com.tetherkit.helper \
+      /Library/PrivilegedHelperTools/libtetherkit*.dylib \
+      /Library/PrivilegedHelperTools/libusb-*.dylib
+
+link=/usr/local/bin/tetherkit-cli
+if [[ -L "${link}" && "$(readlink "${link}")" == *.app/Contents/MacOS/tetherkit-cli ]]; then
+  log "Removing ${link}"
+  rm -f "${link}"
 fi
 
-log "删除文件"
-rm -f "${PLIST_PATH}" "${INSTALL_PATH}"
-rm -f "${TOOLS_DIR}"/libtetherkit*.dylib "${TOOLS_DIR}"/libusb-*.dylib
-
-# 兜底：helper 若曾被强杀，登记文件里可能还留着没销毁的网卡。
-if [[ -f "${STATE_FILE}" ]]; then
-  while read -r interface; do
+state=/var/run/tetherkit-interfaces
+if [[ -f "${state}" ]]; then
+  while read -r interface _; do
     [[ "${interface}" =~ ^feth[0-9]+$ ]] || continue
-    log "销毁残留的虚拟网卡 ${interface}"
+    log "Destroying leftover interface ${interface}"
     ifconfig "${interface}" destroy 2>/dev/null || true
-  done < "${STATE_FILE}"
-  rm -f "${STATE_FILE}"
+  done < "${state}"
+  rm -f "${state}"
 fi
 
-log "已卸载"
+log "Done. If System Settings › Login Items still lists TetherKit, toggle it off there."

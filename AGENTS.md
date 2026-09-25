@@ -79,7 +79,7 @@ macOS **用户态** RNDIS 驱动：USB 侧用 libusb 与 RNDIS 设备（Android 
 | 内核分配的 MAC | `'f','e','t','h', unit>>8, unit&0xff` → feth0 = `66:65:74:68:00:00`（0x66 的 bit1=1 → 本地管理地址，合法） |
 | MAC 设置策略 | 应把**系统侧**（feth0）的 MAC 设为设备汇报的 `OID_802_3_PERMANENT_ADDRESS`（RNDIS 语义下设备就是这块网卡，对端 ARP/DHCP 都按它建）；**驱动侧必须保留内核分配的不同 MAC**，否则两侧 IPv6 链路本地地址相同会触发 DAD 冲突。改 MAC 必须在 `IFF_UP` 之前 |
 | `BIOCPROMISC` | 对 feth **不需要**：`feth_output_common` 无条件把帧投给 peer 并 tap，不做 MAC 过滤，能否读到只由方向决定 |
-| DHCP | `sudo ipconfig set feth0 DHCP`（临时服务，只活到下次网络配置变更，不出现在系统设置里）。拆除 `sudo ipconfig set feth0 NONE`。`networksetup` 用不了 —— feth 不在 `SCNetworkInterface` 列表里 |
+| DHCP | GUI 走 `SCPreferences` + `SCNetworkService` 注册**持久**服务（feth 不在 `SCNetworkInterfaceCopyAll()` 里，但可用 `_SCNetworkInterfaceCreateWithBSDName` SPI 构造接口对象）。NetworkExtension 的 VPN provider **只认这种服务**，临时服务会让它报 "No network route"。CLI 仍用 `sudo ipconfig set feth0 DHCP`（临时服务，只活到下次网络配置变更，不出现在系统设置里），拆除 `sudo ipconfig set feth0 NONE` |
 | 性能上限警示 | 社区报告 feth 路径在超过约 5–8 Gbps 后会出现内核 mbuf 溢出并 panic。对本项目风险很低：RNDIS over USB 2.0 HS 实测约 200–300 Mbps，USB 3 下也难超 1–2 Gbps |
 | 相关 ioctl（**在**公开 `sys/sockio.h` 中） | `SIOCSIFFLAGS`(i,16) `SIOCGIFFLAGS`(i,17) `SIOCSIFMTU`(i,52) `SIOCSIFLLADDR`(i,60) `SIOCIFCREATE`(i,120) `SIOCIFDESTROY`(i,121) `SIOCIFCREATE2`(i,122) `SIOCSDRVSPEC`(i,123) `SIOCGDRVSPEC`(i,123) |
 | `IFNAMSIZ` | 16 |
@@ -246,8 +246,23 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 31 | `chore(release): v0.1.4 —— 中英双语` | ✅ | README 英文版转正为默认（HoRNDIS 搜索意图 SEO）；**升级后用户必须在 App 内更新一次特权组件**（协议号变了） |
 | 32 | `feat(gui): 特权组件与 App 版本不一致时给出更新入口` | ✅ | 比的是**库**版本而不是 Info.plist（`swift run` 没有 bundle）；只取版本号，构建配置不同不算不一致；协议号没变的版本以前完全没有提示 |
 | 33 | `chore(release): v0.1.5 —— 组件版本对不上时可一键更新` | ✅ | 协议号仍是 3，旧组件照常能用；升级后管理行会提示更新，不更新也不会坏 |
+| 34 | `fix(core): RX 注入线程改为 park，不再 yield 空转` | ✅ | 上游 issue #5：空闲时占满一个核。FrameRing 加 eventcount 门铃（futex），空闲 CPU ≈ 0 |
+| 35 | `fix(capi): 孤儿登记带 PID；root 子进程用干净环境` + 移植并加固上游 PR #4 | ✅ | PR #4（注册真正的网络服务，修 VPN NE / issue #3）：SPI 改 dlsym、加 SCPreferencesLock |
+| 36 | `feat!: 签名的通用 DMG 分发 + SMAppService 守护进程 + 内置 CLI` | ✅ | 废除 AEWP/setuid 安装器；XPC 双向代码签名校验；libusb 自建通用 dylib；CI 覆盖 Intel |
+| 37 | `feat(gui): Swift 6、Liquid Glass 重设计、仅菜单栏模式修复` | ✅ | 侧边栏导航；设置页；菜单栏定宽速率（issue #1）；程序坞图标改由 NSWindow 通知驱动 |
+| 38 | `feat(gui): 连接后自动应用上网方式（默认 DHCP）` | ✅ | 复用连接时的授权令牌，不再弹第二次框；已有地址 / 选「不配置」/ 静态表单不完整时跳过；设置页可关 |
+| 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 
-### 当前状态
+### 当前状态（TetherKitNext，2026-09-25）
+
+- **分发**：签名 + 公证的通用 DMG（`scripts/build-release.sh`，CI 与发版同一脚本）。
+  Homebrew tap 与 `update-tap.yml` 已移除。安全审计见 `docs/SECURITY-AUDIT.md`。
+- **守护进程**：`SMAppService`，标签 `com.tetherkit.helperd`，从 App 包内原地运行；
+  首次启动自动清理旧的 `com.tetherkit.helper`。XPC 协议号 4。
+- **CI**：macos-15 / macos-26 / macos-15-intel 原生构建与测试、通用包 + DMG、
+  DMG 在真 Intel 机器上安装运行、TSan、feth ABI 门禁。
+
+### 当前状态（上游 v0.1.5 时的记录）
 
 - **测试**：23 个 ctest 用例全部通过（新增 common.i18n 核对两种语言的占位符）；
   GUI 侧 `swift test` 17 个用例通过（含 LocalizationTests、HelperConstantsTests）
@@ -581,6 +596,18 @@ TX 就从 4.8 回到了 87 Mbps。
    永远不更新。凡是存文案的静态成员一律改成计算属性（`AppModel` 的三条授权
    提示、`NetworkCard.dnsHint` 都踩过）。
 
+19. **SwiftUI 的 `onDisappear` 不能用来判断「窗口关了」。** `Window` 场景关闭时
+   SwiftUI 可能只是把窗口 order out、保留视图树，`onDisappear` 不触发或延迟触发
+   —— 结果是窗口没了、程序坞图标还在。激活策略一律由 `AppDelegate` 监听
+   `NSWindow.willCloseNotification` 等通知推导（有可见的非 NSPanel 窗口 → regular）。
+20. **CI 门禁 grep 日志文案，文案一国际化就永远过不了。** 上游 ABI 门禁找
+   「创建了 feth」，i18n 之后这句已不存在。现在固定 `TETHERKIT_LANG=en` 再匹配。
+21. **ad-hoc 签名的 App 注册不了 SMAppService 守护进程。** 本机调试后台组件要用
+   Apple Development / Developer ID 证书签名（`TETHERKIT_SIGN_IDENTITY`）。
+   ad-hoc 构建里 XPC 也会退回「仅授权复核」模式（没有 Team ID 可钉）。
+22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
+   libtetherkit；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
+
 ---
 
 ## 8. 常用命令
@@ -600,10 +627,13 @@ cmake -S . -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON && cmake --build build-tsan 
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel -j10 \
   && ./build-rel/bin/tetherkit_bench
 
-# GUI：构建、测试、打包
+# GUI：构建、测试、打包（需要 Xcode 26）
 TETHERKIT_LIB_DIR=$PWD/build/lib swift build --package-path gui
 TETHERKIT_LIB_DIR=$PWD/build/lib swift test  --package-path gui
 ./gui/Scripts/build-gui.sh
+
+# 完整发布构建：通用 libusb + 通用 C++ + 测试 + App + DMG
+./scripts/build-release.sh
 
 # 两种语言各看一眼（改过文案就跑一下）
 ./build/bin/tetherkit-cli --lang en --help

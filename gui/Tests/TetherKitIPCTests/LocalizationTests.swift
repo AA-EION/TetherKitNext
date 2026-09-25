@@ -155,9 +155,9 @@ final class LocalizationTests: XCTestCase {
         XCTAssertFalse(english.contains("%@"), "参数没被替换掉：\(english)")
 
         // 换语序的那几条要真的按位置替换，而不是按出现顺序。
-        let alias = L(.aliasCreated, in: .english, "/Applications/TetherKit", "/opt/TetherKit.app")
-        XCTAssertTrue(alias.contains("/Applications/TetherKit"))
-        XCTAssertTrue(alias.contains("/opt/TetherKit.app"))
+        let failure = L(.cliLinkSystemError, in: .english, "symlink", "File exists")
+        XCTAssertTrue(failure.hasPrefix("symlink"), failure)
+        XCTAssertTrue(failure.hasSuffix("File exists"), failure)
     }
 
     /// 语言标签与 C ABI 的 `tk_language_t` 对齐 —— 错位的话 GUI 是一种语言、
