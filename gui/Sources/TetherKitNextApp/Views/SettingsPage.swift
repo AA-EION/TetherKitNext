@@ -180,6 +180,9 @@ struct SettingsPage: View {
             Text(L(.aboutCredits))
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            LabeledContent(L(.madeByVendor)) {
+                Link(L(.vendorWebsite), destination: Vendor.website)
+            }
             LabeledContent("libtetherkitnext",
                            value: TetherKitNextLibrary.versionInfo.version)
             LabeledContent("libusb", value: TetherKitNextLibrary.versionInfo.libusb)

@@ -18,6 +18,10 @@ struct OnboardingView: View {
             VStack(spacing: Design.Spacing.large) {
                 header
                 content
+                Link(L(.madeByVendor), destination: Vendor.website)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, Design.Spacing.small)
             }
             .frame(maxWidth: 560)
             .padding(Design.Spacing.large)

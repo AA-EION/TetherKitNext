@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <sub>由 <b>Issen Software Group</b> 开发 · 基于 XiaoMiku01 的 <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a></sub>
+  <sub>由 <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> 开发 · 基于 XiaoMiku01 的 <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a></sub>
 </p>
 
 ---
@@ -36,7 +36,7 @@ TetherKitNext 解决的就是这个问题：它通过 USB 与手机通信，给 
 
 真机实测（USB 2.0）：**下载约 325 Mbps / 上传 240–300 Mbps**，接近数据线本身的上限。
 
-> **TetherKitNext** 由 **Issen Software Group** 开发，是 XiaoMiku01 的
+> **TetherKitNext** 由 [**Issen Software Group**](https://issen.kurokamicorp.com/) 开发，是 XiaoMiku01 的
 > [TetherKit](https://github.com/XiaoMiku01/TetherKit) 的分支，驱动本身归功于原作者。
 > TetherKitNext 提供 Apple Silicon 与 Intel 通用的签名安装包、重新设计的界面、安全审计
 > （[docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)）以及多项修复。详见 [NOTICE.md](NOTICE.md)。

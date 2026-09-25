@@ -2,7 +2,8 @@
 
 ## TetherKitNext
 
-TetherKitNext is developed and maintained by **Issen Software Group**.
+TetherKitNext is developed and maintained by **Issen Software Group**
+(<https://issen.kurokamicorp.com/>).
 
 It is a fork of **TetherKit** by XiaoMiku01 and the TetherKit contributors
 (<https://github.com/XiaoMiku01/TetherKit>), released under the MIT License.

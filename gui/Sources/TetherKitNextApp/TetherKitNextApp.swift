@@ -32,6 +32,7 @@ struct TetherKitNextApplication: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appInfo) { AboutMenuItem(model: model) }
             CommandGroup(after: .appInfo) { AppMenuItems(model: model) }
         }
 
@@ -97,6 +98,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func isAppWindow(_ window: NSWindow) -> Bool {
         !(window is NSPanel) && window.canBecomeMain
             && window.styleMask.contains(.titled)
+    }
+}
+
+/// "About TetherKitNext", replaced so the panel carries the vendor credit and
+/// a link to its website.
+private struct AboutMenuItem: View {
+    var model: AppModel
+
+    var body: some View {
+        let _ = model.languageRevision
+        Button(L(.aboutApp)) { Vendor.showAboutPanel() }
     }
 }
 

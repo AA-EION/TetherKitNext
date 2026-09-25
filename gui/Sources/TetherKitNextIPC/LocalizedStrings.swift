@@ -163,6 +163,9 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case settingsAboutSection
     case aboutCredits
     case projectWebsite
+    case vendorWebsite
+    case madeByVendor
+    case aboutApp
     case showLicenses
     case autoConfigureNetwork
     case autoConfigureNetworkHelp
@@ -585,6 +588,15 @@ extension L10nKey {
         case .aboutCredits:
             return ("由 Issen Software Group 开发，基于 XiaoMiku01 的 TetherKit（MIT 许可证）。",
                     "Made by Issen Software Group. Based on TetherKit by XiaoMiku01 (MIT License).")
+        case .vendorWebsite:
+            return ("Issen Software Group 官网",
+                    "Issen Software Group Website")
+        case .madeByVendor:
+            return ("由 Issen Software Group 开发",
+                    "Made by Issen Software Group")
+        case .aboutApp:
+            return ("关于 TetherKitNext",
+                    "About TetherKitNext")
         case .projectWebsite:
             return ("项目主页",
                     "Project Website")

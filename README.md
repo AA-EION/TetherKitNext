@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <sub>By <b>Issen Software Group</b> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
+  <sub>By <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
 </p>
 
 ---
@@ -37,7 +37,7 @@ connection, so your Mac gets online through your phone's mobile data or Wi-Fi.
 Tested with real phones at about **325 Mbps download / 240–300 Mbps upload** over USB 2.0,
 close to what the cable can carry.
 
-> **TetherKitNext** is made by **Issen Software Group**. It is a fork of
+> **TetherKitNext** is made by [**Issen Software Group**](https://issen.kurokamicorp.com/). It is a fork of
 > [TetherKit](https://github.com/XiaoMiku01/TetherKit) by XiaoMiku01, which wrote the original
 > driver. TetherKitNext adds a signed app you install by dragging it to Applications, support
 > for both Apple Silicon and Intel, a redesigned interface, a security review

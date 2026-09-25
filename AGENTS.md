@@ -258,7 +258,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 | 40 | `fix(capi): 「所有流量走此网卡」改为调整服务顺序` | ✅ | 原实现只 `route change default`：DNS 仍跟随主服务（以太网）、configd 会在下次网络变化时改回路由、托管服务被 SCNetworkSetAddService 追加在末尾。现在 DHCP 模式把托管服务排到 ServiceOrder 第一（= 系统设置「设定服务顺序」），路由与 DNS 一起切到手机；网络页设置持久化到 UserDefaults |
 | 41 | `fix(gui): 同版本号的新构建也能发现后台组件过期` | ✅ | beta.1 与 beta.2 版本号都是 0.2.0：App 只比语义化版本 → 不提示重启，而 daemon 永不空闲退出、替换 .app 也不会重启它 → beta.2 的修复根本没跑。库的构建描述现以 `build <git sha>` 开头，daemon 随版本一并回报，App 比较构建 ID |
-| 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 用 dmgbuild（直接写 .DS_Store，无需 Finder/AppleScript，CI 无头可用），背景图 `scripts/dmg/` |
+| 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 用 dmgbuild（直接写 .DS_Store，无需 Finder/AppleScript，CI 无头可用），背景图 `scripts/dmg/`。厂商网站（`Vendor.website`）出现在「关于」面板（替换了标准 appInfo 菜单项，带 credits 链接）、设置 › 关于、首次设置页 |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 
