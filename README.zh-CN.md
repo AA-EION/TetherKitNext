@@ -6,6 +6,10 @@
 
 [English](README.md) | **简体中文**
 
+> **TetherKitNext** 是 [XiaoMiku01/TetherKit](https://github.com/XiaoMiku01/TetherKit) 的维护分支：
+> 签名并公证的通用 DMG（Apple Silicon + Intel）、命令行工具内置于 App、重新设计的 Liquid Glass 界面、
+> 安全审计（[docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)），并修复了上游 issue #1、#2、#3、#5。
+
 **HoRNDIS 在新系统上用不了的替代方案 —— 不装内核扩展，让 Android USB 网络共享在 macOS 上重新可用。**
 
 TetherKit 是一个 **macOS 用户态 RNDIS 驱动**：把 RNDIS 设备（Android 手机的 USB 网络共享、
@@ -64,97 +68,65 @@ macOS 内核**没有** RNDIS 驱动。插上开了 USB 网络共享的 Android �
 
 ## 安装
 
-**兼容性**：macOS 14 Sonoma、15 Sequoia、26 Tahoe，Apple Silicon（M1–M4）与 Intel 都支持；
-命令行工具最低到 macOS 13.3 Ventura。**什么都不用关** —— SIP 保持开启，Apple Silicon 的
-安全策略保持「完全安全性」。
+**兼容性**：macOS 14 Sonoma、15 Sequoia、26 Tahoe，Apple Silicon 与 Intel 通用（一个通用二进制 App）。
+内置的命令行工具支持 macOS 13.3 Ventura 及以上。无需关闭任何安全设置 —— SIP 保持开启，
+Apple Silicon 的安全策略保持「完整安全性」。
 
-```bash
-# 图形界面 TetherKit.app（macOS 14+）
-brew install XiaoMiku01/tap/tetherkit
+1. 从 [Releases](https://github.com/AA-EION/TetherKitNext/releases) 下载
+   **TetherKit-x.y.z.dmg**，打开后把 **TetherKit** 拖到 **应用程序**。
+2. 从“应用程序”打开 TetherKit，点击 **启用后台组件**。macOS 会请你在
+   *系统设置 › 通用 › 登录项与扩展* 中允许一次；允许后 App 会自动继续。
+3. 可选 —— 命令行：*设置 › 命令行工具 › 安装命令* 会把 `tetherkit-cli` 链接到
+   `/usr/local/bin`，之后在任何终端里都能用 `tetherkit-cli --list` 和 `sudo tetherkit-cli`。
 
-# 命令行工具 tetherkit-cli（macOS 13.3+）
-brew install XiaoMiku01/tap/tetherkit-cli
-```
+DMG 使用 Developer ID 签名并经过 Apple 公证，打开时不会有 Gatekeeper 警告。所有东西都在 App 里：
+图形界面、`tetherkit-cli`、后台组件，以及自带的 libusb —— 不需要 Homebrew。
 
-两个 formula 都从源码构建，`libusb` 会被自动带上。tap 仓库在
-[XiaoMiku01/homebrew-tap](https://github.com/XiaoMiku01/homebrew-tap)。
+**更新**：下载新的 DMG，替换“应用程序”里的 App 即可。后台组件直接从 App 内运行，会随之更新
+（如果正在运行的是旧版本，设置页会提供一键重启）。
 
-图形界面装完这样启动（首次启动会自动在「应用程序」里建立 Finder 别名，
-之后在聚焦里搜 TetherKit 即可直接启动）：
+**卸载**：*设置 › 后台组件 › 停用…*（同时移除 `tetherkit-cli` 链接），然后把 App 移到废纸篓。
 
-```bash
-open "$(brew --prefix)/opt/tetherkit/TetherKit.app"
-```
-
-首次运行界面会引导安装特权组件：点「安装特权组件」、输一次管理员密码即可。
-
-升级：
-
-```bash
-brew upgrade tetherkit tetherkit-cli
-```
-
-> **旧版用户注意**：自 v0.1.2 起 `tetherkit` 这个 formula 名归图形界面，
-> 命令行改名 `tetherkit-cli`（二进制同名）。之前装过命令行的请
-> `brew uninstall tetherkit && brew install tetherkit-cli`。
-
-也可以从 [Releases](https://github.com/XiaoMiku01/TetherKit/releases) 直接下预编译产物
-（仅 arm64）。但它们**没有签名**，浏览器下载后会被 Gatekeeper 隔离，得手动解除：
-
-```bash
-xattr -d com.apple.quarantine tetherkit-cli     # 命令行
-xattr -dr com.apple.quarantine TetherKit.app    # 图形界面（递归）
-```
-
-介意这一步的话就走上面的 Homebrew，或者按下文「[从源码构建](#从源码构建)」自己构建
-—— 本地构建的产物不带隔离属性。
+> **从上游 TetherKit（Homebrew 版）升级？** 新的后台组件首次启动时会自动移除旧的
+> `com.tetherkit.helper` LaunchDaemon 及其文件，之后可以执行 `brew uninstall tetherkit tetherkit-cli`。
 
 ---
 
 ## 图形界面
 
-TetherKit.app（SwiftUI）把「选设备 → 连接 → 配 IP」做成了三步点击，实时显示吞吐与日志。
+TetherKit.app（SwiftUI，在 macOS 26 上采用 Liquid Glass 设计）按任务分布在侧边栏：
 
-它由两部分组成：`TetherKit.app` 以**普通用户身份**运行，需要 root 的操作交给一个
-由 launchd 按需拉起的特权组件 `tetherkit-helper`，每次调用都附带一份用户刚确认过
-的授权凭据。App 本身不需要任何 entitlement。
+| 页面 | 用途 |
+|---|---|
+| 概览 | 连接状态、实时吞吐、网卡地址一览 |
+| 设备 | 选择手机（或其他 RNDIS 设备），MTU 与 MAC 选项 |
+| 网络 | 自动（DHCP）或静态 IP、DNS、默认路由 |
+| 日志 | 驱动实时日志，可筛选、可复制 |
+| 设置 | 后台组件、命令行工具、语言、菜单栏、登录时打开、更新 |
 
-特权组件的安装载荷内嵌在 .app 里（`Contents/Library/HelperTools/`），首次运行时
-界面会引导安装（见上文「安装」）；偏好终端的话效果完全相同：
+**连接 / 断开** 在每个页面的工具栏上（⌘↩），菜单栏面板里也有。
 
-```bash
-sudo ./gui/Scripts/install-helper.sh
-```
+App 以**普通用户**身份运行。需要 root 的工作（创建虚拟网卡、打开 BPF、配置 IP）交给
+`tetherkit-helper` —— 一个通过 `SMAppService` 注册、直接从已签名 App 包内运行的后台组件。
+正式构建只允许签名一致的 App 与它通信（XPC 代码签名要求），并且每次特权调用还需附带管理员授权。
+详见 [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)。
 
-卸载：仪表盘底部有「卸载特权组件…」按钮（终端等价命令
-`sudo ./gui/Scripts/uninstall-helper.sh`）。
-
-界面里可以配置**上网方式**：
+上网方式：
 
 | 方式 | 说明 |
 |---|---|
-| 自动（DHCP） | 交给系统的 IPConfiguration，租约、DNS、路由全部自动配好。绝大多数手机都自带 DHCP 服务器，推荐 |
-| 静态 IP | 手动指定 IP、子网掩码、网关与 DNS。输入时即时校验（含子网掩码的连续性） |
+| 自动（DHCP） | 把网卡注册为真正的 macOS 网络服务，DNS、路由以及 VPN NetworkExtension（FortiClient 等）都能正常工作。推荐 |
+| 静态 IP | 自行填写地址、掩码、网关与 DNS，输入时即时校验 |
 
-另有一个「让所有流量默认走这张网卡」开关。不开时只有绑定到本网卡的流量走它；
-本机没有别的可用网络时通常不需要开 —— 系统会自己把它选为主服务。
+**菜单栏模式**：关闭主窗口后程序坞图标隐藏，TetherKit 留在菜单栏，可选显示定宽的实时上下行速率
+（在设置中开关）。连接由后台组件维持，关闭或退出界面都不会断开。
 
-**后台运行**：关闭主窗口后 App 驻留菜单栏（程序坞图标隐藏），菜单栏项实时
-显示上/下行速率；点开是一块小面板，可随时回到主窗口或退出。已建立的连接由
-特权组件持有，即使退出界面也不会断。
+**更新**：*TetherKit › 检查更新…* 或设置中的每日自动检查，只读取本仓库公开的 GitHub Releases
+并打开发布页 —— 不会自行下载或安装任何东西。
 
-**检查更新**：菜单「TetherKit → 检查更新…」手动查；App 也会每天自动查一次
-（只访问 GitHub 的公开 Releases API，不上报任何信息），发现新版在仪表盘
-底部点亮一条提示。更新本身仍走 `brew upgrade` 或源码重编 —— 免证书分发下
-自动替换 .app 会被 Gatekeeper 拦下，所以刻意只查不换。不想要自动检查：
-`defaults write com.tetherkit.app updateCheckDisabled -bool YES`。
+**语言**：跟随系统 / 中文 / English，可在 App 菜单、菜单栏面板或设置中即时切换。
 
-**界面语言**：菜单「TetherKit → 语言」可选「跟随系统 / 中文 / English」，
-菜单栏面板里也有同一个开关。切换**立即生效**，不需要重启 App —— 库产生的
-日志行也会跟着换（语言会一并同步给特权组件）。默认跟随系统语言。
-
-**要求**：macOS 14+（命令行部分仍支持 13.3+）。实现细节与设计取舍见
-[docs/GUI-ARCHITECTURE.md](docs/GUI-ARCHITECTURE.md)。
+设计说明与取舍见 [docs/GUI-ARCHITECTURE.md](docs/GUI-ARCHITECTURE.md)。
 
 ---
 
@@ -299,27 +271,37 @@ Linux 的 `g_ether` / `u_ether` USB gadget（树莓派 Zero、BeagleBone 等）�
 
 ## 从源码构建
 
-依赖：macOS 13.3+、Xcode 命令行工具（Apple clang 支持 C++23）、CMake ≥ 3.24、libusb 1.0。
+要求：macOS 14+、**Xcode 26**（Swift 6.2、macOS 26 SDK）、CMake ≥ 3.24。
+libusb 由下面的脚本从固定版本、校验哈希的发布包构建；本地快速构建 C++ 部分也可以用 Homebrew 的 `libusb`。
 
 ```bash
-brew install libusb cmake
-```
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLibUSB_ROOT="$PWD/build/libusb-universal"
 cmake --build build -j
 ```
 
 产物：`build/bin/tetherkit-cli`。
 
-### 构建图形界面
+### 构建 App 与 DMG
 
-需要完整 Xcode 工具链。在上面的构建目录基础上：
+完整的发布流程 —— 通用 libusb、通用 C++ 与测试、App 包、DMG —— 是一个脚本，与 CI 执行的完全相同：
 
 ```bash
-cmake --build build --target gui        # 等价于 ./gui/Scripts/build-gui.sh
-open dist/TetherKit.app
+./scripts/build-release.sh        # → dist/TetherKit.app、dist/TetherKit-<版本>.dmg
 ```
+
+签名与公证由环境变量控制：
+
+| 变量 | 用途 |
+|---|---|
+| `TETHERKIT_SIGN_IDENTITY` | 例如 `Developer ID Application: Jane Doe (ABCDE12345)`。不设则 ad-hoc 签名（仅供本地测试） |
+| `NOTARY_KEY_PATH`、`NOTARY_KEY_ID`、`NOTARY_ISSUER_ID` | `notarytool` 使用的 App Store Connect API 密钥（或 `NOTARY_APPLE_ID` / `NOTARY_PASSWORD` / `NOTARY_TEAM_ID`） |
+
+要在本机测试后台组件，请用 Apple Development 或 Developer ID 证书签名 —— macOS 拒绝注册 ad-hoc 签名的守护进程。
+
+在 GitHub Actions 中添加仓库密钥 `MACOS_CERTIFICATE_P12`（导出的证书 + 私钥的 base64）、
+`MACOS_CERTIFICATE_PASSWORD`、`NOTARY_KEY_P8`（.p8 的 base64）、`NOTARY_KEY_ID`、`NOTARY_ISSUER_ID`。
+之后推送 `v*` 标签即会发布签名并公证的 DMG（[release.yml](.github/workflows/release.yml)）。
 
 ### 构建选项
 

@@ -6,6 +6,28 @@
 排除的三条路线）；本文记录的是落地之后的结构与约束。**改 GUI 相关代码前先读
 这两篇**，能省掉重新踩一遍坑的时间。
 
+## 0. TetherKitNext changes (read first — supersedes the install/trust sections below)
+
+The sections below describe upstream's design. These parts have changed:
+
+| Area | Upstream | Now |
+|---|---|---|
+| Daemon install | `AuthorizationExecuteWithPrivileges` (via `dlsym`) runs the helper with `--install`, which does `setuid(0)` and runs `install-helper.sh` to copy files into `/Library/PrivilegedHelperTools` + `/Library/LaunchDaemons` | `SMAppService.daemon(plistName: "com.tetherkit.helperd.plist")`. launchd runs `Contents/MacOS/tetherkit-helper` **in place** from the signed bundle; the user approves it once in Login Items. No files are copied; `InstallerMode.swift` and `install-helper.sh` are gone |
+| Label / Mach service | `com.tetherkit.helper` | `com.tetherkit.helperd` (different, so it never collides with a still-loaded legacy job). The new daemon boots out and deletes the legacy install on first start (`LegacyHelper`) |
+| Who may connect | anyone; security relies only on per-call admin authorization | team-signed builds: `setCodeSigningRequirement` on both ends (`CodeSigning.swift`, Team ID read from the running binary). Per-call authorization is kept as a second layer. Ad-hoc builds fall back to the old model |
+| Protocol revision | 3 | 4 (`setCommandLineToolInstalled`) |
+| Bundle layout | `Contents/Library/HelperTools/` payload | `MacOS/{TetherKit,tetherkit-cli,tetherkit-helper}`, `Frameworks/{libtetherkit.0,libusb-1.0.0}.dylib`, `Library/LaunchDaemons/com.tetherkit.helperd.plist`, `Resources/Licenses/` |
+| CLI on PATH | Homebrew formula | daemon-managed symlink `/usr/local/bin/tetherkit-cli` → the CLI in its own bundle (`CommandLineToolLink`) |
+| Architectures | arm64, Homebrew libusb | universal; libusb 1.0.30 built from a hash-pinned tarball (`scripts/build-libusb.sh`) |
+| Swift | tools 5.9, Swift 5 mode | tools 6.2, Swift 6 language mode |
+| Layout | one dashboard under a 700 pt height budget | `NavigationSplitView`: Overview / Device / Network / Activity / Settings; Connect in the toolbar |
+| Dock icon | activation policy set in SwiftUI `onDisappear` (not reliably called when a `Window` scene closes) | `AppDelegate` derives it from `NSWindow` notifications |
+| Finder alias | created on launch (Homebrew Cellar installs) | removed |
+
+Constraints that still hold: UTF-8 boundary truncation in the C ABI, enum-order
+`static_assert`s, `.id(model.languageRevision)` for live language switching, and
+never blocking an XPC queue.
+
 ---
 
 ## 1. 进程与信任模型

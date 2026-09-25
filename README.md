@@ -6,12 +6,16 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+> **TetherKitNext** is a maintained fork of [XiaoMiku01/TetherKit](https://github.com/XiaoMiku01/TetherKit):
+> a signed, notarized universal DMG (Apple Silicon + Intel), the CLI bundled in the app, a
+> redesigned Liquid Glass interface, a security audit ([docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md))
+> and fixes for upstream issues #1, #2, #3 and #5.
+
 **A kext-free HoRNDIS alternative that brings Android USB tethering on macOS back to life.**
 
 TetherKit is a **user-space RNDIS driver for macOS**: it turns an RNDIS device (Android USB
 tethering, Windows Phone, embedded Linux gadgets, …) into a network interface that macOS can
-see and use — with **no kernel extension, no DriverKit, no SIP changes and no developer
-account**. Works the same on Apple Silicon and Intel. Ships with a GUI — pick a device,
+see and use — with **no kernel extension, no DriverKit and no SIP changes**. Works the same on Apple Silicon and Intel. Ships with a GUI — pick a device,
 connect, configure IP in three clicks — plus a command-line tool, `tetherkit-cli`.
 
 ![TetherKit main window](docs/assets/screenshot-main-en.jpg)
@@ -73,113 +77,79 @@ entirely in user space**.
 
 ## Installation
 
-**Compatibility**: macOS 14 Sonoma, 15 Sequoia and 26 Tahoe, on Apple Silicon (M1–M4) and
-Intel. The command-line tool goes back to macOS 13.3 Ventura. Nothing needs to be disabled —
-SIP stays on, the Apple Silicon security policy stays at *Full Security*.
+**Compatibility**: macOS 14 Sonoma, 15 Sequoia and 26 Tahoe, on Apple Silicon and Intel
+(one universal app). The bundled command-line tool runs on macOS 13.3 Ventura and later.
+Nothing needs to be disabled — SIP stays on, the Apple Silicon security policy stays at
+*Full Security*.
 
-```bash
-# The GUI, TetherKit.app (macOS 14+)
-brew install XiaoMiku01/tap/tetherkit
+1. Download **TetherKit-x.y.z.dmg** from
+   [Releases](https://github.com/AA-EION/TetherKitNext/releases), open it and drag
+   **TetherKit** onto **Applications**.
+2. Open TetherKit from Applications and click **Enable Background Component**. macOS asks
+   you to allow it once in *System Settings › General › Login Items & Extensions*; the
+   app continues on its own as soon as you do.
+3. Optional — command line: *Settings › Command-line tool › Install Command* links
+   `tetherkit-cli` into `/usr/local/bin`, so `tetherkit-cli --list` and
+   `sudo tetherkit-cli` work in any terminal.
 
-# The command-line tool, tetherkit-cli (macOS 13.3+)
-brew install XiaoMiku01/tap/tetherkit-cli
-```
+The DMG is signed with a Developer ID and notarized by Apple, so it opens without
+Gatekeeper warnings. Everything lives inside the app: the GUI, `tetherkit-cli`, the
+background component and its own copy of libusb — no Homebrew required.
 
-Both formulae build from source and pull in `libusb` automatically. The tap
-lives at [XiaoMiku01/homebrew-tap](https://github.com/XiaoMiku01/homebrew-tap).
+**Updating**: download the new DMG and replace the app in Applications. The background
+component runs from inside the app, so it updates with it (the Settings page offers a
+one-click restart if the running copy is older).
 
-Launch the GUI like this (on first launch the app drops a Finder alias into
-/Applications, so Spotlight can find and launch TetherKit from then on):
+**Uninstalling**: *Settings › Background Component › Disable…* (this also removes the
+`tetherkit-cli` link), then move the app to the Trash.
 
-```bash
-open "$(brew --prefix)/opt/tetherkit/TetherKit.app"
-```
-
-On first run the app walks you through installing the privileged helper —
-one click, one admin password prompt.
-
-To upgrade:
-
-```bash
-brew upgrade tetherkit tetherkit-cli
-```
-
-> **Note for existing users**: as of v0.1.2 the formula name `tetherkit` belongs
-> to the GUI; the CLI was renamed `tetherkit-cli` (binary included). If you had
-> the CLI installed, run `brew uninstall tetherkit && brew install tetherkit-cli`.
-
-You can also grab prebuilt artifacts straight from
-[Releases](https://github.com/XiaoMiku01/TetherKit/releases) (arm64 only). They are
-**unsigned**, so a browser download gets quarantined by Gatekeeper and you have to
-clear the attribute yourself:
-
-```bash
-xattr -d com.apple.quarantine tetherkit-cli     # CLI
-xattr -dr com.apple.quarantine TetherKit.app    # GUI (recursive)
-```
-
-If that bothers you, use Homebrew above, or build it yourself as described in
-[Building from source](#building-from-source) — locally built artifacts carry no
-quarantine attribute.
+> **Coming from upstream TetherKit (Homebrew)?** The new background component removes the
+> old `com.tetherkit.helper` LaunchDaemon and its files automatically on first start. You
+> can `brew uninstall tetherkit tetherkit-cli` afterwards.
 
 ---
 
 ## Graphical interface
 
-TetherKit.app (SwiftUI) reduces the whole flow to three clicks — pick a device,
-connect, configure IP — and shows live throughput and logs.
+TetherKit.app (SwiftUI, with the Liquid Glass design on macOS 26) is organized by task in a
+sidebar:
 
-It comes in two pieces: `TetherKit.app` runs as a **normal user**, and anything
-that needs root is handed to `tetherkit-helper`, a privileged component launched
-on demand by launchd. Every privileged call carries an authorization credential
-the user has just confirmed. The app itself needs no entitlements.
+| Page | What it is for |
+|---|---|
+| Overview | Connection status, live throughput, the interface's address at a glance |
+| Device | Pick the phone (or other RNDIS device), MTU and MAC options |
+| Network | Automatic (DHCP) or static IP, DNS, default route |
+| Activity | Live log from the driver, with filtering and copy |
+| Settings | Background component, command-line tool, language, menu bar, launch at login, updates |
 
-The helper's installation payload is embedded in the .app
-(`Contents/Library/HelperTools/`); on first run the app walks you through
-installing it (see Installation above). If you prefer the terminal, this is
-exactly equivalent:
+**Connect / Disconnect** sits in the toolbar on every page (⌘↩) and in the menu bar panel.
 
-```bash
-sudo ./gui/Scripts/install-helper.sh
-```
+The app runs as a **normal user**. Anything that needs root (creating the virtual
+interface, opening BPF, configuring IP) is done by `tetherkit-helper`, a background
+component registered with `SMAppService` that runs from inside the signed app bundle.
+Release builds only let the signed app talk to it (XPC code-signing requirement), and every
+privileged call also carries an administrator authorization. See
+[docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 
-Uninstall: the dashboard has an "Uninstall privileged component…" button at the
-bottom (terminal equivalent: `sudo ./gui/Scripts/uninstall-helper.sh`).
-
-The app lets you choose how the virtual interface gets its address:
+Addressing modes:
 
 | Mode | Notes |
 |---|---|
-| Automatic (DHCP) | Handled by the system's IPConfiguration — lease, DNS and routes are all set up for you. Most phones ship a DHCP server, so this is the recommended choice |
-| Static IP | Enter address, netmask, gateway and DNS yourself. Validated as you type, including netmask contiguity |
+| Automatic (DHCP) | Registers the interface as a real macOS network service, so DNS, routes and VPN NetworkExtensions (FortiClient, etc.) work over it. Recommended |
+| Static IP | Enter address, netmask, gateway and DNS yourself. Validated as you type |
 
-There is also a "route all traffic through this interface" switch. With it off,
-only traffic explicitly bound to the interface uses it. You usually do not need
-it — when no other network is available, macOS picks this interface as the
-primary service on its own.
+**Menu bar mode**: closing the main window hides the Dock icon and leaves TetherKit in the
+menu bar, optionally with live, fixed-width up/down rates (toggle in Settings). The
+connection lives in the background component, so closing or quitting the UI never drops it.
 
-**Background mode**: closing the main window keeps the app in the menu bar
-(the Dock icon is hidden) with live up/down rates on the status item; click it
-for a compact panel with shortcuts back to the main window. The connection
-itself lives in the privileged helper, so quitting the UI never drops it.
+**Updates**: *TetherKit › Check for Updates…* or the daily automatic check (Settings) reads
+this repository's public GitHub Releases and only opens the release page — it never
+downloads or installs anything by itself.
 
-**Update check**: "TetherKit → Check for Updates…" checks on demand; the app also
-checks once a day on its own (it only hits GitHub's public Releases API and
-reports nothing), lighting up a notice at the bottom of the dashboard when a new
-version is out. The update itself still goes through `brew upgrade` or a source
-rebuild — with certificate-free distribution, auto-replacing the .app would be
-blocked by Gatekeeper, so the app deliberately only checks, never swaps. To
-disable the automatic check:
-`defaults write com.tetherkit.app updateCheckDisabled -bool YES`.
+**Language**: Follow system / 中文 / English, switchable live from the app menu, the menu
+bar panel or Settings.
 
-**Interface language**: "TetherKit → Language" offers Follow system / 中文 /
-English, and the menu bar panel carries the same switch. Changes take effect
-**immediately** — no restart — and the log lines coming out of the library
-follow along (the language is pushed to the privileged helper too). The default
-is to follow the system language.
-
-**Requires** macOS 14+ (the CLI still supports 13.3+). Design notes and
-trade-offs are in [docs/GUI-ARCHITECTURE.md](docs/GUI-ARCHITECTURE.md).
+Design notes and trade-offs: [docs/GUI-ARCHITECTURE.md](docs/GUI-ARCHITECTURE.md).
 
 ---
 
@@ -332,28 +302,41 @@ cover.
 
 ## Building from source
 
-Requirements: macOS 13.3+, Xcode command line tools (Apple clang with C++23 support),
-CMake ≥ 3.24, libusb 1.0.
+Requirements: macOS 14+, **Xcode 26** (Swift 6.2, macOS 26 SDK), CMake ≥ 3.24.
+libusb is built from a pinned, hash-verified release by the script below; Homebrew's
+`libusb` also works for quick local C++ builds.
 
 ```bash
-brew install libusb cmake
-```
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLibUSB_ROOT="$PWD/build/libusb-universal"
 cmake --build build -j
 ```
 
 Output: `build/bin/tetherkit-cli`.
 
-### Building the GUI
+### Building the app and the DMG
 
-Requires the full Xcode toolchain. On top of the build directory above:
+The whole release pipeline — universal libusb, universal C++ with tests, app bundle, DMG —
+is one script, the same one CI runs:
 
 ```bash
-cmake --build build --target gui        # same as ./gui/Scripts/build-gui.sh
-open dist/TetherKit.app
+./scripts/build-release.sh        # → dist/TetherKit.app, dist/TetherKit-<version>.dmg
 ```
+
+Signing and notarization are driven by environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `TETHERKIT_SIGN_IDENTITY` | e.g. `Developer ID Application: Jane Doe (ABCDE12345)`. Unset → ad-hoc signed (local testing only) |
+| `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` | App Store Connect API key for `notarytool` (or `NOTARY_APPLE_ID` / `NOTARY_PASSWORD` / `NOTARY_TEAM_ID`) |
+
+To test the background component locally, sign with your Apple Development or Developer ID
+certificate — macOS refuses to register an ad-hoc-signed daemon.
+
+In GitHub Actions, add the repository secrets `MACOS_CERTIFICATE_P12` (base64 of the
+exported certificate + key), `MACOS_CERTIFICATE_PASSWORD`, `NOTARY_KEY_P8` (base64 of the
+.p8), `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID`. Pushing a `v*` tag then publishes a signed,
+notarized DMG ([release.yml](.github/workflows/release.yml)).
 
 ### Build options
 
