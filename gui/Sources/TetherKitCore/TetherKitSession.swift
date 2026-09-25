@@ -7,7 +7,11 @@ import TetherKitIPC
 /// 线程安全：C 侧的会话本身是线程安全的（状态快照与事件队列都有锁），但
 /// `start` / `stop` 的调用顺序需要调用方自己保证不并发。helper 用一个串行
 /// 队列串起所有生命周期调用来满足这一点。
-public final class TetherKitSession {
+/// `@unchecked Sendable`: the only state is the C handle, and the C ABI
+/// documents every tk_session_* call as thread-safe (status snapshots are
+/// taken under the runtime's own lock). The helper touches a session from its
+/// lifecycle queue and from XPC status polls concurrently.
+public final class TetherKitSession: @unchecked Sendable {
     private let handle: OpaquePointer
 
     /// 一次最多取走多少条事件，与 C 侧环形缓冲容量（128）一致。

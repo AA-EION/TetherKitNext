@@ -3,7 +3,7 @@ import TetherKitIPC
 
 /// 主状态卡：整个界面的视觉与操作重心。
 ///
-/// 一屏之内回答四个问题：现在通不通、通到哪张网卡、什么 IP、要不要断开。
+/// 一屏之内回答三个问题：现在通不通、通到哪张网卡、什么 IP。
 /// 其余细节都往下面的卡片里放 —— 用户九成的时间只看这一块。
 struct StatusHeroCard: View {
     @Bindable var model: AppModel
@@ -11,22 +11,23 @@ struct StatusHeroCard: View {
     private var accent: Color { Design.accent(for: model.status.runState) }
 
     var body: some View {
-        Card {
-            HStack(alignment: .top, spacing: Design.Spacing.large) {
-                StatusRing(status: model.status, accent: accent)
+        // The hero is status chrome, not content: it floats on Liquid Glass
+        // tinted with the connection state. Connect/Disconnect lives in the
+        // toolbar (ConnectButton) so it is reachable from every page.
+        HStack(alignment: .center, spacing: Design.Spacing.large) {
+            StatusRing(status: model.status, accent: accent)
 
-                // 不能用 Spacer 隔开地址行：整页布局靠「多余高度归两栏」工作，
-                // 卡片里一根 Spacer 就会把横幅无限撑高。
-                VStack(alignment: .leading, spacing: Design.Spacing.small) {
-                    headline
-                    subline
-                    addressLine
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                actionButton
+            VStack(alignment: .leading, spacing: Design.Spacing.small) {
+                headline
+                subline
+                addressLine
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(Design.Spacing.large)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface(cornerRadius: Design.Radius.hero,
+                      tint: model.status.runState == .idle ? nil : accent)
     }
 
     private var headline: some View {
@@ -107,38 +108,6 @@ struct StatusHeroCard: View {
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
         }
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        let isRunning = model.status.runState == .running
-        let isTransitional = model.status.runState.isTransitional
-
-        Button {
-            Task {
-                if isRunning {
-                    await model.stopSession()
-                } else {
-                    await model.startSession()
-                }
-            }
-        } label: {
-            HStack(spacing: Design.Spacing.tight) {
-                if isTransitional || model.isBusy {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: isRunning ? "stop.fill" : "play.fill")
-                }
-                Text(L(isRunning ? .disconnect : .connect))
-            }
-            .frame(minWidth: 76)
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .tint(isRunning ? .red : .accentColor)
-        // 没有设备时不让点「连接」—— 点了必然失败，不如直接说明白。
-        .disabled(model.isBusy || isTransitional || (!isRunning && model.devices.isEmpty))
-        .help(model.devices.isEmpty && !isRunning ? L(.connectDisabledHint) : "")
     }
 }
 

@@ -51,6 +51,10 @@
 
     <!-- Swift 的 Observation 与 ContentUnavailableView 需要 macOS 14。
          命令行部分仍然支持 13.3，两者是各自独立的产物。 -->
+    <!-- GitHub owner/repo whose releases the in-app update check reads. -->
+    <key>TetherKitUpdateRepository</key>
+    <string>AA-EION/TetherKitNext</string>
+
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 

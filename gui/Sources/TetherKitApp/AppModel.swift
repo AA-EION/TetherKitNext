@@ -694,7 +694,8 @@ final class AppModel {
         guard let current = UpdateChecker.currentVersion,
               let version = UserDefaults.standard.string(forKey: Self.updateKnownVersionKey),
               let page = UserDefaults.standard.string(forKey: Self.updateKnownPageKey),
-              let pageURL = URL(string: page),
+              let pageURL = URL(string: page), pageURL.scheme == "https",
+              pageURL.host == "github.com",
               UpdateChecker.isNewer(version, than: current) else { return }
         availableUpdate = UpdateChecker.Release(version: version, pageURL: pageURL)
     }

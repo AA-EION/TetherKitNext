@@ -8,13 +8,16 @@ import TetherKitIPC
 /// 状态说清楚了。数字用等宽，避免速率跳动时把右边的其它菜单栏项挤来挤去。
 struct MenuBarLabel: View {
     var model: AppModel
+    @AppStorage(PreferenceKey.menuBarShowsSpeed) private var showsSpeed = true
 
     var body: some View {
         HStack(spacing: 2) {
             Image(systemName: Design.statusSymbol(for: model.status))
-            if model.status.runState == .running {
+            if model.status.runState == .running, showsSpeed {
+                // Fully monospaced + fixed-width RateFormat: the status item
+                // keeps one width whatever the rate (upstream issue #1).
                 Text(speedText)
-                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
             }
         }
     }
@@ -56,6 +59,9 @@ struct MenuBarPanel: View {
             }
 
             Divider()
+            ConnectButton(model: model)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
             actions
         }
         .padding(Design.Spacing.medium)
@@ -116,7 +122,7 @@ struct MenuBarPanel: View {
                     dismiss()
                     presentMainWindow(model, openWindow)
                 }
-                .buttonStyle(.borderedProminent)
+                .secondaryActionButtonStyle()
                 .controlSize(.small)
 
                 Spacer()
@@ -146,13 +152,9 @@ struct MenuBarPanel: View {
     /// 语言开关。选项写母语名字，不跟随界面语言翻译 —— 见 LanguageMenu 的说明。
     private var languageMenu: some View {
         Menu {
-            Picker(L(.languageLabel), selection: Bindable(model).languagePreference) {
-                Text(L(.languageSystem)).tag(LanguagePreference.system)
-                Text(verbatim: "中文").tag(LanguagePreference.chinese)
-                Text(verbatim: "English").tag(LanguagePreference.english)
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
+            LanguagePicker(model: model)
+                .pickerStyle(.inline)
+                .labelsHidden()
         } label: {
             Image(systemName: "globe")
         }

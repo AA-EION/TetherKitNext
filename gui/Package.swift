@@ -1,4 +1,9 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
+//
+// Swift 6 language mode (the default for tools 6.x): strict data-race checking
+// is on for every target. Building needs Xcode 26 / Swift 6.2, which is also
+// what provides the macOS 26 SDK the Liquid Glass UI is compiled against; the
+// app still deploys back to macOS 14.
 //
 // TetherKit 的图形界面。
 //

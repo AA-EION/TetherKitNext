@@ -107,6 +107,20 @@ public enum L10nKey: String, CaseIterable, Sendable {
 
     // MARK: - Distribution & system integration
 
+    case confirmHelperUpdateTitle
+    case confirmUninstallTitle
+    case helperUpdateWhileRunningWarning
+    case helperVersionMismatchTooltip
+    case installHelperButton
+    case installHelperDetail
+    case installingProgress
+    case needInstallBody
+    case needInstallTitle
+    case uninstallExplanation
+    case uninstallHelperMenuItem
+    case updateAvailable
+    case updateHelperButton
+    case updateHelperDetail
     case cliLinkNotInBundle
     case cliLinkToolMissing
     case cliLinkDirectoryUnsafe
@@ -124,6 +138,31 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case commandLineToolOccupied
     case installCommandLineTool
     case removeCommandLineTool
+    case paneOverview
+    case paneDevice
+    case paneNetwork
+    case paneActivity
+    case paneSettings
+    case configureNetwork
+    case setupTitle
+    case setupSubtitle
+    case setupStepMoveTitle
+    case showInFinder
+    case waitingForApproval
+    case settingsBackgroundSection
+    case settingsBackgroundStatus
+    case backgroundRunning
+    case settingsGeneralSection
+    case menuBarShowSpeed
+    case launchAtLogin
+    case launchAtLoginFailed
+    case settingsUpdatesSection
+    case autoCheckUpdates
+    case checkNow
+    case currentVersion
+    case settingsAboutSection
+    case projectWebsite
+    case showLicenses
 
     // MARK: - 连接状态（DesignSystem.swift）
 
@@ -471,6 +510,81 @@ extension L10nKey {
         case .confirmHelperUpdateTitle:
             return ("重启后台组件？",
                     "Restart the background component?")
+        case .paneOverview:
+            return ("概览",
+                    "Overview")
+        case .paneDevice:
+            return ("设备",
+                    "Device")
+        case .paneNetwork:
+            return ("网络",
+                    "Network")
+        case .paneActivity:
+            return ("日志",
+                    "Activity")
+        case .paneSettings:
+            return ("设置",
+                    "Settings")
+        case .configureNetwork:
+            return ("配置…",
+                    "Configure…")
+        case .setupTitle:
+            return ("欢迎使用 TetherKit",
+                    "Welcome to TetherKit")
+        case .setupSubtitle:
+            return ("只需几步，就能把 Android 手机的 USB 网络共享变成 Mac 上的一张网卡。",
+                    "A few steps turn your Android phone's USB tethering into a network interface on your Mac.")
+        case .setupStepMoveTitle:
+            return ("放入“应用程序”文件夹",
+                    "Put TetherKit in Applications")
+        case .showInFinder:
+            return ("在访达中显示",
+                    "Show in Finder")
+        case .waitingForApproval:
+            return ("正在等待批准……",
+                    "Waiting for approval…")
+        case .settingsBackgroundSection:
+            return ("后台组件",
+                    "Background Component")
+        case .settingsBackgroundStatus:
+            return ("状态",
+                    "Status")
+        case .backgroundRunning:
+            return ("运行中 · %@",
+                    "Running · %@")
+        case .settingsGeneralSection:
+            return ("通用",
+                    "General")
+        case .menuBarShowSpeed:
+            return ("在菜单栏显示实时速率",
+                    "Show live speed in the menu bar")
+        case .launchAtLogin:
+            return ("登录时打开 TetherKit",
+                    "Open TetherKit at login")
+        case .launchAtLoginFailed:
+            return ("无法更改登录项：%@",
+                    "Could not change the login item: %@")
+        case .settingsUpdatesSection:
+            return ("更新",
+                    "Updates")
+        case .autoCheckUpdates:
+            return ("每天自动检查更新",
+                    "Check for updates daily")
+        case .checkNow:
+            return ("立即检查",
+                    "Check Now")
+        case .currentVersion:
+            return ("当前版本 %@",
+                    "Current version %@")
+        case .settingsAboutSection:
+            return ("关于",
+                    "About")
+        case .projectWebsite:
+            return ("项目主页",
+                    "Project Website")
+        case .showLicenses:
+            return ("查看许可证",
+                    "Show Licenses")
 
         // MARK: 连接状态
 

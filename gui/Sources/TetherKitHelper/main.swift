@@ -66,9 +66,13 @@ let delegate = HelperListenerDelegate(service: service)
 signal(SIGTERM, SIG_IGN)
 let terminationSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 terminationSource.setEventHandler {
-    writeToStandardError(L(.helperSigtermReceived))
-    service.shutdown()
-    exit(0)
+    // The source delivers on the main queue, which is where top-level state
+    // (`service`) lives under Swift 6's main-actor isolation of main.swift.
+    MainActor.assumeIsolated {
+        writeToStandardError(L(.helperSigtermReceived))
+        service.shutdown()
+        exit(0)
+    }
 }
 terminationSource.resume()
 

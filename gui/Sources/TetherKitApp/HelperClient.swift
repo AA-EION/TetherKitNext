@@ -7,7 +7,10 @@ import TetherKitIPC
 /// NSXPCConnection 的错误处理块与方法的 reply 块**可能都被调用**（比如请求已
 /// 发出、连接随后断开），而 CheckedContinuation 被 resume 两次是直接崩溃。
 /// 因此每次调用都用 ContinuationGuard 包一层，保证只兑现一次。
-final class HelperClient {
+/// `@unchecked Sendable`: the cached connection is guarded by `connectionLock`;
+/// everything else is immutable. AppModel (main actor) awaits these calls
+/// while XPC replies arrive on XPC's own queues.
+final class HelperClient: @unchecked Sendable {
     enum Failure: LocalizedError {
         /// 连不上 —— 最常见的原因是 helper 还没安装。
         case unreachable(String)
@@ -45,7 +48,7 @@ final class HelperClient {
     ///
     /// XPC 的错误块和 reply 块存在都被调用的可能，而重复 resume 会崩溃 ——
     /// 这个坑只在「请求发出后连接才断」这种时序上出现，很难靠测试撞到。
-    private final class ContinuationGuard<T>: @unchecked Sendable {
+    private final class ContinuationGuard<T: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<T, Error>?
 
@@ -106,7 +109,7 @@ final class HelperClient {
     }
 
     /// 发一次调用。`body` 拿到代理与守卫，负责发起请求并兑现结果。
-    private func invoke<T>(
+    private func invoke<T: Sendable>(
         _ body: @escaping (TetherKitHelperProtocol, ContinuationGuard<T>) -> Void
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
@@ -123,7 +126,7 @@ final class HelperClient {
     }
 
     /// 「返回一个 Codable 或一条错误」这种应答的通用处理。
-    private func decode<T: Decodable>(_ type: T.Type, data: Data?, message: String?,
+    private func decode<T: Decodable & Sendable>(_ type: T.Type, data: Data?, message: String?,
                                       into guarded: ContinuationGuard<T>) {
         if let message {
             guarded.resume(throwing: Failure.helper(message))

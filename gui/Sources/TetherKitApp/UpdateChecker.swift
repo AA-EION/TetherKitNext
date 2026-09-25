@@ -14,7 +14,7 @@ import TetherKitIPC
 ///   自动检查每天至多一次，失败静默；
 ///   `defaults write com.tetherkit.app updateCheckDisabled -bool YES` 可彻底关掉。
 enum UpdateChecker {
-    struct Release: Equatable {
+    struct Release: Equatable, Sendable {
         /// 去掉 v 前缀后的版本号，如 "0.2.0"。
         let version: String
         /// Release 页，引导用户去看更新说明 / 下载。
@@ -56,7 +56,10 @@ enum UpdateChecker {
         guard http.statusCode == 200 else { throw Failure.badStatus(http.statusCode) }
 
         let payload = try JSONDecoder().decode(Payload.self, from: data)
-        guard let pageURL = URL(string: payload.htmlURL) else { throw Failure.malformedPayload }
+        // The URL is opened with NSWorkspace, so never trust the response to
+        // pick the scheme or host (file://, custom URL schemes, look-alikes).
+        guard let pageURL = URL(string: payload.htmlURL), pageURL.scheme == "https",
+              pageURL.host == "github.com" else { throw Failure.malformedPayload }
         return Release(version: normalize(payload.tagName), pageURL: pageURL)
     }
 
@@ -75,8 +78,24 @@ enum UpdateChecker {
 
     // MARK: - 实现
 
-    private static let endpoint =
-        URL(string: "https://api.github.com/repos/XiaoMiku01/TetherKit/releases/latest")!
+    /// `owner/repo` whose GitHub releases carry the DMGs. Read from the
+    /// `TetherKitUpdateRepository` Info.plist key so a fork publishes to (and
+    /// checks) its own releases without code changes.
+    static var repository: String {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "TetherKitUpdateRepository")
+            as? String
+        let value = configured?.trimmingCharacters(in: .whitespaces) ?? ""
+        // Only accept a plain "owner/repo"; anything else falls back.
+        let valid = value.range(of: "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$",
+                                options: .regularExpression) != nil
+        return valid ? value : "AA-EION/TetherKitNext"
+    }
+
+    static var projectURL: URL? { URL(string: "https://github.com/\(repository)") }
+
+    private static var endpoint: URL {
+        URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
+    }
 
     private struct Payload: Decodable {
         let tagName: String
