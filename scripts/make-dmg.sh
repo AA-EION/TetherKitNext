@@ -76,7 +76,7 @@ fi
 # dmgbuild lays out the Finder window (background, icon positions, no
 # toolbar) by writing .DS_Store itself, which works on headless CI. It is
 # installed into a private virtualenv, pinned, on first use.
-DMGBUILD_VERSION="1.6.7"
+DMGBUILD_VERSION="1.6.5"
 find_dmgbuild() {
   if command -v dmgbuild >/dev/null 2>&1; then
     command -v dmgbuild

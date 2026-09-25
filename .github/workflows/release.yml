@@ -44,7 +44,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check if release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; skipping CI build."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Classify tag; version must match CMakeLists VERSION
+        if: steps.existing.outputs.exists != 'true'
         id: tag
         run: |
           case "$RELEASE_TAG" in v[0-9]*) ;; *) echo "::error::tag must look like v1.2.3[-suffix]"; exit 1 ;; esac
@@ -60,6 +73,7 @@ jobs:
           fi
 
       - name: Signing secrets
+        if: steps.existing.outputs.exists != 'true'
         id: signing
         env:
           HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
@@ -77,13 +91,14 @@ jobs:
           fi
 
       - name: Select the newest Xcode
+        if: steps.existing.outputs.exists != 'true'
         run: |
           latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
           sudo xcode-select -s "${latest}"
           xcodebuild -version
 
       - name: Import signing certificate
-        if: steps.signing.outputs.signed == 'true'
+        if: steps.existing.outputs.exists != 'true' && steps.signing.outputs.signed == 'true'
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -91,6 +106,7 @@ jobs:
         run: ./scripts/ci-import-certificate.sh
 
       - name: Build, test, package
+        if: steps.existing.outputs.exists != 'true'
         env:
           TETHERKITNEXT_BUILD_NUMBER: ${{ github.run_number }}
           NOTARY_KEY_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.NOTARY_KEY_ID || '' }}
@@ -98,13 +114,17 @@ jobs:
         run: ./scripts/build-release.sh
 
       - name: Swift unit tests
+        if: steps.existing.outputs.exists != 'true'
         run: TETHERKITNEXT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
 
       - name: Release notes
+        if: steps.existing.outputs.exists != 'true'
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           dmg="$(ls dist/TetherKitNext-*.dmg)"
+          dmg_name="$(basename "$dmg")"
+          sha256="$(shasum -a 256 "$dmg" | awk '{print $1}')"
           {
             if [ "$SIGNED" != true ]; then
               echo '> [!WARNING]'
@@ -117,29 +137,15 @@ jobs:
               echo '> works regardless.'
               echo
             fi
-            echo '## Install'
-            echo
-            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKitNext** to **Applications**."
-            echo '2. Open TetherKitNext from Applications and click **Enable Background Component**.'
-            echo '   macOS asks you to allow it once in *System Settings › General › Login Items*.'
-            echo '3. Optional: *Settings › Command-line tool › Install Command* puts `tetherkitnext-cli`'
-            echo '   on your PATH (`/usr/local/bin`).'
-            echo
-            echo '**Coming from TetherKit 0.2.0 (beta 1–3)?** Remove the old app first:'
-            echo '[upgrade steps](https://github.com/AA-EION/TetherKitNext#upgrading-from-tetherkit-020-betas).'
-            echo
-            echo 'Universal build: Apple Silicon and Intel, macOS 14+ (the bundled CLI runs on 13.3+).'
-            if [ "$SIGNED" = true ]; then
-              echo 'Signed with Developer ID and notarized by Apple.'
-            fi
-            echo
-            echo '## Checksum (SHA-256)'
-            echo
-            echo "\`$(shasum -a 256 "$dmg" | awk '{print $1}')\`  $(basename "$dmg")"
+            sed -e "s/{{DMG_NAME}}/${dmg_name}/g" \
+                -e "s/{{SHA256}}/${sha256}/g" \
+                -e "s/{{TAG}}/${RELEASE_TAG}/g" \
+                .github/RELEASE_TEMPLATE.md
           } > notes.md
           cat notes.md
 
       - name: Create release
+        if: steps.existing.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ steps.tag.outputs.prerelease }}
@@ -148,8 +154,6 @@ jobs:
           flags=()
           if [ "$PRERELEASE" = true ]; then
             flags+=(--prerelease)
-          else
-            assets+=(dist/tetherkitnext-cli-*.tar.gz)
           fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             # Creates the tag on the commit that was just built and tested.

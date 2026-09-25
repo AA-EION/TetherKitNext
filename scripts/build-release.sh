@@ -50,16 +50,4 @@ TETHERKITNEXT_BUILD_DIR="${REPO_ROOT}/${BUILD_DIR}" LibUSB_ROOT="${LIBUSB_PREFIX
 log "Disk image"
 ./scripts/make-dmg.sh
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/TetherKitNext.app/Contents/Info.plist)"
-log "Standalone CLI archive"
-# The same signed CLI + libraries as in the app, for people who only want the
-# command line. Layout keeps @executable_path/../Frameworks valid.
-staging="$(mktemp -d)"
-mkdir -p "${staging}/tetherkitnext-cli/bin" "${staging}/tetherkitnext-cli/Frameworks"
-ditto dist/TetherKitNext.app/Contents/MacOS/tetherkitnext-cli "${staging}/tetherkitnext-cli/bin/"
-ditto dist/TetherKitNext.app/Contents/Frameworks/ "${staging}/tetherkitnext-cli/Frameworks/"
-ditto dist/TetherKitNext.app/Contents/Resources/Licenses "${staging}/tetherkitnext-cli/Licenses"
-tar -C "${staging}" -czf "dist/tetherkitnext-cli-${VERSION}-macos-universal.tar.gz" tetherkitnext-cli
-rm -rf "${staging}"
-
 ls -l dist/
