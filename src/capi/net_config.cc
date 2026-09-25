@@ -312,8 +312,12 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 /// 里没有这两个键**（实测：注册服务只有 Addresses / Router / InterfaceName /
 /// AdditionalRoutes，DHCP 字典只有 Lease* 与 Option_*；那两个键只出现在
 /// `ipconfig set` 建立的临时服务上）。
-[[nodiscard]] std::optional<std::string> WaitForStableLease(std::string_view interface_name,
-                                                            std::string_view service_id) {
+///
+/// `service_id` is nullopt on the transient-service fallback (`ipconfig set
+/// DHCP`), whose ID is only known once IPConfiguration publishes it; it is then
+/// looked up by InterfaceName on every poll.
+[[nodiscard]] std::optional<std::string> WaitForStableLease(
+    std::string_view interface_name, const std::optional<std::string>& known_service_id) {
   SCDynamicStoreRef store = SharedDynamicStore();
   if (store == nullptr) {
     return std::nullopt;
@@ -325,7 +329,12 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
     if (!address.has_value()) {
       return std::nullopt;
     }
-    const ScopedCFRef<CFDictionaryRef> ipv4 = CopyServiceEntry(store, service_id, "IPv4");
+    const std::optional<std::string> service_id =
+        known_service_id.has_value() ? known_service_id : FindServiceId(store, interface_name);
+    if (!service_id.has_value()) {
+      return std::nullopt;
+    }
+    const ScopedCFRef<CFDictionaryRef> ipv4 = CopyServiceEntry(store, *service_id, "IPv4");
     if (StringField(ipv4.Get(), CFSTR("InterfaceName")) != interface_name) {
       return std::nullopt;
     }
@@ -400,9 +409,19 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   TETHERKIT_RETURN_IF_ERROR(
       RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
                 Text(Msg::kCapiWhatClearConfig)));
-  TETHERKIT_ASSIGN_OR_RETURN(
-      const std::string service_id,
-      tetherkit::capi::ConfigureManagedDhcpService(interface_name));
+
+  std::optional<std::string> service_id;
+  if (tetherkit::capi::ManagedNetworkServiceAvailable()) {
+    TETHERKIT_ASSIGN_OR_RETURN(service_id,
+                               tetherkit::capi::ConfigureManagedDhcpService(interface_name));
+  } else {
+    // SPI gone on this macOS: fall back to the transient IPConfiguration
+    // service. Ordinary traffic works; only NetworkExtension VPNs lose the
+    // interface-scoped path (upstream XiaoMiku01/TetherKit#3).
+    TETHERKIT_RETURN_IF_ERROR(
+        RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "DHCP"},
+                  Text(Msg::kCapiWhatStartDhcp)));
+  }
 
   // 等一个稳定的租约。IPConfiguration 会拿租约、配 scoped DNS，并把服务发布到
   // 动态存储；scoped 默认路由要我们显式补齐（feth 成为主服务时 macOS 可能只留

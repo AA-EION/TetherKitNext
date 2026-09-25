@@ -8,6 +8,7 @@
 #include "managed_network_service.h"
 
 #include <SystemConfiguration/SystemConfiguration.h>
+#include <dlfcn.h>
 
 #include <cstdint>
 #include <format>
@@ -35,8 +36,23 @@ using tetherkit::capi::ScopedCFRef;
 // ifnet. The SPI constructs the same Ethernet SCNetworkInterface object from a
 // BSD name; all subsequent service/configuration calls are public API.
 // Source: apple-oss-distributions/configd, SCNetworkConfigurationPrivate.h.
-extern "C" SCNetworkInterfaceRef _SCNetworkInterfaceCreateWithBSDName(
-    CFAllocatorRef allocator, CFStringRef bsd_name, std::uint32_t flags);
+//
+// Resolved at runtime with dlsym rather than linked directly: a hard reference
+// to an SPI means that if a future macOS drops the symbol, dyld refuses to load
+// libtetherkit at all and the whole app/helper dies at launch. Looked up
+// lazily, a missing symbol only disables the managed service and DHCP falls
+// back to the transient `ipconfig set` path.
+using CreateWithBsdNameFunction = SCNetworkInterfaceRef (*)(CFAllocatorRef allocator,
+                                                            CFStringRef bsd_name,
+                                                            std::uint32_t flags);
+
+[[nodiscard]] CreateWithBsdNameFunction ResolveCreateWithBsdName() noexcept {
+  static const CreateWithBsdNameFunction function = [] {
+    void* const symbol = ::dlsym(RTLD_DEFAULT, "_SCNetworkInterfaceCreateWithBSDName");
+    return reinterpret_cast<CreateWithBsdNameFunction>(symbol);  // NOLINT
+  }();
+  return function;
+}
 
 constexpr std::uint32_t kIncludeAllVirtualInterfaces = 0xFFFF'FFFFU;
 constexpr std::string_view kManagedServicePrefix = "TetherKit ";
@@ -107,11 +123,43 @@ constexpr std::string_view kManagedServicePrefix = "TetherKit ";
       ::SCPreferencesCreate(kCFAllocatorDefault, CFSTR("TetherKit"), nullptr)};
 }
 
+/// Holds the SCPreferences write lock for a scope.
+///
+/// Apple requires writers of the network preferences to take this lock so a
+/// concurrent writer (System Settings, networksetup, configd itself) cannot
+/// interleave with our read-modify-commit. `wait = true` blocks until the
+/// other writer finishes instead of failing. Unlock is implicit on commit
+/// failure paths via the destructor.
+class PreferencesLock {
+ public:
+  explicit PreferencesLock(SCPreferencesRef preferences) noexcept
+      : preferences_(preferences), locked_(::SCPreferencesLock(preferences, true) != 0) {}
+  PreferencesLock(const PreferencesLock&) = delete;
+  PreferencesLock& operator=(const PreferencesLock&) = delete;
+  PreferencesLock(PreferencesLock&&) = delete;
+  PreferencesLock& operator=(PreferencesLock&&) = delete;
+  ~PreferencesLock() {
+    if (locked_) {
+      ::SCPreferencesUnlock(preferences_);
+    }
+  }
+  [[nodiscard]] bool Locked() const noexcept { return locked_; }
+
+ private:
+  SCPreferencesRef preferences_;
+  bool locked_;
+};
+
 [[nodiscard]] Status RemoveManagedServices(
     std::optional<std::string_view> interface_name) {
   const ScopedCFRef<SCPreferencesRef> preferences = CreatePreferences();
   if (!preferences) {
     return SystemConfigurationFailure("SCPreferencesCreate");
+  }
+
+  const PreferencesLock lock{preferences.Get()};
+  if (!lock.Locked()) {
+    return SystemConfigurationFailure("SCPreferencesLock");
   }
 
   bool changed = false;
@@ -124,10 +172,24 @@ constexpr std::string_view kManagedServicePrefix = "TetherKit ";
 
 namespace tetherkit::capi {
 
+bool ManagedNetworkServiceAvailable() noexcept {
+  return ResolveCreateWithBsdName() != nullptr;
+}
+
 Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name) {
+  const CreateWithBsdNameFunction create_with_bsd_name = ResolveCreateWithBsdName();
+  if (create_with_bsd_name == nullptr) {
+    return std::unexpected(Error::Generic(Tr(Msg::kCapiSystemConfigurationFailed,
+                                             "_SCNetworkInterfaceCreateWithBSDName", 0,
+                                             "symbol not available on this macOS")));
+  }
   const ScopedCFRef<SCPreferencesRef> preferences = CreatePreferences();
   if (!preferences) {
     return SystemConfigurationFailure("SCPreferencesCreate");
+  }
+  const PreferencesLock lock{preferences.Get()};
+  if (!lock.Locked()) {
+    return SystemConfigurationFailure("SCPreferencesLock");
   }
 
   bool removed_existing = false;
@@ -136,8 +198,7 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name)
 
   const ScopedCFRef<CFStringRef> bsd_name = MakeCFString(interface_name);
   const ScopedCFRef<SCNetworkInterfaceRef> interface{
-      _SCNetworkInterfaceCreateWithBSDName(kCFAllocatorDefault, bsd_name.Get(),
-                                           kIncludeAllVirtualInterfaces)};
+      create_with_bsd_name(kCFAllocatorDefault, bsd_name.Get(), kIncludeAllVirtualInterfaces)};
   if (!interface) {
     return SystemConfigurationFailure("_SCNetworkInterfaceCreateWithBSDName");
   }
