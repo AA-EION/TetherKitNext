@@ -13,6 +13,14 @@ on:
     tags-ignore: ["v*"]  # release.yml handles tags
   pull_request:
   workflow_dispatch:
+    inputs:
+      prerelease_tag:
+        description: >-
+          Optional. Publish this run's (ad-hoc signed) DMG as a GitHub prerelease
+          under this new tag, e.g. v0.2.0-beta.1. Leave empty for a normal CI run.
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -214,3 +222,69 @@ jobs:
             echo "::error::no feth creation in the log; cannot confirm the private ABI"; exit 1
           fi
           echo "✓ $(grep -m1 'created virtual interface feth' abi.log)"
+
+  # ----------------------------------------------------------------------------
+  # Optional: publish the tested DMG as a prerelease (manual runs only).
+  #
+  # Uses exactly the artifact the package job built and the Intel job installed
+  # and ran. It is ad-hoc signed unless signing secrets exist; signed,
+  # notarized stable releases go through release.yml.
+  # ----------------------------------------------------------------------------
+  publish-prerelease:
+    name: Publish prerelease ${{ inputs.prerelease_tag }}
+    if: github.event_name == 'workflow_dispatch' && inputs.prerelease_tag != ''
+    needs: [package, intel-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate tag
+        env:
+          TAG: ${{ inputs.prerelease_tag }}
+        run: |
+          [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-[0-9A-Za-z.]+$ ]] \
+            || { echo "::error::prerelease tags look like v1.2.3-beta.1"; exit 1; }
+          version="$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)"
+          [ "${BASH_REMATCH[1]}" = "$version" ] \
+            || { echo "::error::tag ${TAG} does not match CMakeLists VERSION ${version}"; exit 1; }
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: TetherKit-dmg
+          path: artifact
+
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.prerelease_tag }}
+        run: |
+          dmg="$(ls artifact/TetherKit-*.dmg)"
+          {
+            echo '> [!WARNING]'
+            echo '> **Test build: not signed with a Developer ID and not notarized by Apple.**'
+            echo '> macOS will block it the first time. After copying TetherKit to Applications,'
+            echo '> open *System Settings › Privacy & Security* and click **Open Anyway**, or run:'
+            echo '> `xattr -dr com.apple.quarantine /Applications/TetherKit.app`'
+            echo '>'
+            echo '> Because it is not signed with a real certificate, macOS may refuse to enable the'
+            echo '> background component. `sudo /Applications/TetherKit.app/Contents/MacOS/tetherkit-cli`'
+            echo '> works regardless.'
+            echo
+            echo '## Install'
+            echo
+            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**."
+            echo '2. Open TetherKit and click **Enable Background Component**; allow it once in'
+            echo '   *System Settings › General › Login Items & Extensions*.'
+            echo '3. Plug in your phone, turn on USB tethering, click **Connect**.'
+            echo
+            echo 'Universal build (Apple Silicon + Intel), macOS 14 or later.'
+            echo
+            echo "SHA-256: \`$(sha256sum "$dmg" | awk '{print $1}')\`"
+          } > notes.md
+          gh release create "$TAG" --prerelease --target "$GITHUB_SHA" \
+            --title "TetherKit ${TAG} (test build)" \
+            --notes-file notes.md --generate-notes "$dmg"
+          echo "Published: $(gh release view "$TAG" --json url -q .url)" >> "$GITHUB_STEP_SUMMARY"
