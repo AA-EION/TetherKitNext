@@ -258,7 +258,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 | 40 | `fix(capi): 「所有流量走此网卡」改为调整服务顺序` | ✅ | 原实现只 `route change default`：DNS 仍跟随主服务（以太网）、configd 会在下次网络变化时改回路由、托管服务被 SCNetworkSetAddService 追加在末尾。现在 DHCP 模式把托管服务排到 ServiceOrder 第一（= 系统设置「设定服务顺序」），路由与 DNS 一起切到手机；网络页设置持久化到 UserDefaults |
 | 41 | `fix(gui): 同版本号的新构建也能发现后台组件过期` | ✅ | beta.1 与 beta.2 版本号都是 0.2.0：App 只比语义化版本 → 不提示重启，而 daemon 永不空闲退出、替换 .app 也不会重启它 → beta.2 的修复根本没跑。库的构建描述现以 `build <git sha>` 开头，daemon 随版本一并回报，App 比较构建 ID |
-| 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 用 dmgbuild（直接写 .DS_Store，无需 Finder/AppleScript，CI 无头可用），背景图 `scripts/dmg/`。厂商网站（`Vendor.website`）出现在「关于」面板（替换了标准 appInfo 菜单项，带 credits 链接）、设置 › 关于、首次设置页 |
+| 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 窗口布局由 Finder 经 AppleScript 写入（最初用 dmgbuild，背景图在 macOS 15/26 上不显示，见第 7 节第 26 条），背景图 `scripts/dmg/`。厂商网站（`Vendor.website`）出现在「关于」面板（替换了标准 appInfo 菜单项，带 credits 链接）、设置 › 关于、首次设置页 |
 | 43 | `feat(gui): 特权操作改用 Touch ID 确认` | ✅ | Developer ID 构建：App 用 LAContext（Touch ID / 手表 / 登录密码）确认后发**空授权**；helper 仅在连接已钉签名且调用者属于 admin 组时放行，否则 App 退回管理员密码框。XPC 协议号 4 → 5。上游「Touch ID 走不通」的结论只对 AuthorizationCopyRights 成立，见 GUI-ARCHITECTURE 4.5。CI 新增 DMG 窗口截图任务（dmg-look） |
 
 ### 当前状态（TetherKitNext，2026-09-25）
@@ -623,6 +623,11 @@ TX 就从 4.8 回到了 87 Mbps。
 25. **批量改名时别把「识别旧安装」的字符串一起改掉。** 旧 daemon 标签、旧 dylib 前缀、
    旧网络服务名都是用来**找到并清理**旧版本残留的，改成新名字等于永远找不到它们。
    改名脚本之后要逐个核对 `Legacy` / 清理脚本 / 服务名前缀。
+26. **dmgbuild 写的 DMG 背景图在 macOS 15 / 26 上不显示。** 窗口大小、隐藏工具栏、图标位置都生效，
+   唯独背景空白（`.DS_Store` 里的 alias / bookmark 解码后看都正确，PNG 或 TIFF 都一样）。CI 截图
+   对照实验（dmg-look）证实：同样的内容改由 **Finder 自己**通过 AppleScript 设置背景就正常显示。
+   所以 `make-dmg.sh` 改为在临时读写镜像上用 Finder 布局。另一个用户侧原因：若 Finder 把磁盘
+   **以标签页打开**（「偏好标签页」/「在标签页中打开文件夹」），任何 DMG 的布局都不会生效。
 22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
    libtetherkitnext；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
 

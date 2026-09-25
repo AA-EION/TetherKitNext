@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
   <!-- DMG window background. Rendered to background.png / background@2x.png by
        scripts/dmg/render-background.py. Icon positions (centres) are set in
-       scripts/dmg/settings.py: app at (170, 190), Applications at (490, 190). -->
+       scripts/make-dmg.sh: app at (170, 190), Applications at (490, 190). -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#F8FAFD"/>
