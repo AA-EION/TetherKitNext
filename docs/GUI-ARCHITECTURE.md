@@ -192,7 +192,7 @@ gui/
 「配网络」「断开」都不再打扰用户。过期后 helper 的复核会失败并把应答的第二个
 参数置为 `true`，App 据此丢弃缓存、重新弹一次框、把这次操作重试一遍。
 
-### 4.5 Touch ID（1.0.0 之后）
+### 4.5 Touch ID（1.1.0 起）
 
 **事实（上游已验证，仍然成立）：`AuthorizationCopyRights` 弹出的系统授权框
 不支持指纹，只能输密码。** SDK 里 Authorization Services 与 LocalAuthentication

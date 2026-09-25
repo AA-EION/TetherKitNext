@@ -146,7 +146,7 @@ a string that disappeared when log messages were localized. It now pins
 * **Ad-hoc development builds** have no Team ID to pin, so they fall back to
   the authorization-only XPC model. Only distribute builds signed with a
   Developer ID.
-* **Touch ID instead of the admin dialog (after 1.0.0).** Team-signed builds
+* **Touch ID instead of the admin dialog (since 1.1.0).** Team-signed builds
   confirm the user with LocalAuthentication and send privileged calls without
   an `AuthorizationRef`. The daemon accepts that only from a connection pinned
   to our signed app *and* from a user in the local `admin` group, so the set

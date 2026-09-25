@@ -17,7 +17,7 @@ on:
       prerelease_tag:
         description: >-
           Optional. Publish this run's (ad-hoc signed) DMG as a GitHub prerelease
-          under this new tag, e.g. v1.0.0-beta.4. Leave empty for a normal CI run.
+          under this new tag, e.g. v1.1.0-beta.1. Leave empty for a normal CI run.
         required: false
         default: ""
         type: string

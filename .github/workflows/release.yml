@@ -1,9 +1,9 @@
 # Release: push a v* tag to publish a DMG.
 #
-#   Stable:      git tag -a v1.0.0 -m "TetherKitNext 1.0.0"        && git push origin v1.0.0
-#   Prerelease:  git tag -a v1.0.0-beta.5 -m "TetherKitNext 1.0.0 beta 5" && git push origin v1.0.0-beta.5
+#   Stable:      git tag -a v1.1.0 -m "TetherKitNext 1.1.0"        && git push origin v1.1.0
+#   Prerelease:  git tag -a v1.1.0-beta.1 -m "TetherKitNext 1.1.0 beta 1" && git push origin v1.1.0-beta.1
 #
-# A tag with a suffix after the version (v1.0.0-beta.5, v1.0.0-rc.1) publishes a
+# A tag with a suffix after the version (v1.1.0-beta.1, v1.1.0-rc.1) publishes a
 # GitHub *prerelease*. Prereleases may be built without signing secrets: the
 # DMG is then ad-hoc signed and not notarized, and only the DMG is uploaded.
 #
@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to create and publish, e.g. v1.0.0-rc.1"
+        description: "Tag to create and publish, e.g. v1.1.0-rc.1"
         required: true
         type: string
 
