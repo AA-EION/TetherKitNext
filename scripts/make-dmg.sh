@@ -121,9 +121,11 @@ mnt="$(hdiutil attach -readwrite -noverify -noautoopen "${rw}" \
 [[ "${mnt}" == "/Volumes/${VOLNAME}" ]] || die "unexpected mount point: ${mnt}"
 
 # Custom volume icon: the file alone is not enough, the volume root needs the
-# "has custom icon" Finder flag.
-xcrun SetFile -a C "${mnt}" 2>/dev/null \
-  || echo "::warning::SetFile unavailable; the mounted disk keeps the generic icon"
+# "has custom icon" Finder flag (kHasCustomIcon, 0x0400 in the Finder flags at
+# byte 8 of FinderInfo). Written directly because SetFile is no longer on the
+# PATH of current Xcode installs.
+xattr -wx com.apple.FinderInfo \
+  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
 
 # Centres match the wells drawn in scripts/dmg/background.svg (660 × 400).
 if [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" != "1" ]] && osascript <<APPLESCRIPT
