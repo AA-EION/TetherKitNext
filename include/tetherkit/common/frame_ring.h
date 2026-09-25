@@ -22,6 +22,7 @@
 // 「一次 write() 发一帧」变成两次，反而更慢。
 #pragma once
 
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -111,6 +112,7 @@ class FrameRing {
     assert(length <= max_frame_bytes_);
     StoreLength(pending_write_index_, length);
     cursor_.PublishWrite();
+    NotifyConsumer();
   }
 
   /// 便捷入口：拷贝一整帧进队列。成功返回 true，队列满或帧超长返回 false。
@@ -192,6 +194,7 @@ class FrameRing {
     void Publish() noexcept {
       if (staged_ != 0) {
         ring_->cursor_.PublishWrite(staged_);
+        ring_->NotifyConsumer();
         published_ += staged_;
         staged_ = 0;
       }
@@ -303,6 +306,54 @@ class FrameRing {
   // 观测
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Consumer parking (eventcount).
+  //
+  // The consumer used to spin on std::this_thread::yield() while the ring was
+  // empty. yield() is not a sleep: with no other runnable thread at the same
+  // priority it returns immediately, so an idle session pinned one core at
+  // ~100% (upstream XiaoMiku01/TetherKit#5). The consumer now parks on a futex
+  // (std::atomic::wait -> __ulock_wait) and producers wake it only when it is
+  // actually parked, so the hot path pays a single fence + relaxed load.
+  //
+  // Correctness is the classic Dekker handshake: the consumer publishes
+  // `parked = true`, fences, then re-checks the ring; the producer publishes
+  // the frame, fences, then checks `parked`. With both seq_cst fences at least
+  // one side observes the other, so a wakeup can never be lost.
+  // ---------------------------------------------------------------------------
+
+  /// Producer side: wake the consumer if (and only if) it is parked.
+  void NotifyConsumer() noexcept {
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    if (park_.parked.load(std::memory_order_relaxed)) [[unlikely]] {
+      Wake();
+    }
+  }
+
+  /// Unconditionally wake a parked consumer. Used by producers (via
+  /// NotifyConsumer) and by the control path to deliver stop/pause requests.
+  ///
+  /// Callers that want the consumer to observe a flag must store that flag
+  /// *before* calling Wake(): the release on the doorbell pairs with the
+  /// acquire in WaitForReadable().
+  void Wake() noexcept {
+    park_.doorbell.fetch_add(1, std::memory_order_release);
+    park_.doorbell.notify_one();
+  }
+
+  /// Consumer side: block until the ring is non-empty, Wake() is called, or
+  /// `should_abort()` returns true. May return spuriously; callers loop.
+  template <typename AbortPredicate>
+  void WaitForReadable(AbortPredicate&& should_abort) noexcept {
+    const std::uint32_t ticket = park_.doorbell.load(std::memory_order_acquire);
+    park_.parked.store(true, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    if (cursor_.ReadableApprox() == 0 && !should_abort()) {
+      park_.doorbell.wait(ticket, std::memory_order_acquire);
+    }
+    park_.parked.store(false, std::memory_order_relaxed);
+  }
+
   [[nodiscard]] std::size_t SizeSnapshot() const noexcept { return cursor_.SizeSnapshot(); }
 
   [[nodiscard]] std::uint64_t TotalEnqueued() const noexcept { return cursor_.TotalEnqueued(); }
@@ -371,6 +422,14 @@ class FrameRing {
   // 前面为 SpscCursor 做的缓存行隔离就全白费了。
   TETHERKIT_CACHE_ALIGNED std::size_t pending_write_index_ = 0;
   TETHERKIT_CACHE_ALIGNED std::size_t pending_read_index_ = 0;
+
+  // Park state lives on its own cache line: `parked` is read by the producer
+  // on every publish but written only when the consumer goes to sleep.
+  struct TETHERKIT_CACHE_ALIGNED ParkState {
+    std::atomic<std::uint32_t> doorbell{0};
+    std::atomic<bool> parked{false};
+  };
+  ParkState park_;
 };
 
 }  // namespace tetherkit
