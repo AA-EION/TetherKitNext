@@ -146,7 +146,10 @@ a string that disappeared when log messages were localized. It now pins
 * **Ad-hoc development builds** have no Team ID to pin, so they fall back to
   the authorization-only XPC model. Only distribute builds signed with a
   Developer ID.
-* **Per-operation admin prompts.** These are kept to preserve upstream
-  behavior. With XPC identity checks in place, you could relax the rule from
-  `system.privilege.admin` to a custom right. That is a product decision and
-  hasn't been changed.
+* **Touch ID instead of the admin dialog (after 1.0.0).** Team-signed builds
+  confirm the user with LocalAuthentication and send privileged calls without
+  an `AuthorizationRef`. The daemon accepts that only from a connection pinned
+  to our signed app *and* from a user in the local `admin` group, so the set
+  of people who can act is unchanged. The residual risk moves to the app: a
+  bug that skips `UserPresence.confirm` before a privileged call would skip
+  the prompt. Keep every privileged call behind `AppModel.authorized`.

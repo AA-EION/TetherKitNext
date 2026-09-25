@@ -221,7 +221,33 @@ final class HelperService: NSObject, TetherKitNextHelperProtocol, @unchecked Sen
 
     /// 复核授权；不通过时回复错误并把第二个参数置为 true，告诉 App
     /// 「这是授权问题，重新弹框再来一次也许就成了」。
+    ///
+    /// ★ Empty authorization (Touch ID path, protocol revision 5) ★
+    ///
+    ///   A team-signed app confirms the user with LocalAuthentication (Touch
+    ///   ID, Apple Watch or the login password) and then sends no admin
+    ///   authorization at all. That is only acceptable when both hold:
+    ///     * this daemon pinned the connection to TetherKitNext.app signed by
+    ///       our own team (`CodeSigning.clientRequirement`), so the caller is
+    ///       our app and not some other local process skipping the prompt;
+    ///     * the calling user is an administrator — the same population the
+    ///       `system.privilege.admin` dialog accepts, so the policy does not
+    ///       widen, only the way an admin proves presence changes.
+    ///   Anything else is rejected as an authorization problem, and the app
+    ///   falls back to the administrator dialog.
+    ///
+    ///   Must be called synchronously from the XPC method, where
+    ///   `NSXPCConnection.current()` is the caller's connection.
     private func authorize(_ data: Data, reply: @escaping @Sendable (String?, Bool) -> Void) -> Bool {
+        if data.isEmpty {
+            guard CodeSigning.clientRequirement != nil,
+                  let connection = NSXPCConnection.current(),
+                  AdminGroup.contains(uid: connection.effectiveUserIdentifier) else {
+                reply(L(.helperPresenceNotAccepted), true)
+                return false
+            }
+            return true
+        }
         do {
             try AuthorizationVerifier.verify(externalForm: data)
             return true

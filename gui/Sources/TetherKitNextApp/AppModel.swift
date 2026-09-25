@@ -198,6 +198,10 @@ final class AppModel {
     /// 我们自己算一份只会和系统不一致。以 helper 的复核结果为准更可靠。
     private var cachedAuthorization: AuthorizationToken?
 
+    /// The daemon refused a Touch ID-confirmed request (the user is not an
+    /// administrator). Use the administrator dialog for the rest of this run.
+    private var presenceRejected = false
+
 
 
 
@@ -688,7 +692,8 @@ final class AppModel {
 
         // Remove our CLI link while the daemon can still do it; best effort.
         if commandLineToolState == .installed {
-            await authorized(prompt: L(.authPromptCommandLineTool)) { [self] authorization in
+            await authorized(prompt: L(.authPromptCommandLineTool),
+                         reason: L(.presenceReasonCommandLineTool)) { [self] authorization in
                 try await client.setCommandLineToolInstalled(authorization: authorization,
                                                              install: false)
             }
@@ -699,6 +704,7 @@ final class AppModel {
             alertMessage = error.localizedDescription
         }
         cachedAuthorization = nil
+        UserPresence.reset()
         helperNeedsApproval = false
         commandLineToolState = .current
         await refresh()
@@ -717,7 +723,8 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
-        await authorized(prompt: L(.authPromptCommandLineTool)) { [self] authorization in
+        await authorized(prompt: L(.authPromptCommandLineTool),
+                         reason: L(.presenceReasonCommandLineTool)) { [self] authorization in
             try await client.setCommandLineToolInstalled(authorization: authorization,
                                                          install: install)
         }
@@ -814,7 +821,30 @@ final class AppModel {
     /// Returns whether `body` ran to completion.
     @discardableResult
     private func authorized(prompt: String = L(.authPromptSession),
+                            reason: String = L(.presenceReasonSession),
                             _ body: @escaping (Data) async throws -> Void) async -> Bool {
+        // Team-signed builds: Touch ID (or the login password) instead of the
+        // administrator dialog, and no authorization data at all. See
+        // UserPresence for why that is safe. The daemon still refuses it for
+        // non-admin users; then we fall through to the admin dialog below, and
+        // stop trying for the rest of this run.
+        if UserPresence.isAvailable && !presenceRejected {
+            do {
+                try await UserPresence.confirm(reason: reason)
+                try await body(Data())
+                return true
+            } catch UserPresence.Failure.cancelled {
+                return false
+            } catch UserPresence.Failure.unavailable {
+                // No Touch ID and no password fallback: use the admin dialog.
+            } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
+                presenceRejected = true
+            } catch {
+                alertMessage = error.localizedDescription
+                return false
+            }
+        }
+
         // 第一趟：有缓存就直接用，不打扰用户。
         if let cached = cachedAuthorization {
             // withExtendedLifetime 不能接 async 闭包，所以用 defer 把令牌钉到

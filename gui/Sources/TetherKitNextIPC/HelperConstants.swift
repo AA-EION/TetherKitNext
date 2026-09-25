@@ -64,7 +64,10 @@ public enum HelperConstants {
     ///   2 —— 特权方法的应答从 (String?) 改成 (String?, Bool)，区分授权失败
     ///   3 —— 新增 setLanguage，让 helper 的提示与库日志跟随界面语言
     ///   4 —— SMAppService daemon (new label); adds setCommandLineToolInstalled
-    public static let protocolRevision = 4
+    ///   5 —— privileged calls may carry an empty authorization: a team-signed
+    ///        app has already confirmed the user with Touch ID / the login
+    ///        password, and the daemon accepts it for admin users only
+    public static let protocolRevision = 5
 
     /// 把修订号编进版本串。
     ///

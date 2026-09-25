@@ -164,6 +164,59 @@ jobs:
           kill "$pid"
 
   # ----------------------------------------------------------------------------
+  # What people see when they open the DMG: mount it in Finder and take a
+  # screenshot (the install layout lives in .DS_Store, which nothing else
+  # checks). Also shoots the latest published release for comparison.
+  # Diagnostic only: never fails the build.
+  # ----------------------------------------------------------------------------
+  dmg-look:
+    name: DMG window · ${{ matrix.os }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TetherKitNext-dmg
+          path: built
+      - name: Latest published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R "$GITHUB_REPOSITORY" --pattern '*.dmg' --dir released \
+            || echo "no published DMG"
+      - name: Open in Finder and screenshot
+        run: |
+          mkdir -p shots
+          shoot() {
+            local dmg="$1" name="$2" mnt
+            mnt="$(hdiutil attach -readonly -noautoopen "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
+            echo "== $name: $mnt"
+            ls -la "$mnt"
+            open "$mnt"
+            sleep 8
+            osascript -e 'tell application "Finder" to get {name, bounds, current view} of front window' || true
+            screencapture -x "shots/$name.png" || true
+            osascript -e 'tell application "Finder" to close every window' || true
+            hdiutil detach "$mnt" || hdiutil detach -force "$mnt"
+            sleep 2
+          }
+          sw_vers
+          for dmg in built/*.dmg; do shoot "$dmg" "ci-build"; done
+          for dmg in released/*.dmg; do [ -f "$dmg" ] && shoot "$dmg" "published-release"; done
+          ls -l shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-window-${{ matrix.os }}
+          path: shots/*.png
+          if-no-files-found: warn
+
+  # ----------------------------------------------------------------------------
   # ThreadSanitizer: the lock-free rings and the park/wake handshake.
   # ----------------------------------------------------------------------------
   tsan:
