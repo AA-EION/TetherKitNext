@@ -176,7 +176,8 @@ bool ManagedNetworkServiceAvailable() noexcept {
   return ResolveCreateWithBsdName() != nullptr;
 }
 
-Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name) {
+Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name,
+                                                bool make_primary) {
   const CreateWithBsdNameFunction create_with_bsd_name = ResolveCreateWithBsdName();
   if (create_with_bsd_name == nullptr) {
     return std::unexpected(Error::Generic(Tr(Msg::kCapiSystemConfigurationFailed,
@@ -242,6 +243,36 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name)
   }
   if (::SCNetworkSetAddService(network_set.Get(), service.Get()) == 0) {
     return SystemConfigurationFailure("SCNetworkSetAddService");
+  }
+
+  // SCNetworkSetAddService appends the service to the *end* of the set's
+  // service order, so without this step Ethernet/Wi-Fi always outrank the
+  // phone. The order is what IPMonitor uses to pick the primary service, and
+  // the primary service owns both the global default route *and* the DNS
+  // resolver configuration. Putting ours first is therefore the only way to
+  // send all traffic (including name lookups) through the phone when another
+  // network — e.g. a LAN without internet access — is also connected.
+  // It is the same setting as System Settings › Network › Set Service Order.
+  // Services are recreated on every apply, so turning the option off simply
+  // leaves the new service at the end again.
+  if (make_primary) {
+    const CFStringRef our_id = ::SCNetworkServiceGetServiceID(service.Get());
+    const CFArrayRef current_order = ::SCNetworkSetGetServiceOrder(network_set.Get());
+    const ScopedCFRef<CFMutableArrayRef> new_order{
+        ::CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks)};
+    ::CFArrayAppendValue(new_order.Get(), our_id);
+    if (current_order != nullptr) {
+      const CFIndex count = ::CFArrayGetCount(current_order);
+      for (CFIndex i = 0; i < count; ++i) {
+        const void* const id = ::CFArrayGetValueAtIndex(current_order, i);
+        if (::CFEqual(id, our_id) == 0) {
+          ::CFArrayAppendValue(new_order.Get(), id);
+        }
+      }
+    }
+    if (::SCNetworkSetSetServiceOrder(network_set.Get(), new_order.Get()) == 0) {
+      return SystemConfigurationFailure("SCNetworkSetSetServiceOrder");
+    }
   }
 
   const std::string service_id = CopyToStdString(::SCNetworkServiceGetServiceID(service.Get()));

@@ -756,14 +756,17 @@ extension L10nKey {
         case .addDNSServer: return ("添加 DNS 服务器（最多 4 条）", "Add a DNS server (up to 4)")
         case .setDefaultRoute: return ("让所有流量默认走这张网卡", "Route all traffic through this interface")
         case .setDefaultRouteHelp:
-            return ("不开启时，只有明确绑定到本网卡的流量走它。",
-                    "When off, only traffic explicitly bound to this interface uses it.")
+            return ("开启后手机成为主网络：上网与 DNS 都走它，优先于以太网或 Wi-Fi（本地局域网仍可访问）。",
+                    "Makes the phone the primary connection: internet traffic and DNS use it ahead "
+                    + "of Ethernet or Wi-Fi (local network devices stay reachable).")
         case .setDefaultRouteTooltip:
-            return ("不开启时其余流量仍走当前的主网络。如果本机没有别的可用网络，"
-                    + "通常不需要开 —— 系统会自己把它选为主服务。",
-                    "When off, the rest of your traffic keeps using the current primary network. "
-                    + "If this Mac has no other network available you usually do not need this -- "
-                    + "the system picks this interface as the primary service on its own.")
+            return ("适合同时连着一个不能上网的局域网的情况。开启后 TetherKit 会把自己的网络服务"
+                    + "排到服务顺序的第一位（等同于“系统设置 › 网络 › 设定服务顺序”）。"
+                    + "只连着手机时不需要开。",
+                    "Use this when the Mac is also on a network without internet access. TetherKit "
+                    + "moves its network service to the top of the service order (the same as "
+                    + "System Settings › Network › Set Service Order). Not needed when the phone "
+                    + "is your only connection.")
         case .clearConfiguration: return ("撤销配置", "Clear the configuration")
         case .clearConfigurationTooltip:
             return ("等同于 ipconfig set <网卡> NONE，会移除地址与相关路由",

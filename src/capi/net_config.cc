@@ -387,6 +387,14 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 }
 
 /// 把**全局**默认路由改到指定网关。
+///
+/// ⚠️ On its own this is not enough to send "all traffic" through the phone:
+/// it changes the kernel route but not the DNS resolvers (those follow the
+/// primary *service*), and configd reinstalls the primary service's route on
+/// the next network change. In DHCP mode the real mechanism is putting the
+/// managed service first in the service order (ConfigureManagedDhcpService);
+/// this call only makes the switch immediate, and is the whole story only on
+/// the transient-service fallback and in static mode.
 [[nodiscard]] Status PromoteToGlobalDefaultRoute(std::string_view router) {
   const std::vector<std::string> arguments{"-n", "change", "-inet", "default", std::string{router}};
   if (const auto status = RunOrFail(kRoutePath, arguments, Text(Msg::kCapiWhatSwitchGlobalRoute));
@@ -412,8 +420,9 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 
   std::optional<std::string> service_id;
   if (tetherkit::capi::ManagedNetworkServiceAvailable()) {
-    TETHERKIT_ASSIGN_OR_RETURN(service_id,
-                               tetherkit::capi::ConfigureManagedDhcpService(interface_name));
+    TETHERKIT_ASSIGN_OR_RETURN(
+        service_id,
+        tetherkit::capi::ConfigureManagedDhcpService(interface_name, set_default_route));
   } else {
     // SPI gone on this macOS: fall back to the transient IPConfiguration
     // service. Ordinary traffic works; only NetworkExtension VPNs lose the

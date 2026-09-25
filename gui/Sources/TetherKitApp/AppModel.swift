@@ -126,7 +126,26 @@ final class AppModel {
     var requestedMTU: UInt32 = 1500
     var adoptDeviceMAC: Bool = true
     /// 网络配置表单。
-    var networkConfiguration: NetworkConfiguration = .dhcp
+    ///
+    /// Persisted, so a choice like "route all traffic through this interface"
+    /// sticks across launches and the automatic configuration on Connect
+    /// applies it every time.
+    var networkConfiguration: NetworkConfiguration = .dhcp {
+        didSet {
+            guard networkConfiguration != oldValue,
+                  let data = try? JSONEncoder().encode(networkConfiguration) else { return }
+            UserDefaults.standard.set(data, forKey: Self.networkConfigurationKey)
+        }
+    }
+
+    private static let networkConfigurationKey = "networkConfiguration"
+
+    private func restoreNetworkConfiguration() {
+        guard let data = UserDefaults.standard.data(forKey: Self.networkConfigurationKey),
+              let stored = try? JSONDecoder().decode(NetworkConfiguration.self, from: data)
+        else { return }
+        networkConfiguration = stored
+    }
 
     /// 界面语言偏好。改它会**同时**做三件事：切 Swift 侧的文案表、把语言推给
     /// libtetherkit（否则日志卡里会混进另一种语言）、再推给 helper（它以 root
@@ -237,6 +256,7 @@ final class AppModel {
     func start() {
         guard pollingTask == nil else { return }
         restoreLanguagePreference()
+        restoreNetworkConfiguration()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }

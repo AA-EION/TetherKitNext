@@ -252,6 +252,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 37 | `feat(gui): Swift 6、Liquid Glass 重设计、仅菜单栏模式修复` | ✅ | 侧边栏导航；设置页；菜单栏定宽速率（issue #1）；程序坞图标改由 NSWindow 通知驱动 |
 | 38 | `feat(gui): 连接后自动应用上网方式（默认 DHCP）` | ✅ | 复用连接时的授权令牌，不再弹第二次框；已有地址 / 选「不配置」/ 静态表单不完整时跳过；设置页可关 |
 | 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
+| 40 | `fix(capi): 「所有流量走此网卡」改为调整服务顺序` | ✅ | 原实现只 `route change default`：DNS 仍跟随主服务（以太网）、configd 会在下次网络变化时改回路由、托管服务被 SCNetworkSetAddService 追加在末尾。现在 DHCP 模式把托管服务排到 ServiceOrder 第一（= 系统设置「设定服务顺序」），路由与 DNS 一起切到手机；网络页设置持久化到 UserDefaults |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 
@@ -605,6 +606,10 @@ TX 就从 4.8 回到了 87 Mbps。
 21. **ad-hoc 签名的 App 注册不了 SMAppService 守护进程。** 本机调试后台组件要用
    Apple Development / Developer ID 证书签名（`TETHERKIT_SIGN_IDENTITY`）。
    ad-hoc 构建里 XPC 也会退回「仅授权复核」模式（没有 Team ID 可钉）。
+23. **改默认路由 ≠ 让流量走这张网卡。** 主服务（IPMonitor 按 ServiceOrder 选）同时决定
+   全局默认路由**和** DNS 解析器；只 `route change` 的话 DNS 仍走原主服务，
+   而且 configd 下次网络变化就把路由改回去。同时连着「没有外网的局域网」时
+   表现为网页打不开、拔掉网线立刻正常。正确做法是调整服务顺序。
 22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
    libtetherkit；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
 
