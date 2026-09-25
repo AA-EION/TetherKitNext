@@ -667,12 +667,12 @@ extension L10nKey {
         case .checkingHelper: return ("正在检查特权组件……", "Checking the privileged helper…")
         case .showConnectFailureDetail:
             return ("查看连接失败的详细原因", "Show why the connection failed")
-        case .helperNeedsUpdateTitle: return ("特权组件需要更新", "The privileged helper needs updating")
+        case .helperNeedsUpdateTitle:
+            return ("重启后台组件以完成更新", "Restart the background component to finish updating")
         case .helperNeedsUpdateBody:
-            return ("已安装的特权组件是升级前的版本，与当前 App 的通信接口对不上"
-                    + "（组件 v%1$@，App 需要 v%2$@）。",
-                    "The installed helper predates this app and speaks a different protocol "
-                    + "(helper v%1$@, app needs v%2$@).")
+            return ("TetherKitNext 已更新，但后台组件仍在运行旧版本。重启一次即可，不需要重新安装。",
+                    "TetherKitNext was updated, but its background component is still running "
+                    + "the previous version. Restart it once; nothing needs reinstalling.")
         case .copiedToClipboard: return ("已复制到剪贴板", "Copied to the clipboard")
         case .copyCommand: return ("复制命令", "Copy the command")
         case .sysctlNeedsFixTitle: return ("系统参数需要调整", "System parameters need adjusting")
