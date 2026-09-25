@@ -83,10 +83,6 @@ struct ContentView: View {
                                     set: { if !$0 { model.updateCheckResult = nil } })) {
             if case .updateAvailable(let release) = model.updateCheckResult {
                 Button(L(.openReleasePage)) { NSWorkspace.shared.open(release.pageURL) }
-                Button(L(.copyBrewUpgradeCommand)) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString("brew upgrade tetherkit", forType: .string)
-                }
                 Button(L(.ok), role: .cancel) {}
             } else {
                 Button(L(.ok), role: .cancel) {}
@@ -341,10 +337,6 @@ private struct HelperInstallSection: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(model.isBusy)
-
-                Text(L(.authorizationPromptHint))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Text(detail)
@@ -352,16 +344,6 @@ private struct HelperInstallSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            DisclosureGroup(L(.installViaTerminal)) {
-                VStack(alignment: .leading, spacing: Design.Spacing.tight) {
-                    CopyableCommand(command: "sudo ./gui/Scripts/install-helper.sh")
-                    Text(L(.installViaTerminalHint))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, Design.Spacing.tight)
-            }
-            .font(.caption)
         }
     }
 }

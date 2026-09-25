@@ -20,23 +20,6 @@ import TetherKitIPC
 struct TetherKitApplication: App {
     @State private var model = AppModel()
 
-    init() {
-        // CI 冒烟与手动补建用的模式：建完 Finder 别名即退，不进 GUI。
-        // 恒 exit 0 —— 别名建不上（受管机器之类）不该把流程判失败，结果打给
-        // stdout。（brew 的 postinstall 也在沙箱里、写不了 /Applications ——
-        // 实测确认 —— 所以正常安装路径靠下面的首次启动自动建立。）
-        if CommandLine.arguments.dropFirst().contains("--install-finder-alias") {
-            print(FinderAlias.ensure(for: Bundle.main.bundleURL))
-            exit(0)
-        }
-        // 正常启动：后台顺手校一遍 —— 缺了就补，brew upgrade 换了 Cellar
-        // 路径后目标漂移也会被重写。
-        let bundleURL = Bundle.main.bundleURL
-        Task.detached(priority: .utility) {
-            FinderAlias.ensure(for: bundleURL)
-        }
-    }
-
     var body: some Scene {
         Window("TetherKit", id: "main") {
             MainWindowRoot(model: model)

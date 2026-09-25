@@ -85,6 +85,11 @@ final class HelperClient {
             let created = NSXPCConnection(machServiceName: HelperConstants.machServiceName,
                                           options: .privileged)
             created.remoteObjectInterface = NSXPCInterface(with: TetherKitHelperProtocol.self)
+            // Release builds only talk to the daemon signed by our own team, so
+            // a look-alike service registered under our name is refused.
+            if let requirement = CodeSigning.daemonRequirement {
+                created.setCodeSigningRequirement(requirement)
+            }
 
             // 连接断掉后必须丢弃缓存，否则后续调用会一直打在一条死连接上，
             // 表现为「helper 明明装好了却一直连不上」。
@@ -208,6 +213,15 @@ final class HelperClient {
     func stopSession(authorization: Data) async throws {
         try await invokeVoid { proxy, guarded in
             proxy.stopSession(authorization: authorization) { message, authorizationFailed in
+                Self.finish(message, authorizationFailed, guarded)
+            }
+        }
+    }
+
+    func setCommandLineToolInstalled(authorization: Data, install: Bool) async throws {
+        try await invokeVoid { proxy, guarded in
+            proxy.setCommandLineToolInstalled(authorization: authorization,
+                                              install: install) { message, authorizationFailed in
                 Self.finish(message, authorizationFailed, guarded)
             }
         }

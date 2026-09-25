@@ -121,9 +121,10 @@ if(TETHERKIT_BUILD_SHARED_LIB AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gui/Packag
   add_custom_target(
     gui
     COMMAND "${CMAKE_COMMAND}" -E env "TETHERKIT_BUILD_DIR=${CMAKE_BINARY_DIR}"
+            "LibUSB_ROOT=${LibUSB_ROOT}"
             "${CMAKE_CURRENT_SOURCE_DIR}/gui/Scripts/build-gui.sh"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    DEPENDS tetherkit_shared
+    DEPENDS tetherkit_shared tetherkit
     COMMENT "构建 TetherKit.app 与 tetherkit-helper"
     USES_TERMINAL
     VERBATIM)

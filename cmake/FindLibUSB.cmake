@@ -10,10 +10,35 @@
 #   LibUSB_LIBRARY      —— 库文件路径
 #   LibUSB::LibUSB      —— 可直接 link 的 IMPORTED 目标
 
-find_package(PkgConfig QUIET)
-
-if(PkgConfig_FOUND)
-  pkg_check_modules(PC_LIBUSB QUIET libusb-1.0)
+# LibUSB_ROOT (see scripts/build-libusb.sh) pins a specific build — the
+# universal, @rpath-named libusb that release builds embed in TetherKit.app.
+# When it is set, never fall back to pkg-config / Homebrew: silently linking
+# the host's single-arch Homebrew copy would produce a bundle that only runs
+# on the build machine.
+if(DEFINED LibUSB_ROOT OR DEFINED ENV{LibUSB_ROOT})
+  if(NOT LibUSB_ROOT)
+    set(LibUSB_ROOT "$ENV{LibUSB_ROOT}")
+  endif()
+  find_path(
+    LibUSB_INCLUDE_DIR
+    NAMES libusb.h
+    PATHS "${LibUSB_ROOT}/include"
+    PATH_SUFFIXES libusb-1.0
+    NO_DEFAULT_PATH)
+  find_library(
+    LibUSB_LIBRARY
+    NAMES usb-1.0 libusb-1.0
+    PATHS "${LibUSB_ROOT}/lib"
+    NO_DEFAULT_PATH)
+  if(EXISTS "${LibUSB_ROOT}/VERSION")
+    file(READ "${LibUSB_ROOT}/VERSION" _libusb_version_file)
+    string(REGEX MATCH "^[0-9.]+" PC_LIBUSB_VERSION "${_libusb_version_file}")
+  endif()
+else()
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(PC_LIBUSB QUIET libusb-1.0)
+  endif()
 endif()
 
 find_path(

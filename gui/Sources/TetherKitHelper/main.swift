@@ -1,24 +1,22 @@
 // tetherkit-helper —— 以 root 运行的特权 helper。
 //
 // ★ 它的 root 从哪来 ★
-//   来自 launchd：/Library/LaunchDaemons/com.tetherkit.helper.plist 声明了
+//   来自 launchd：App 内嵌的 com.tetherkit.helperd.plist（SMAppService 注册）声明了
 //   MachServices，App 一连上这个 Mach 服务，launchd 就按需把它拉起来，
 //   一启动就是 root。**跟用户按没按指纹毫无关系** —— 所以「谁在调用」必须由
 //   helper 自己每次复核，见 TetherKitIPC/Authorization.swift。
 //
-// ★ 为什么不是 SMAppService ★
-//   SMPrivilegedExecutables / SMAuthorizedClients 靠代码签名的 designated
-//   requirement 双向绑定。源码分发（Homebrew formula）下每台机器编译出的 cdhash
-//   都不同，写死在 plist 里的 DR 必然对不上。详见 docs/GUI-SPIKE.md 第 3.3 节。
+// ★ How it is installed ★
+//   Through SMAppService: the app registers Contents/Library/LaunchDaemons/
+//   com.tetherkit.helperd.plist, whose BundleProgram points at this binary
+//   inside TetherKit.app. launchd runs it in place (nothing is copied into
+//   /Library), macOS asks the user to approve it in System Settings › Login
+//   Items, and replacing the app updates the daemon. This replaced the old
+//   AuthorizationExecuteWithPrivileges + setuid installer, which relied on an
+//   API deprecated since macOS 10.7.
 import Foundation
 import TetherKitCore
 import TetherKitIPC
-
-// ---- 安装模式 ----
-//
-// 被 App 以 `--install` 拉起时接管进程（见 InstallerMode.swift），与下面的
-// daemon 模式无关 —— 必须放在最前面，日志捕获、孤儿清理都不该在安装模式里跑。
-runInstallerModeIfRequested()
 
 /// 往 stderr 写一行。helper 由 launchd 拉起，stderr 进的是 LaunchDaemon 的
 /// 日志文件 —— 排查「helper 起不来」这类问题时，那是唯一能看到东西的地方。
@@ -30,6 +28,14 @@ func writeToStandardError(_ message: String) {
 //
 // 打开捕获，让 App 能在界面上看到库内部的日志。stderr 的输出不受影响。
 TetherKitLibrary.startLogCapture(level: .info)
+
+// ---- Legacy install ----
+//
+// Must run before orphan cleanup: bootout makes the legacy daemon tear down
+// its own feth pair, and only then are its registry entries truly orphaned.
+if LegacyHelper.removeIfPresent() {
+    writeToStandardError("Removed the legacy com.tetherkit.helper LaunchDaemon")
+}
 
 // ---- 兜底清理 ----
 //

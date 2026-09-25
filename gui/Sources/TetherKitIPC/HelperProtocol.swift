@@ -69,4 +69,13 @@ import Foundation
     /// 不是整数：将来加语言时，旧 helper 收到不认识的值会原样忽略，而不是
     /// 把它当成某个碰巧存在的枚举值。
     func setLanguage(_ rawValue: String, reply: @escaping () -> Void)
+
+    /// Link (`install == true`) or unlink the bundled command-line tool at
+    /// HelperConstants.commandLineToolLinkPath. **Requires authorization.**
+    ///
+    /// The link target is never taken from the caller: the daemon derives it
+    /// from its own location inside the app bundle, so a client cannot use this
+    /// call to plant an arbitrary root-owned symlink.
+    func setCommandLineToolInstalled(authorization: Data, install: Bool,
+                                     reply: @escaping (String?, Bool) -> Void)
 }

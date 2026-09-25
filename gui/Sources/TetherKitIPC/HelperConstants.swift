@@ -6,17 +6,43 @@ import Foundation
 /// 这些字符串同时出现在 LaunchDaemon 的 plist、安装脚本和两端代码里，
 /// 任何一处不同步的表现都是「连不上 helper」，且没有任何有用的报错。
 public enum HelperConstants {
-    /// Mach 服务名。必须与 /Library/LaunchDaemons/*.plist 里的 MachServices 键一致。
-    public static let machServiceName = "com.tetherkit.helper"
-
-    /// helper 可执行文件的安装路径。
+    /// Mach service name and launchd label of the privileged daemon.
     ///
-    /// /Library/PrivilegedHelperTools 是 Apple 给特权 helper 的约定位置，
-    /// 只有 root 可写。
-    public static let helperExecutablePath = "/Library/PrivilegedHelperTools/com.tetherkit.helper"
+    /// Must match `Label` / `MachServices` in
+    /// Resources/com.tetherkit.helperd.plist (embedded in the app at
+    /// Contents/Library/LaunchDaemons and registered through SMAppService).
+    ///
+    /// Deliberately different from the legacy `com.tetherkit.helper` label:
+    /// launchd refuses to register a second job under a label that is still
+    /// loaded, and the legacy daemon (installed by older builds via
+    /// AuthorizationExecuteWithPrivileges) may be. The new daemon removes the
+    /// legacy one on first start — see LegacyHelper.
+    public static let machServiceName = "com.tetherkit.helperd"
 
-    /// LaunchDaemon 配置文件路径。
-    public static let launchDaemonPlistPath = "/Library/LaunchDaemons/com.tetherkit.helper.plist"
+    /// File name of the daemon plist inside Contents/Library/LaunchDaemons,
+    /// as SMAppService.daemon(plistName:) expects it.
+    public static let daemonPlistName = "com.tetherkit.helperd.plist"
+
+    /// Bundle identifier of TetherKit.app. The daemon only accepts XPC
+    /// connections from code signed with this identifier (and its own Team ID).
+    public static let appBundleIdentifier = "com.tetherkit.app"
+
+    /// Where the command-line tool is linked for terminal use. /usr/local/bin is
+    /// in the default PATH of every shell on macOS (/etc/paths) and survives
+    /// `sudo`, so a symlink there makes `tetherkit-cli` and
+    /// `sudo tetherkit-cli` work without touching shell profiles.
+    public static let commandLineToolLinkPath = "/usr/local/bin/tetherkit-cli"
+
+    /// Location of the CLI inside the app bundle, relative to Contents/.
+    public static let commandLineToolBundlePath = "MacOS/tetherkit-cli"
+
+    /// Legacy (pre-SMAppService) installation, removed on upgrade.
+    public enum Legacy {
+        public static let label = "com.tetherkit.helper"
+        public static let executablePath = "/Library/PrivilegedHelperTools/com.tetherkit.helper"
+        public static let launchDaemonPlistPath = "/Library/LaunchDaemons/com.tetherkit.helper.plist"
+        public static let toolsDirectory = "/Library/PrivilegedHelperTools"
+    }
 
     /// 特权操作所要求的授权权利。
     ///
@@ -37,7 +63,8 @@ public enum HelperConstants {
     ///   1 —— 初版
     ///   2 —— 特权方法的应答从 (String?) 改成 (String?, Bool)，区分授权失败
     ///   3 —— 新增 setLanguage，让 helper 的提示与库日志跟随界面语言
-    public static let protocolRevision = 3
+    ///   4 —— SMAppService daemon (new label); adds setCommandLineToolInstalled
+    public static let protocolRevision = 4
 
     /// 把修订号编进版本串。
     ///

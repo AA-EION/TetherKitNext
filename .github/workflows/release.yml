@@ -1,9 +1,15 @@
-# Release —— 推 v* tag 即自动发版
+# Release: push a v* tag to publish a signed, notarized DMG.
 #
 #   git tag -a v0.2.0 -m "TetherKit 0.2.0" && git push origin v0.2.0
 #
-# 本工作流自带构建与测试，不依赖 CI 工作流的结果：发版这条路径必须自足，
-# 否则「CI 绿了但发版时代码已经变了」这种偏差无法察觉。
+# Required repository secrets for a distributable build:
+#   MACOS_CERTIFICATE_P12        base64 of "Developer ID Application" cert + key (.p12)
+#   MACOS_CERTIFICATE_PASSWORD   .p12 export password
+#   NOTARY_KEY_P8                base64 of an App Store Connect API key (.p8)
+#   NOTARY_KEY_ID                that key's ID
+#   NOTARY_ISSUER_ID             App Store Connect issuer ID
+# The workflow refuses to publish without them: an unsigned DMG would be
+# blocked by Gatekeeper on every user's Mac.
 
 name: Release
 
@@ -11,156 +17,84 @@ on:
   push:
     tags: ["v*"]
 
-# 创建 Release、上传附件需要写权限。
 permissions:
   contents: write
 
 jobs:
   release:
-    name: 构建并发布 ${{ github.ref_name }}
+    name: Build and publish ${{ github.ref_name }}
     runs-on: macos-26
-
     steps:
       - uses: actions/checkout@v5
 
-      # tag 与 CMakeLists 的 VERSION 必须一致，否则 `tetherkit-cli --version`
-      # 会和 Release / Homebrew 上的版本号对不上。发版前就拦住。
-      - name: 校验 tag 与 CMakeLists 版本号一致
+      - name: Tag must match CMakeLists VERSION
         run: |
           tag_ver="${GITHUB_REF_NAME#v}"
-          cmake_ver=$(grep -E '^[[:space:]]+VERSION[[:space:]]+[0-9]' CMakeLists.txt \
-                      | head -1 | awk '{print $2}')
-          echo "tag=${tag_ver}  CMakeLists.txt=${cmake_ver}"
-          if [ "$tag_ver" != "$cmake_ver" ]; then
-            echo "::error::tag (${tag_ver}) 与 CMakeLists.txt 的 VERSION (${cmake_ver}) 不一致"
-            exit 1
-          fi
+          cmake_ver=$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)
+          echo "tag=${tag_ver} CMakeLists.txt=${cmake_ver}"
+          [ "$tag_ver" = "$cmake_ver" ] || { echo "::error::tag and VERSION differ"; exit 1; }
 
-      - name: 安装 libusb
-        run: brew install libusb
-
-      - name: 构建并测试
+      - name: Signing secrets present
+        env:
+          HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+          HAS_NOTARY: ${{ secrets.NOTARY_KEY_P8 != '' && secrets.NOTARY_KEY_ID != '' && secrets.NOTARY_ISSUER_ID != '' }}
         run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DTETHERKIT_WARNINGS_AS_ERRORS=ON
-          cmake --build build -j"$(sysctl -n hw.ncpu)"
-          ctest --test-dir build --output-on-failure
+          [ "$HAS_CERT" = true ] || { echo "::error::MACOS_CERTIFICATE_P12 is not set"; exit 1; }
+          [ "$HAS_NOTARY" = true ] || { echo "::error::NOTARY_* secrets are not set"; exit 1; }
 
-      - name: 构建图形界面
-        run: cmake --build build --target gui
-
-      - name: 打包命令行二进制
-        id: pkg
+      - name: Select the newest Xcode
         run: |
-          name="tetherkit-cli-${GITHUB_REF_NAME}-macos-arm64.tar.gz"
-          tar -C build/bin -czf "$name" tetherkit-cli
-          {
-            echo "name=${name}"
-            echo "sha256=$(shasum -a 256 "$name" | awk '{print $1}')"
-          } >> "$GITHUB_OUTPUT"
+          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "${latest}"
+          xcodebuild -version
 
-      - name: 打包 TetherKit.app
-        id: app
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: ./scripts/ci-import-certificate.sh
+
+      - name: Build, test, sign, notarize
+        env:
+          TETHERKIT_BUILD_NUMBER: ${{ github.run_number }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: ./scripts/build-release.sh
+
+      - name: Swift unit tests
+        run: TETHERKIT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
+
+      - name: Release notes
         run: |
-          name="TetherKit-${GITHUB_REF_NAME}-macos-arm64.zip"
-          # ditto 保留 bundle 结构与扩展属性，是打包 .app 的标准姿势。
-          ditto -c -k --keepParent dist/TetherKit.app "$name"
-          {
-            echo "name=${name}"
-            echo "sha256=$(shasum -a 256 "$name" | awk '{print $1}')"
-          } >> "$GITHUB_OUTPUT"
+          dmg="$(ls dist/TetherKit-*.dmg)"
+          cli="$(ls dist/tetherkit-cli-*.tar.gz)"
+          cat > notes.md <<EOF
+          ## Install
 
-      # 这个 sha256 就是 Homebrew formula 里要填的那个，直接写进 Release 说明，
-      # 更新 tap 时复制粘贴即可，不用本地再算一遍。
-      - name: 计算源码 tarball 的 sha256
-        id: src
-        run: |
-          url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
-          # tag 刚推上来，GitHub 生成归档可能有几秒延迟，重试几次。
-          for i in 1 2 3 4 5; do
-            if curl -fsSL "$url" -o src.tar.gz; then break; fi
-            echo "第 ${i} 次未取到源码归档，5 秒后重试…"
-            sleep 5
-          done
-          test -s src.tar.gz || { echo "::error::拿不到源码归档 ${url}"; exit 1; }
-          echo "sha256=$(shasum -a 256 src.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**.
+          2. Open TetherKit from Applications and click **Enable Background Component**.
+             macOS asks you to allow it once in *System Settings › General › Login Items*.
+          3. Optional: *Settings › Command-line tool › Install Command* puts
+             \`tetherkit-cli\` on your PATH (\`/usr/local/bin\`).
 
-      # 用引号 heredoc 防止 shell 展开；${{ }} 是 Actions 在 shell 之前就替换掉的，
-      # 因此依然能取到上面几步的输出。
-      - name: 组装 Release 说明
-        run: |
-          cat > notes.md <<'EOF'
-          ## 安装
+          Universal build: Apple Silicon and Intel, macOS 14+ (the CLI alone runs on 13.3+).
+          Signed with Developer ID and notarized by Apple.
 
-          推荐走 Homebrew（源码构建，无 Gatekeeper 问题）：
+          ## Checksums (SHA-256)
 
-          ```bash
-          brew install XiaoMiku01/tap/tetherkit        # 图形界面 TetherKit.app
-          brew install XiaoMiku01/tap/tetherkit-cli    # 命令行工具
-          ```
-
-          图形界面装完 `open "$(brew --prefix)/opt/tetherkit/TetherKit.app"`，
-          首次运行点「安装特权组件」、输一次管理员密码即可；首次启动会自动
-          建立 Finder 别名，之后聚焦（Spotlight）里搜 TetherKit 就能直接启动。
-
-          > ⚠️ 旧版用户注意：`tetherkit` 这个 formula 名从本版本起归图形界面，
-          > 命令行改名为 `tetherkit-cli`（二进制同名）。原来装过 CLI 的请
-          > `brew uninstall tetherkit && brew install tetherkit-cli`。
-
-          ## 命令行运行
-
-          ```bash
-          tetherkit-cli --list          # 列出设备，不需要 root
-          sudo tetherkit-cli            # 启动驱动，需要 root
-          ```
-
-          ## 环境要求
-
-          - 命令行：macOS 13.3+；图形界面：macOS 14+（附件均仅 arm64）
-          - 运行期依赖 libusb：`brew install libusb`（Homebrew 安装会自动带上）
-
-          ## 附件说明
-
-          附件都是**未签名**产物，从浏览器下载后会被 Gatekeeper 隔离，
-          需要手动解除后才能运行：
-
-          ```bash
-          xattr -d com.apple.quarantine tetherkit-cli     # 命令行
-          xattr -dr com.apple.quarantine TetherKit.app    # 图形界面（递归）
-          ```
-
-          介意的话请用上面的 Homebrew 方式，或自行从源码构建 ——
-          本地构建的产物不带隔离属性。
-
-          ## 校验和
-
-          | 文件 | SHA-256 |
+          | File | SHA-256 |
           |---|---|
-          | 源码 tarball（Homebrew formula 用） | `${{ steps.src.outputs.sha256 }}` |
-          | `${{ steps.pkg.outputs.name }}` | `${{ steps.pkg.outputs.sha256 }}` |
-          | `${{ steps.app.outputs.name }}` | `${{ steps.app.outputs.sha256 }}` |
+          | $(basename "$dmg") | \`$(shasum -a 256 "$dmg" | awk '{print $1}')\` |
+          | $(basename "$cli") | \`$(shasum -a 256 "$cli" | awk '{print $1}')\` |
           EOF
+          sed -i '' 's/^          //' notes.md
 
-      - name: 创建 Release
+      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "TetherKit ${GITHUB_REF_NAME}" \
-            --notes-file notes.md \
-            --generate-notes \
-            --verify-tag \
-            "${{ steps.pkg.outputs.name }}" \
-            "${{ steps.app.outputs.name }}"
-
-  # Release 建好之后，把 Homebrew tap 同步到新版本。
-  #
-  # 拆成独立 job 而不是塞进上面的步骤里：tap 推送失败不该让一个已经发好的
-  # Release 显示成失败，而且拆开之后可以单独 workflow_dispatch 补跑。
-  update-tap:
-    needs: release
-    uses: ./.github/workflows/update-tap.yml
-    with:
-      tag: ${{ github.ref_name }}
-    secrets: inherit
+            --notes-file notes.md --generate-notes --verify-tag \
+            dist/TetherKit-*.dmg dist/tetherkit-cli-*.tar.gz

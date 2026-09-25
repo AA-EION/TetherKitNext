@@ -181,6 +181,23 @@ final class HelperService: NSObject, TetherKitHelperProtocol {
         }
     }
 
+    func setCommandLineToolInstalled(authorization: Data, install: Bool,
+                                     reply: @escaping (String?, Bool) -> Void) {
+        guard authorize(authorization, reply: reply) else { return }
+        networkQueue.async {
+            do {
+                if install {
+                    try CommandLineToolLink.install()
+                } else {
+                    try CommandLineToolLink.uninstall()
+                }
+                reply(nil, false)
+            } catch {
+                reply(error.localizedDescription, false)
+            }
+        }
+    }
+
     // MARK: - 停机清理
 
     /// 收到 SIGTERM（`launchctl bootout`）时调用。
@@ -261,14 +278,17 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        // ★ 为什么这里无条件接受 ★
+        // ★ Who may connect ★
         //
-        //   安全性不建立在「谁能连上」，而建立在「每次特权调用都要附带一份用户刚
-        //   确认过的授权凭据」。这是刻意的选择：另一条路是校验调用方的代码签名
-        //   （SMJobBless 的做法），但那依赖证书的 designated requirement，而源码
-        //   分发下每台机器编出的 cdhash 都不同，写死的 DR 必然对不上。
-        //
-        //   对开源、源码分发的工具，凭据复核是更合适的模型：谁编译的都一样安全。
+        //   Team-signed (Developer ID) builds only accept TetherKit.app signed by
+        //   the same team; the check runs against the peer's audit token for
+        //   every message. Ad-hoc development builds have no Team ID to pin, so
+        //   they fall back to the original model: anyone may connect, but every
+        //   privileged call must carry an admin authorization that is re-verified
+        //   here (AuthorizationVerifier). Release builds enforce both layers.
+        if let requirement = CodeSigning.clientRequirement {
+            connection.setCodeSigningRequirement(requirement)
+        }
         connection.exportedInterface = NSXPCInterface(with: TetherKitHelperProtocol.self)
         connection.exportedObject = service
         connection.resume()

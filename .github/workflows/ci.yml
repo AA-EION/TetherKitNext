@@ -1,225 +1,210 @@
-# CI —— 构建、测试、私有 ABI 漂移监测
+# CI: build, test, package — on real macOS runners.
 #
-# 本项目只能在 macOS 上编译：源码直接使用 Darwin BPF（net/bpf.h）与 xnu 的
-# 私有 if_fake ABI，CMakeLists 顶部对非 Apple 平台直接 FATAL_ERROR。
-# GitHub 托管的 macOS runner 是真机（Apple Silicon 虚拟化），因此完全可用。
+# TetherKit only builds on macOS (Darwin BPF, xnu's private if_fake ABI).
+# GitHub's hosted macOS runners are Apple Silicon VMs, plus an Intel image
+# (macos-15-intel) that we use to prove the universal binary really runs on
+# x86_64 hardware, not just under Rosetta.
 
 name: CI
 
 on:
   push:
-    branches: [main, swift-app]
-    tags: ["v*"]
+    branches: ["**"]
+    tags-ignore: ["v*"]  # release.yml handles tags
   pull_request:
   workflow_dispatch:
 
-# 同一分支的旧任务在有新提交时取消，省 macOS runner 配额（计费是 Linux 的 10 倍）。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # ----------------------------------------------------------------------------
-  # 主构建与单元测试。
-  #
-  # 168 个用例全部不需要 root、不需要 USB 设备：feth/BPF 那部分在非 root 下
-  # 自动跳过（见 tests/test_net_link.cc 的 RootTestsEnabled）。
+  # Native build + unit tests on each supported runner architecture/OS.
+  # None of the tests need root or a USB device; feth/BPF cases skip themselves
+  # without TETHERKIT_ROOT_TESTS (the abi-check job runs them as root).
   # ----------------------------------------------------------------------------
-  build-test:
-    name: ${{ matrix.os }} · ${{ matrix.build_type }}
+  native:
+    name: C++ · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15, macos-26]
-        build_type: [RelWithDebInfo, Release]
-
+        os: [macos-15, macos-26, macos-15-intel]
     steps:
       - uses: actions/checkout@v5
 
-      - name: 安装 libusb
-        run: brew install libusb
-
-      - name: 记录工具链版本
+      - name: Toolchain
         run: |
-          sw_vers
-          cmake --version
-          c++ --version
+          sw_vers; uname -m; cmake --version; c++ --version
 
-      - name: Configure
+      - name: Cache libusb
+        uses: actions/cache@v4
+        with:
+          path: build/libusb-universal
+          key: libusb-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-libusb.sh') }}
+
+      - name: Build libusb (universal, pinned + hash-verified)
+        run: ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+
+      - name: Configure & build
         run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" \
             -DTETHERKIT_WARNINGS_AS_ERRORS=ON
-
-      - name: Build
-        run: cmake --build build -j"$(sysctl -n hw.ncpu)"
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-      - name: 冒烟测试（--list 不需要 root）
+      - name: Smoke (--list needs no root)
         run: |
           ./build/bin/tetherkit-cli --version
           ./build/bin/tetherkit-cli --list
 
   # ----------------------------------------------------------------------------
-  # 验证 README 声称的 macOS 13.3 下限。
+  # The shipping build: universal C++ + Swift, app bundle, DMG.
   #
-  # macos-13 runner 已下线，没法真的在 13.3 的机器上跑。但 CMakeLists 里担心的
-  # std::to_chars availability 标注是**编译期**按部署目标校验的，所以把
-  # CMAKE_OSX_DEPLOYMENT_TARGET 显式压到 13.3 就能验证这条下限还成不成立。
-  #
-  # ⚠️ 这只证明「能为 13.3 编译」，不证明「在 13.3 上跑得起来」——
-  # 后者需要一台真的跑 13.3 的机器，GitHub 托管 runner 已经给不了了。
-  #
-  # 这里刻意不开 warnings-as-errors：Homebrew 的 libusb 按宿主版本构建，
-  # 压低部署目标必然出现 "building for macOS-13.3, but linking with dylib
-  # which was built for newer version" 的链接告警，属预期噪声而非回归。
+  # Signed + notarized when the repository has signing secrets and the run is
+  # not from a fork's pull request (GitHub withholds secrets there); otherwise
+  # ad-hoc signed so the pipeline is still fully exercised.
   # ----------------------------------------------------------------------------
-  deployment-target:
-    name: 为 macOS 13.3 编译
+  package:
+    name: Universal app + DMG
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 
-      - name: 安装 libusb
-        run: brew install libusb
-
-      - name: Configure & Build
-        run: |
-          cmake -S . -B build-min \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
-          cmake --build build-min -j"$(sysctl -n hw.ncpu)"
-
-      - name: Test
-        run: ctest --test-dir build-min --output-on-failure
-
-  # ----------------------------------------------------------------------------
-  # 图形界面：SwiftPM 构建 + IPC 单元测试 + 组装 .app + 签名自检。
-  #
-  # macos-14 与 macos-26 各跑一遍：前者证明 GUI 声称的 macOS 14 下限在
-  # 最老的可用工具链上仍然成立，后者盯最新系统的回归。
-  # ----------------------------------------------------------------------------
-  gui:
-    name: GUI · ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, macos-26]
-
-    steps:
-      - uses: actions/checkout@v5
-
-      # macos-14 镜像默认 xcode-select 到 Xcode 15.0，那个 SDK 里 SwiftUI 的
-      # View 还不是整体 @MainActor，本仓库代码按新语义写、编不过。选镜像里
-      # 最新的 Xcode：要证明的是「macOS 14 这个运行时下限成立」，编译器新旧
-      # 与此无关。macos-26 上此步等价于默认值，无副作用。
-      - name: 选择镜像里最新的 Xcode
+      - name: Select the newest Xcode
         run: |
           latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
-          echo "selected: ${latest}"
           sudo xcode-select -s "${latest}"
-          swift --version
+          xcodebuild -version; swift --version
 
-      - name: 安装 libusb
-        run: brew install libusb
+      - name: Import signing certificate
+        if: github.event_name != 'pull_request'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: ./scripts/ci-import-certificate.sh
 
-      - name: 构建 C++（GUI 链接 libtetherkit）
+      - name: Build, test, package
+        env:
+          TETHERKIT_BUILD_NUMBER: ${{ github.run_number }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: ./scripts/build-release.sh
+
+      - name: Swift unit tests
+        run: TETHERKIT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
+
+      - name: Bundle checks
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DTETHERKIT_BUILD_TESTS=OFF -DTETHERKIT_BUILD_BENCHMARKS=OFF
-          cmake --build build -j"$(sysctl -n hw.ncpu)"
-
-      - name: Swift 单元测试
-        run: TETHERKIT_LIB_DIR="$PWD/build/lib" swift test --package-path gui
-
-      - name: 组装 TetherKit.app
-        run: cmake --build build --target gui
-
-      - name: 自检
-        run: |
-          codesign --verify --deep --strict dist/TetherKit.app
-          # 安装模式的非 root 路径必须明确报错退出（而不是装出半套东西）。
-          payload="dist/TetherKit.app/Contents/Library/HelperTools"
-          if "${payload}/com.tetherkit.helper" --install; then
-            echo "::error::helper --install 在非 root 下竟然成功了"
-            exit 1
+          app=dist/TetherKit.app
+          codesign --display --verbose=2 "$app" 2>&1 | sed -n '1,12p'
+          for f in "$app/Contents/MacOS/"* "$app/Contents/Frameworks/"*; do
+            printf '%-60s %s\n' "${f#dist/}" "$(lipo -archs "$f")"
+          done
+          # The daemon must not be accepted as an installer anymore.
+          if "$app/Contents/MacOS/tetherkit-helper" --install 2>/dev/null; then
+            echo "::error::legacy --install mode still present"; exit 1
           fi
-          # Finder 别名安装模式恒成功退出（结果打给 stdout）。
-          ./dist/TetherKit.app/Contents/MacOS/TetherKit --install-finder-alias
+          plutil -p "$app/Contents/Library/LaunchDaemons/com.tetherkit.helperd.plist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TetherKit-dmg
+          path: |
+            dist/*.dmg
+            dist/*.tar.gz
+          if-no-files-found: error
 
   # ----------------------------------------------------------------------------
-  # ThreadSanitizer —— 无锁队列与多线程数据路径的正确性靠它兜底。
+  # Install the DMG on a real Intel Mac and run the CLI from it.
+  # ----------------------------------------------------------------------------
+  intel-smoke:
+    name: DMG on Intel
+    needs: package
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TetherKit-dmg
+      - name: Mount, copy to /Applications, run
+        run: |
+          uname -m
+          dmg="$(ls TetherKit-*.dmg)"
+          mnt="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
+          ditto "$mnt/TetherKit.app" /Applications/TetherKit.app
+          hdiutil detach "$mnt"
+          app=/Applications/TetherKit.app
+          codesign --verify --deep --strict "$app"
+          "$app/Contents/MacOS/tetherkit-cli" --version
+          "$app/Contents/MacOS/tetherkit-cli" --list
+          # Launch the GUI briefly: proves the x86_64 Swift slice + dylibs load.
+          "$app/Contents/MacOS/TetherKit" & pid=$!
+          sleep 8
+          kill -0 "$pid" || { echo "::error::GUI exited early on Intel"; exit 1; }
+          kill "$pid"
+
+  # ----------------------------------------------------------------------------
+  # ThreadSanitizer: the lock-free rings and the park/wake handshake.
   # ----------------------------------------------------------------------------
   tsan:
     name: ThreadSanitizer
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
-
-      - name: 安装 libusb
-        run: brew install libusb
-
-      - name: Configure & Build
+      - name: Build libusb
+        run: ./scripts/build-libusb.sh "$PWD/build-tsan/libusb-universal"
+      - name: Configure & build
         run: |
-          cmake -S . -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON
+          cmake -S . -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON \
+            -DLibUSB_ROOT="$PWD/build-tsan/libusb-universal" -DTETHERKIT_BUILD_BENCHMARKS=OFF
           cmake --build build-tsan -j"$(sysctl -n hw.ncpu)"
-
       - name: Test
         run: ctest --test-dir build-tsan --output-on-failure
 
   # ----------------------------------------------------------------------------
-  # 私有 ABI 漂移监测。
+  # Private ABI drift gate: create/destroy a real feth pair as root.
   #
-  # 这个项目最大的长期风险是 xnu 的 struct if_fake_request 布局在某次 macOS
-  # 更新后变化。跑一次真实的 feth 创建/销毁就能提前发现。
-  #
-  # 这个 job 是**门禁**而不是信号：ABI 漂移必须直接把流水线判红，否则等同于没查。
-  # 曾经短暂设过 continue-on-error（担心 runner 虚拟化环境跑不起 if_fake），
-  # 实测 macos-14/15/26 连续多轮都能真实建出 feth 对，依据不成立，已去掉。
-  # 将来某个 runner 镜像真的不支持了，这里红一次远比一直假绿要好。
+  # The biggest long-term risk is xnu changing struct if_fake_request. This job
+  # is a gate, not a signal: skipped root tests must fail it.
   # ----------------------------------------------------------------------------
   abi-check:
-    name: feth 私有 ABI 检查 · ${{ matrix.os }}
+    name: feth ABI · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15, macos-26]
-
+        os: [macos-15, macos-26, macos-15-intel]
     steps:
       - uses: actions/checkout@v5
-
-      - name: 安装 libusb
-        run: brew install libusb
-
       - name: Build
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" -DTETHERKIT_BUILD_BENCHMARKS=OFF
           cmake --build build -j"$(sysctl -n hw.ncpu)"
-
-      - name: 关掉 feth 硬件校验和卸载
-        # 这批开关在 feth 创建时被快照，必须在创建前设好。
+      - name: Disable feth hardware checksum offload
         run: sudo sysctl -w net.link.fake.hwcsum=0
-
-      - name: 以 root 跑 feth/BPF 用例
+      - name: Run feth/BPF cases as root
         run: |
-          # 用 -V 而不是 --output-on-failure：这是个取证 job，通过时的输出才是证据。
-          sudo env TETHERKIT_ROOT_TESTS=1 \
+          # Pin the log language: the gate greps for a message text.
+          sudo env TETHERKIT_ROOT_TESTS=1 TETHERKIT_LANG=en \
             ctest --test-dir build -V -R 'net\.' 2>&1 | tee abi.log
-
-          # ⚠️ 关键：root 用例在条件不满足时是「跳过而非失败」，跳过了 ctest 照样绿。
-          # 不加这道检查，这个 job 可能长期什么都没验证却一直显示通过。
+          # Skip notice is hard-coded in tests/test_net_link.cc.
           if grep -q "需要 root 且需设置" abi.log; then
-            echo "::error::feth 用例被跳过了，本次 ABI 检查没有真正执行"
-            exit 1
+            echo "::error::feth cases were skipped; the ABI check did not run"; exit 1
           fi
-          # 正面确认：真的建出了 feth 对。
-          if ! grep -q "创建了 feth" abi.log; then
-            echo "::error::日志里没有 feth 创建记录，无法确认私有 ABI 仍然可用"
-            exit 1
+          # kNetCreated. (The previous gate grepped for "创建了 feth", a string
+          # that stopped existing when log messages were localized — it could
+          # never pass.)
+          if ! grep -q "created virtual interface feth" abi.log; then
+            echo "::error::no feth creation in the log; cannot confirm the private ABI"; exit 1
           fi
-          echo "✓ 已确认真实创建 feth：$(grep -m1 '创建了 feth' abi.log)"
+          echo "✓ $(grep -m1 'created virtual interface feth' abi.log)"

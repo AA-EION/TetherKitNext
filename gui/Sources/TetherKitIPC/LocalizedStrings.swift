@@ -92,17 +92,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case helperOrphanCleanupFailed
     case helperSigtermReceived
     case helperReady
-    case installerNeedsRoot
-    case installerUseTerminal
-    case installerScriptMissing
 
     // MARK: - helper 客户端（HelperClient.swift / HelperInstaller.swift）
 
     case helperConnectFailed
     case helperReplyUnparsable
-    case installerNoPayload
-    case installerAPIUnavailable
-    case installerLaunchFailed
 
     // MARK: - 检查更新（UpdateChecker.swift）
 
@@ -110,13 +104,26 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case updateHTTPStatus
     case updateBadResponse
 
-    // MARK: - 访达别名（FinderAlias.swift）
 
-    case aliasSkippedNotBundle
-    case aliasSkippedAlreadyInApplications
-    case aliasFailed
-    case aliasAlreadyPresent
-    case aliasCreated
+    // MARK: - Distribution & system integration
+
+    case cliLinkNotInBundle
+    case cliLinkToolMissing
+    case cliLinkDirectoryUnsafe
+    case cliLinkOccupied
+    case cliLinkSystemError
+    case moveToApplicationsRequired
+    case helperRegisterFailed
+    case authPromptCommandLineTool
+    case helperApprovalTitle
+    case helperApprovalBody
+    case openLoginItemsSettings
+    case commandLineToolTitle
+    case commandLineToolInstalled
+    case commandLineToolNotInstalled
+    case commandLineToolOccupied
+    case installCommandLineTool
+    case removeCommandLineTool
 
     // MARK: - 连接状态（DesignSystem.swift）
 
@@ -131,49 +138,25 @@ public enum L10nKey: String, CaseIterable, Sendable {
     // MARK: - 应用模型（AppModel.swift）
 
     case authPromptSession
-    case authPromptInstall
-    case authPromptUninstall
     case interfaceNotReadyYet
-    case installScriptRanButUnreachable
-    case uninstallScriptRanButStillAlive
-    case scriptOutput
-    case scriptNoOutput
 
     // MARK: - 主界面（ContentView.swift）
 
     case menuCheckForUpdates
     case alertOperationFailed
-    case confirmUninstallTitle
     case updateCheckTitle
     case openReleasePage
-    case copyBrewUpgradeCommand
     case updateUpToDate
-    case updateAvailable
     case updateCheckFailed
     case updateDevBuild
-    case uninstallExplanation
     case uninstallWhileRunningWarning
     case helperComponentVersion
     case helperVersionMismatch
-    case helperVersionMismatchTooltip
-    case confirmHelperUpdateTitle
-    case helperUpdateWhileRunningWarning
     case helperUpdateBadge
-    case uninstallHelperMenuItem
     case checkingHelper
-    case needInstallTitle
-    case needInstallBody
-    case installHelperButton
-    case installHelperDetail
     case showConnectFailureDetail
     case helperNeedsUpdateTitle
     case helperNeedsUpdateBody
-    case updateHelperButton
-    case updateHelperDetail
-    case installingProgress
-    case authorizationPromptHint
-    case installViaTerminal
-    case installViaTerminalHint
     case copiedToClipboard
     case copyCommand
     case sysctlNeedsFixTitle
@@ -379,12 +362,6 @@ extension L10nKey {
                     "Failed to clean up leftover virtual interfaces: %@")
         case .helperSigtermReceived: return ("收到 SIGTERM，正在停机", "Received SIGTERM; shutting down")
         case .helperReady: return ("tetherkit-helper 已就绪：%@", "tetherkit-helper ready: %@")
-        case .installerNeedsRoot:
-            return ("错误：无法取得 root（euid=%1$ld，ruid=%2$ld）。",
-                    "Error: cannot obtain root (euid=%1$ld, ruid=%2$ld).")
-        case .installerUseTerminal:
-            return ("请改用终端：sudo %@", "Use the terminal instead: sudo %@")
-        case .installerScriptMissing: return ("错误：找不到脚本 %@", "Error: script %@ not found")
 
         // MARK: helper 客户端
 
@@ -393,21 +370,6 @@ extension L10nKey {
         case .helperReplyUnparsable:
             return ("特权组件的应答无法解析，可能是版本不一致",
                     "The helper's reply could not be parsed; the versions may not match")
-        // 这两条各自都以「请改用终端」收尾，因此把两句合成一条 —— 拆成两半再拼
-        // 的话，中文之间不该有空格、英文之间必须有，join 的写法一定会错一边。
-        case .installerNoPayload:
-            return ("这份 TetherKit 不带安装载荷（可能是开发构建）。"
-                    + "请在终端执行：sudo ./gui/Scripts/install-helper.sh",
-                    "This copy of TetherKit carries no installer payload (likely a dev build). "
-                    + "Run this in a terminal: sudo ./gui/Scripts/install-helper.sh")
-        case .installerAPIUnavailable:
-            return ("当前系统不再提供 App 内安装所需的接口。"
-                    + "请在终端执行：sudo ./gui/Scripts/install-helper.sh",
-                    "This version of macOS no longer offers the API in-app installation needs. "
-                    + "Run this in a terminal: sudo ./gui/Scripts/install-helper.sh")
-        case .installerLaunchFailed:
-            return ("无法启动安装/卸载程序（%ld）",
-                    "Cannot launch the install/uninstall program (%ld)")
 
         // MARK: 检查更新
 
@@ -415,17 +377,100 @@ extension L10nKey {
         case .updateHTTPStatus: return ("GitHub 返回了 %ld", "GitHub returned %ld")
         case .updateBadResponse: return ("响应格式不符合预期", "The response was not in the expected format")
 
-        // MARK: 访达别名
 
-        case .aliasSkippedNotBundle:
-            return ("跳过：不是 .app 包（开发构建）", "Skipped: not an .app bundle (dev build)")
-        case .aliasSkippedAlreadyInApplications:
-            return ("跳过：App 已在 /Applications 里", "Skipped: the app already lives in /Applications")
-        case .aliasFailed:
-            return ("失败：/Applications 与 ~/Applications 都没能写入别名",
-                    "Failed: could not write the alias to /Applications or ~/Applications")
-        case .aliasAlreadyPresent: return ("别名已就绪：%@", "Alias already in place: %@")
-        case .aliasCreated: return ("已建立别名：%1$@ → %2$@", "Created alias: %1$@ -> %2$@")
+        case .cliLinkNotInBundle:
+            return ("命令行工具只能在从 TetherKit.app 注册的后台组件中安装。",
+                    "The command-line tool can only be installed by the background component registered from TetherKit.app.")
+        case .cliLinkToolMissing:
+            return ("App 包内找不到命令行工具：%@",
+                    "The command-line tool is missing from the app bundle: %@")
+        case .cliLinkDirectoryUnsafe:
+            return ("%@ 不是普通目录，出于安全考虑不在其中创建链接。",
+                    "%@ is not a regular directory, so no link is created there for safety.")
+        case .cliLinkOccupied:
+            return ("%@ 已被其他程序占用（例如 Homebrew 安装的 tetherkit-cli），请先移除它。",
+                    "%@ is already taken by something else (for example a Homebrew tetherkit-cli). Remove it first.")
+        case .cliLinkSystemError:
+            return ("%1$@ 失败：%2$@",
+                    "%1$@ failed: %2$@")
+        case .moveToApplicationsRequired:
+            return ("请先把 TetherKit 拖到“应用程序”文件夹再运行。macOS 不允许从磁盘映像或临时位置注册后台组件。",
+                    "Move TetherKit to the Applications folder and open it from there first. macOS does not allow background components to be registered from a disk image or a temporary location.")
+        case .helperRegisterFailed:
+            return ("无法注册后台组件：%@",
+                    "Could not register the background component: %@")
+        case .authPromptCommandLineTool:
+            return ("TetherKit 需要管理员权限来在 /usr/local/bin 中安装或移除 tetherkit-cli 命令。",
+                    "TetherKit needs administrator privileges to add or remove the tetherkit-cli command in /usr/local/bin.")
+        case .helperApprovalTitle:
+            return ("在系统设置中允许 TetherKit",
+                    "Allow TetherKit in System Settings")
+        case .helperApprovalBody:
+            return ("后台组件已注册，但 macOS 需要你确认。请在“系统设置 › 通用 › 登录项与扩展”中打开 TetherKit 的开关，本页会自动继续。",
+                    "The background component is registered, but macOS needs your approval. Turn on TetherKit in System Settings › General › Login Items & Extensions; this page continues automatically.")
+        case .openLoginItemsSettings:
+            return ("打开登录项设置",
+                    "Open Login Items Settings")
+        case .commandLineToolTitle:
+            return ("命令行工具",
+                    "Command-line tool")
+        case .commandLineToolInstalled:
+            return ("已安装：在终端中运行 tetherkit-cli",
+                    "Installed: run tetherkit-cli in Terminal")
+        case .commandLineToolNotInstalled:
+            return ("未安装。安装后可在任何终端中使用 tetherkit-cli。",
+                    "Not installed. Install it to use tetherkit-cli from any terminal.")
+        case .commandLineToolOccupied:
+            return ("%@ 已被其他程序占用",
+                    "%@ is used by something else")
+        case .installCommandLineTool:
+            return ("安装命令",
+                    "Install Command")
+        case .removeCommandLineTool:
+            return ("移除命令",
+                    "Remove Command")
+        case .needInstallBody:
+            return ("创建虚拟网卡和打开数据链路需要管理员权限。TetherKit 把这部分放在一个独立的后台组件里，App 本身以普通用户身份运行。",
+                    "Creating the virtual interface and opening the data link require administrator privileges. TetherKit keeps that work in a separate background component so the app itself runs as a normal user.")
+        case .installHelperDetail:
+            return ("组件随 App 一起签名，直接从 App 内运行，不会复制到系统目录。macOS 会请你在“登录项”中允许它一次。",
+                    "The component is signed with the app and runs from inside it; nothing is copied into system folders. macOS asks you to allow it once in Login Items.")
+        case .installHelperButton:
+            return ("启用后台组件",
+                    "Enable Background Component")
+        case .installingProgress:
+            return ("正在启用……",
+                    "Enabling…")
+        case .updateHelperDetail:
+            return ("将从当前 App 重新启动后台组件，完成后本页自动恢复。",
+                    "The background component restarts from this copy of the app. This page recovers on its own afterwards.")
+        case .helperVersionMismatchTooltip:
+            return ("正在运行的后台组件仍是 %1$@，而 App 已经是 %2$@。点一下即可从当前 App 重新启动它。",
+                    "The running background component is still %1$@ while the app is %2$@. One click restarts it from this app.")
+        case .helperUpdateWhileRunningWarning:
+            return ("重启后台组件会断开当前连接并销毁虚拟网卡，完成后重新连接即可。",
+                    "Restarting the background component drops the current connection and destroys the virtual interface. Just reconnect afterwards.")
+        case .uninstallExplanation:
+            return ("将停用后台组件并移除 tetherkit-cli 命令。之后随时可以重新启用；把 App 移到废纸篓也会一并移除它。",
+                    "This disables the background component and removes the tetherkit-cli command. You can enable it again at any time; moving the app to the Trash removes it too.")
+        case .updateAvailable:
+            return ("发现新版本 v%@。请从发布页下载新的 DMG，并用它替换“应用程序”中的 TetherKit。",
+                    "Version v%@ is available. Download the new DMG from the release page and replace TetherKit in your Applications folder.")
+        case .uninstallHelperMenuItem:
+            return ("停用后台组件…",
+                    "Disable Background Component…")
+        case .confirmUninstallTitle:
+            return ("停用后台组件？",
+                    "Disable the background component?")
+        case .needInstallTitle:
+            return ("启用 TetherKit 后台组件",
+                    "Enable the TetherKit background component")
+        case .updateHelperButton:
+            return ("重启后台组件",
+                    "Restart Background Component")
+        case .confirmHelperUpdateTitle:
+            return ("重启后台组件？",
+                    "Restart the background component?")
 
         // MARK: 连接状态
 
@@ -443,92 +488,30 @@ extension L10nKey {
             return ("TetherKit 需要管理员权限来创建虚拟网卡、打开数据链路并配置 IP 地址。",
                     "TetherKit needs administrator privileges to create the virtual interface, "
                     + "open the data link and configure IP addresses.")
-        case .authPromptInstall:
-            return ("TetherKit 需要管理员权限来安装特权组件"
-                    + "（复制到 /Library/PrivilegedHelperTools 并注册系统服务）。",
-                    "TetherKit needs administrator privileges to install the privileged helper "
-                    + "(copy it to /Library/PrivilegedHelperTools and register the system "
-                    + "service).")
-        case .authPromptUninstall:
-            return ("TetherKit 需要管理员权限来卸载特权组件"
-                    + "（注销系统服务并删除 /Library 里的组件文件）。",
-                    "TetherKit needs administrator privileges to uninstall the privileged helper "
-                    + "(unregister the system service and delete its files under /Library).")
         case .interfaceNotReadyYet:
             return ("虚拟网卡还没创建，请先连接设备",
                     "The virtual interface does not exist yet -- connect a device first")
-        case .installScriptRanButUnreachable:
-            return ("安装脚本执行完毕，但仍连不上特权组件。",
-                    "The install script finished, but the helper is still unreachable.")
-        case .uninstallScriptRanButStillAlive:
-            return ("卸载脚本执行完毕，但特权组件仍在响应。",
-                    "The uninstall script finished, but the helper is still responding.")
-        case .scriptOutput: return ("%1$@脚本输出：\n%2$@", "%1$@Script output:\n%2$@")
-        case .scriptNoOutput: return ("（无输出）", "(no output)")
 
         // MARK: 主界面
 
         case .menuCheckForUpdates: return ("检查更新…", "Check for Updates…")
         case .alertOperationFailed: return ("操作失败", "Operation failed")
-        case .confirmUninstallTitle: return ("卸载特权组件？", "Uninstall the privileged helper?")
         case .updateCheckTitle: return ("检查更新", "Check for updates")
         case .openReleasePage: return ("前往发布页", "Open the release page")
-        case .copyBrewUpgradeCommand: return ("复制 brew 升级命令", "Copy the brew upgrade command")
         case .updateUpToDate:
             return ("当前已是最新版本（v%@）。", "You are on the latest version (v%@).")
-        case .updateAvailable:
-            return ("发现新版本 v%@。通过 Homebrew 安装的话，"
-                    + "在终端执行 brew upgrade tetherkit；"
-                    + "从源码构建的话，拉取最新代码重新编译即可。",
-                    "Version v%@ is available. If you installed via Homebrew, run "
-                    + "brew upgrade tetherkit in a terminal; if you build from source, pull the "
-                    + "latest code and rebuild.")
         case .updateCheckFailed: return ("无法完成检查：%@", "The check could not be completed: %@")
         case .updateDevBuild:
             return ("这是开发构建（没有版本号），无从比较。",
                     "This is a development build with no version number, so there is nothing to "
                     + "compare against.")
-        case .uninstallExplanation:
-            return ("将注销系统服务并删除 /Library 里的组件文件，之后随时可以重新安装。",
-                    "This unregisters the system service and deletes the helper files under "
-                    + "/Library. You can reinstall it at any time.")
         case .uninstallWhileRunningWarning:
             return ("当前连接会被断开、虚拟网卡销毁。",
                     "The current connection will be dropped and the virtual interface destroyed.")
         case .helperComponentVersion: return ("特权组件 · %@", "Helper · %@")
         case .helperVersionMismatch: return ("特权组件 %1$@ · App %2$@", "Helper %1$@ · app %2$@")
-        case .helperVersionMismatchTooltip:
-            return ("装着的特权组件仍是 %1$@，而 App 已经是 %2$@。真正干活的是组件里的那份库，"
-                    + "不更新的话新版修好的问题在连接里依旧存在。"
-                    + "点一下就用 App 自带的组件重装一遍，需要一次管理员授权。",
-                    "The installed helper is still %1$@ while the app is %2$@. The library inside "
-                    + "the helper is what does the actual work, so anything the new version fixes "
-                    + "stays unfixed until the helper is updated too. One click reinstalls the "
-                    + "helper the app ships with; macOS will ask for an administrator password "
-                    + "once.")
-        case .confirmHelperUpdateTitle: return ("更新特权组件？", "Update the privileged helper?")
-        case .helperUpdateWhileRunningWarning:
-            return ("更新要先注销旧组件，当前连接会被断开、虚拟网卡销毁。装好后重新连接即可。",
-                    "Updating unregisters the old helper first, so the current connection will be "
-                    + "dropped and the virtual interface destroyed. Just reconnect once it is "
-                    + "installed.")
         case .helperUpdateBadge: return ("有新版 %@", "%@ available")
-        case .uninstallHelperMenuItem: return ("卸载特权组件…", "Uninstall the helper…")
         case .checkingHelper: return ("正在检查特权组件……", "Checking the privileged helper…")
-        case .needInstallTitle: return ("需要先安装特权组件", "The privileged helper must be installed")
-        case .needInstallBody:
-            return ("创建虚拟网卡和打开数据链路需要管理员权限。TetherKit 把这部分\n"
-                    + "放在一个独立的后台组件里，App 本身以普通用户身份运行。",
-                    "Creating the virtual interface and opening the data link require\n"
-                    + "administrator privileges. TetherKit keeps that work in a separate\n"
-                    + "background component so the app itself runs as a normal user.")
-        case .installHelperButton: return ("安装特权组件", "Install the helper")
-        case .installHelperDetail:
-            return ("组件会被装到 /Library/PrivilegedHelperTools 并注册为\n"
-                    + "LaunchDaemon。装好后本页自动恢复，不需要重启 App。",
-                    "It is installed to /Library/PrivilegedHelperTools and registered\n"
-                    + "as a LaunchDaemon. This page recovers on its own afterwards --\n"
-                    + "no need to restart the app.")
         case .showConnectFailureDetail:
             return ("查看连接失败的详细原因", "Show why the connection failed")
         case .helperNeedsUpdateTitle: return ("特权组件需要更新", "The privileged helper needs updating")
@@ -537,19 +520,6 @@ extension L10nKey {
                     + "（组件 v%1$@，App 需要 v%2$@）。",
                     "The installed helper predates this app and speaks a different protocol "
                     + "(helper v%1$@, app needs v%2$@).")
-        case .updateHelperButton: return ("更新特权组件", "Update the helper")
-        case .updateHelperDetail:
-            return ("更新会先注销旧版本再装新的，装好后本页自动恢复。",
-                    "Updating unregisters the old version before installing the new one. "
-                    + "This page recovers on its own afterwards.")
-        case .installingProgress: return ("正在安装……", "Installing…")
-        case .authorizationPromptHint:
-            return ("会弹出系统授权框，需要输入一次管理员密码",
-                    "macOS will ask once for an administrator password")
-        case .installViaTerminal: return ("改用终端安装", "Install from the terminal instead")
-        case .installViaTerminalHint:
-            return ("在仓库根目录执行，效果与按钮完全相同。",
-                    "Run this from the repository root; it does exactly what the button does.")
         case .copiedToClipboard: return ("已复制到剪贴板", "Copied to the clipboard")
         case .copyCommand: return ("复制命令", "Copy the command")
         case .sysctlNeedsFixTitle: return ("系统参数需要调整", "System parameters need adjusting")
