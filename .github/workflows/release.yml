@@ -24,6 +24,7 @@ jobs:
   release:
     name: Build and publish ${{ github.ref_name }}
     runs-on: macos-26
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
 

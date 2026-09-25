@@ -30,6 +30,7 @@ jobs:
   native:
     name: C++ · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +76,7 @@ jobs:
   package:
     name: Universal app + DMG
     runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
@@ -109,9 +111,10 @@ jobs:
           for f in "$app/Contents/MacOS/"* "$app/Contents/Frameworks/"*; do
             printf '%-60s %s\n' "${f#dist/}" "$(lipo -archs "$f")"
           done
-          # The daemon must not be accepted as an installer anymore.
-          if "$app/Contents/MacOS/tetherkit-helper" --install 2>/dev/null; then
-            echo "::error::legacy --install mode still present"; exit 1
+          # The daemon refuses to run outside launchd (and the legacy
+          # --install setuid mode is gone): it must exit non-zero, promptly.
+          if perl -e 'alarm 10; exec @ARGV' "$app/Contents/MacOS/tetherkit-helper" --install; then
+            echo "::error::tetherkit-helper ran outside launchd"; exit 1
           fi
           plutil -p "$app/Contents/Library/LaunchDaemons/com.tetherkit.helperd.plist"
 
@@ -130,6 +133,7 @@ jobs:
     name: DMG on Intel
     needs: package
     runs-on: macos-15-intel
+    timeout-minutes: 45
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -157,6 +161,7 @@ jobs:
   tsan:
     name: ThreadSanitizer
     runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       - name: Build libusb
@@ -178,6 +183,7 @@ jobs:
   abi-check:
     name: feth ABI · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

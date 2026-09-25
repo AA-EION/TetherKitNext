@@ -24,6 +24,19 @@ func writeToStandardError(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
 }
 
+// ---- Only as launchd's root daemon ----
+//
+// Run by hand (as a user, or with sudo from a shell) the binary would register
+// no Mach service, hold no session, and block forever in dispatchMain().
+// Refuse clearly instead; this also makes stray invocations such as the old
+// `--install` flag fail fast.
+if geteuid() != 0 || getppid() != 1 {
+    writeToStandardError(
+        "tetherkit-helper is TetherKit's background component and is started by launchd. "
+            + "Enable it from TetherKit.app (Settings › Background Component).")
+    exit(64)  // EX_USAGE
+}
+
 // ---- 日志 ----
 //
 // 打开捕获，让 App 能在界面上看到库内部的日志。stderr 的输出不受影响。
