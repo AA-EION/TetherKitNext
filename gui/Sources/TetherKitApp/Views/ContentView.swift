@@ -91,7 +91,7 @@ struct ContentView: View {
 
     private var mainSplit: some View {
         NavigationSplitView {
-            List(selection: Binding(get: { pane }, set: { pane = $0 ?? .overview })) {
+            List(selection: Binding<Pane?>(get: { pane }, set: { pane = $0 ?? .overview })) {
                 Section {
                     ForEach([Pane.overview, .device, .network, .activity]) { item in
                         sidebarRow(item)

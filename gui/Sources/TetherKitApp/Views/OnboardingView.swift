@@ -142,9 +142,9 @@ struct OnboardingView: View {
     }
 }
 
-private struct StepCard<Actions: View>: View {
-    enum StepState { case pending, current, done }
+private enum StepState { case pending, current, done }
 
+private struct StepCard<Actions: View>: View {
     let number: Int
     let title: String
     let state: StepState
