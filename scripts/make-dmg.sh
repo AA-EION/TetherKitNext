@@ -160,6 +160,9 @@ fi
 sync
 sleep 2
 rm -rf "${mnt}/.fseventsd" "${mnt}/.Trashes"
+# Finder may rewrite the root's FinderInfo while laying out; set the flag again.
+xattr -wx com.apple.FinderInfo \
+  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
 hdiutil detach -quiet "${mnt}" || { sleep 3; hdiutil detach -quiet -force "${mnt}"; }
 mnt=""
 hdiutil convert -quiet "${rw}" -format UDZO -imagekey zlib-level=9 -o "${DMG}"
