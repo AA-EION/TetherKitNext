@@ -190,6 +190,9 @@ jobs:
         run: |
           gh release download -R "$GITHUB_REPOSITORY" --pattern '*.dmg' --dir released \
             || echo "no published DMG"
+      - uses: actions/checkout@v5
+        with:
+          path: src
       - name: Open in Finder and screenshot
         run: |
           mkdir -p shots
@@ -201,14 +204,60 @@ jobs:
             open "$mnt"
             sleep 8
             osascript -e 'tell application "Finder" to get {name, bounds, current view} of front window' || true
+            osascript -e "tell application \"Finder\" to get background picture of icon view options of container window of disk \"$(basename "$mnt")\"" || true
             screencapture -x "shots/$name.png" || true
             osascript -e 'tell application "Finder" to close every window' || true
             hdiutil detach "$mnt" || hdiutil detach -force "$mnt"
             sleep 2
           }
           sw_vers
-          for dmg in built/*.dmg; do shoot "$dmg" "ci-build"; done
+          for dmg in built/*.dmg; do shoot "$dmg" "a-ci-build"; done
           for dmg in released/*.dmg; do [ -f "$dmg" ] && shoot "$dmg" "published-release"; done
+
+          # B: let Finder itself point the window at the background (what
+          # create-dmg and most hand-made DMGs do), starting from our DMG.
+          dmg="$(ls built/*.dmg | head -1)"
+          hdiutil convert "$dmg" -format UDRW -o rw.dmg -quiet
+          hdiutil resize -size 200m rw.dmg || true
+          mnt="$(hdiutil attach -readwrite -noautoopen rw.dmg | awk -F'\t' '/\/Volumes\// {print $NF}')"
+          vol="$(basename "$mnt")"
+          rm -f "$mnt/.DS_Store"
+          mkdir -p "$mnt/.background"
+          cp src/scripts/dmg/background.png "$mnt/.background/background.png"
+          osascript <<APPLESCRIPT || true
+          tell application "Finder"
+            tell disk "$vol"
+              open
+              set current view of container window to icon view
+              set toolbar visible of container window to false
+              set statusbar visible of container window to false
+              set bounds of container window to {200, 140, 860, 540}
+              set opts to icon view options of container window
+              set arrangement of opts to not arranged
+              set icon size of opts to 128
+              set background picture of opts to file ".background:background.png"
+              set position of item "TetherKitNext.app" of container window to {170, 190}
+              set position of item "Applications" of container window to {490, 190}
+              update without registering applications
+              delay 2
+              close
+            end tell
+          end tell
+          APPLESCRIPT
+          sync; sleep 2
+          ls -la "$mnt"
+          hdiutil detach "$mnt" || hdiutil detach -force "$mnt"
+          hdiutil convert rw.dmg -format UDZO -o finder-set.dmg -quiet
+          shoot finder-set.dmg "b-finder-set"
+
+          # C: dmgbuild with a plain PNG instead of the multi-resolution TIFF.
+          mnt="$(hdiutil attach -readonly -noautoopen "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
+          ditto "$mnt/TetherKitNext.app" app/TetherKitNext.app
+          hdiutil detach "$mnt"
+          python3 -m venv venv && venv/bin/pip install --quiet "dmgbuild==1.6.5"
+          venv/bin/dmgbuild -s src/scripts/dmg/settings.py -D app="$PWD/app/TetherKitNext.app" \
+            -D background="$PWD/src/scripts/dmg/background.png" "$vol" png.dmg
+          shoot png.dmg "c-dmgbuild-png"
           ls -l shots
       - uses: actions/upload-artifact@v4
         with:
