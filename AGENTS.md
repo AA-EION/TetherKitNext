@@ -253,6 +253,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 38 | `feat(gui): 连接后自动应用上网方式（默认 DHCP）` | ✅ | 复用连接时的授权令牌，不再弹第二次框；已有地址 / 选「不配置」/ 静态表单不完整时跳过；设置页可关 |
 | 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 | 40 | `fix(capi): 「所有流量走此网卡」改为调整服务顺序` | ✅ | 原实现只 `route change default`：DNS 仍跟随主服务（以太网）、configd 会在下次网络变化时改回路由、托管服务被 SCNetworkSetAddService 追加在末尾。现在 DHCP 模式把托管服务排到 ServiceOrder 第一（= 系统设置「设定服务顺序」），路由与 DNS 一起切到手机；网络页设置持久化到 UserDefaults |
+| 41 | `fix(gui): 同版本号的新构建也能发现后台组件过期` | ✅ | beta.1 与 beta.2 版本号都是 0.2.0：App 只比语义化版本 → 不提示重启，而 daemon 永不空闲退出、替换 .app 也不会重启它 → beta.2 的修复根本没跑。库的构建描述现以 `build <git sha>` 开头，daemon 随版本一并回报，App 比较构建 ID |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 
@@ -610,6 +611,9 @@ TX 就从 4.8 回到了 87 Mbps。
    全局默认路由**和** DNS 解析器；只 `route change` 的话 DNS 仍走原主服务，
    而且 configd 下次网络变化就把路由改回去。同时连着「没有外网的局域网」时
    表现为网页打不开、拔掉网线立刻正常。正确做法是调整服务顺序。
+24. **daemon 不会随 App 更新而重启。** SMAppService 的 daemon 从 App 包内运行，但进程
+   一直活着（没有空闲退出），替换 .app 后跑的仍是内存里的旧二进制。版本比较必须能区分
+   同版本号的不同构建（现在比 `build <git sha>`），否则「修好了却没生效」。
 22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
    libtetherkit；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
 

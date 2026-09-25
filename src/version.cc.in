@@ -12,7 +12,7 @@ std::string_view GetVersionString() noexcept {
 }
 
 std::string_view GetBuildDescription() noexcept {
-  return "@CMAKE_BUILD_TYPE@, @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@, "
+  return "build @TETHERKIT_BUILD_ID_RESOLVED@, @CMAKE_BUILD_TYPE@, @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@, "
          "C++@CMAKE_CXX_STANDARD@, native-arch=@TETHERKIT_NATIVE_ARCH@, "
          "LTO=@TETHERKIT_ENABLE_LTO@, sanitizers=@TETHERKIT_SANITIZER_SUMMARY@";
 }

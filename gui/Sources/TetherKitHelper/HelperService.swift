@@ -35,7 +35,8 @@ final class HelperService: NSObject, TetherKitHelperProtocol, @unchecked Sendabl
 
     func helperVersion(reply: @escaping @Sendable (String) -> Void) {
         // 带上 XPC 接口修订号，让 App 能发现「helper 是升级前的旧版本」。
-        reply(HelperConstants.encodeVersion(TetherKitLibrary.versionInfo.version))
+        let info = TetherKitLibrary.versionInfo
+        reply(HelperConstants.encodeVersion(info.version, build: info.build))
     }
 
     func environment(reply: @escaping @Sendable (Data?, String?) -> Void) {

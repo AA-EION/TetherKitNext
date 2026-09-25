@@ -24,6 +24,29 @@ target_link_libraries(tetherkit_base INTERFACE tetherkit_warnings tetherkit_sani
 # ------------------------------------------------------------------------------
 # 版本号：从模板生成，避免版本变更导致全量重编译
 # ------------------------------------------------------------------------------
+# Build identity. The marketing version alone cannot tell two builds apart
+# (every 0.2.0 prerelease reports "0.2.0"), so the app could not notice that
+# the background daemon was still running an older 0.2.0 binary. The build ID
+# makes each commit distinguishable; the app compares it with the daemon's.
+# Resolved at configure time (release builds always configure fresh);
+# override with -DTETHERKIT_BUILD_ID=... when building outside git.
+set(TETHERKIT_BUILD_ID "" CACHE STRING "Build identifier embedded in the version info")
+set(_tk_build_id "${TETHERKIT_BUILD_ID}")
+if(NOT _tk_build_id)
+  find_package(Git QUIET)
+  if(GIT_FOUND)
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" rev-parse --short=10 HEAD
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      OUTPUT_VARIABLE _tk_build_id
+      OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  endif()
+  if(NOT _tk_build_id)
+    set(_tk_build_id "unknown")
+  endif()
+endif()
+set(TETHERKIT_BUILD_ID_RESOLVED "${_tk_build_id}")
+
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/version.cc.in" "${CMAKE_CURRENT_BINARY_DIR}/version.cc"
                @ONLY)
 

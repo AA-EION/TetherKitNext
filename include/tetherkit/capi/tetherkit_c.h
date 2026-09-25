@@ -140,7 +140,9 @@ typedef struct tk_version_info {
   uint16_t patch;
   /// 形如 "TetherKit 0.1.1 (C++23, macOS 13.3+)"。
   char text[64];
-  /// 构建配置描述，形如 "RelWithDebInfo, AppleClang 21.0.0, ..."。
+  /// 构建配置描述，形如 "build 1a2b3c4d5e, RelWithDebInfo, AppleClang 21.0.0, ..."。
+  /// The leading build ID (git commit) distinguishes builds that share a
+  /// version number; the app compares it with the background daemon's.
   char build[192];
   /// libusb 版本串。
   char libusb[64];

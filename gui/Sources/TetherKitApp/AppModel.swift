@@ -319,7 +319,8 @@ final class AppModel {
 
     private func refresh() async {
         do {
-            let (revision, version) = HelperConstants.decodeVersion(try await client.helperVersion())
+            let (revision, version, build) =
+                HelperConstants.decodeVersion(try await client.helperVersion())
             guard revision == HelperConstants.protocolRevision else {
                 helperAvailability = .outdated(installed: revision,
                                                expected: HelperConstants.protocolRevision)
@@ -330,7 +331,7 @@ final class AppModel {
                 return
             }
             helperAvailability = .available(version: version)
-            helperVersionMismatch = Self.versionMismatch(installed: version)
+            helperVersionMismatch = Self.versionMismatch(installed: version, build: build)
             helperNeedsApproval = false
             commandLineToolState = .current
         } catch {
@@ -623,11 +624,26 @@ final class AppModel {
         HelperConstants.semanticVersion(of: TetherKitLibrary.versionInfo.version)
 
     /// 装着的组件和 App 自带的是不是同一版。一致时返回 nil。
-    private static func versionMismatch(installed: String) -> HelperVersionMismatch? {
+    ///
+    /// Also compares build IDs: two builds can share a version number (every
+    /// 0.2.0 prerelease), and the daemon keeps running the old binary after the
+    /// app is replaced until it is restarted. Without this, a same-version
+    /// update never offered the restart and the new daemon code never ran.
+    private static func versionMismatch(installed: String, build: String) -> HelperVersionMismatch? {
         let installedVersion = HelperConstants.semanticVersion(of: installed)
-        guard installedVersion != bundledVersion else { return nil }
+        let installedBuild = HelperConstants.buildID(of: build)
+        let differentBuild = installedBuild != nil && bundledBuild != nil
+            && installedBuild != bundledBuild
+        guard installedVersion != bundledVersion || differentBuild else { return nil }
+        if installedVersion == bundledVersion, let installedBuild, let bundledBuild {
+            return HelperVersionMismatch(installed: "\(installedVersion) (\(installedBuild))",
+                                         expected: "\(bundledVersion) (\(bundledBuild))")
+        }
         return HelperVersionMismatch(installed: installedVersion, expected: bundledVersion)
     }
+
+    private static let bundledBuild =
+        HelperConstants.buildID(of: TetherKitLibrary.versionInfo.build)
 
     /// Registers the daemon with SMAppService (onboarding card), or restarts
     /// it from this app bundle when its version differs ("Update helper").

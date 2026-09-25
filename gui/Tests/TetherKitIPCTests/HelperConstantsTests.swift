@@ -16,7 +16,7 @@ final class HelperConstantsTests: XCTestCase {
 
     func testEncodeDecodeRoundTrip() {
         let encoded = HelperConstants.encodeVersion("TetherKit 0.1.4 (C++23, macOS 13.3+)")
-        let (revision, version) = HelperConstants.decodeVersion(encoded)
+        let (revision, version, _) = HelperConstants.decodeVersion(encoded)
 
         XCTAssertEqual(revision, HelperConstants.protocolRevision)
         XCTAssertEqual(version, "TetherKit 0.1.4 (C++23, macOS 13.3+)")
@@ -24,13 +24,43 @@ final class HelperConstantsTests: XCTestCase {
 
     /// 旧组件回的串里没有分隔符 —— 这正是要识别出来的那种组件，修订号记 0。
     func testDecodeLegacyVersionWithoutRevision() {
-        let (revision, version) =
+        let (revision, version, _) =
             HelperConstants.decodeVersion("TetherKit 0.1.2 (C++23, macOS 13.3+)")
 
         XCTAssertEqual(revision, 0)
         XCTAssertEqual(version, "TetherKit 0.1.2 (C++23, macOS 13.3+)")
         XCTAssertNotEqual(revision, HelperConstants.protocolRevision,
                           "0 必须与任何真实修订号都不同，否则旧组件会被当成匹配的")
+    }
+
+    // MARK: - Build identity
+
+    /// Two builds can share a version number; the build ID is what tells the
+    /// app that the daemon is still running an older binary.
+    func testEncodeDecodeCarriesBuildDescription() {
+        let build = "build 1a2b3c4d5e, Release, AppleClang 21.0.0, C++23"
+        let encoded = HelperConstants.encodeVersion("TetherKit 0.2.0 (C++23, macOS 13.3+)",
+                                                    build: build)
+        let (revision, version, decodedBuild) = HelperConstants.decodeVersion(encoded)
+        XCTAssertEqual(revision, HelperConstants.protocolRevision)
+        XCTAssertEqual(version, "TetherKit 0.2.0 (C++23, macOS 13.3+)")
+        XCTAssertEqual(decodedBuild, build)
+        XCTAssertEqual(HelperConstants.buildID(of: decodedBuild), "1a2b3c4d5e")
+    }
+
+    /// Daemons from before the build field answer "revision|version".
+    func testDecodeWithoutBuildField() {
+        let (revision, version, build) =
+            HelperConstants.decodeVersion("4|TetherKit 0.2.0 (C++23, macOS 13.3+)")
+        XCTAssertEqual(revision, 4)
+        XCTAssertEqual(version, "TetherKit 0.2.0 (C++23, macOS 13.3+)")
+        XCTAssertEqual(build, "")
+        XCTAssertNil(HelperConstants.buildID(of: build))
+    }
+
+    func testBuildIDRejectsDescriptionsWithoutPrefix() {
+        XCTAssertNil(HelperConstants.buildID(of: "Release, AppleClang 21.0.0"))
+        XCTAssertNil(HelperConstants.buildID(of: "build , Release"))
     }
 
     // MARK: - 版本号提取

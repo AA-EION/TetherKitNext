@@ -71,17 +71,35 @@ public enum HelperConstants {
     /// 刻意复用现成的 `helperVersion` 方法而不是新增一个 —— 新增方法本身就是
     /// 一次协议变更，旧 helper 根本没有它，那就又回到了「对不上还查不出来」。
     /// 用旧 helper 也一定会应答的这个方法，才能可靠地识别出旧 helper。
-    public static func encodeVersion(_ version: String) -> String {
-        "\(protocolRevision)|\(version)"
+    ///
+    /// Format: `revision|version|build`. The trailing build description (which
+    /// starts with the git build ID) was added so builds that share a version
+    /// number can be told apart; older daemons omit it.
+    public static func encodeVersion(_ version: String, build: String = "") -> String {
+        build.isEmpty ? "\(protocolRevision)|\(version)" : "\(protocolRevision)|\(version)|\(build)"
     }
 
     /// 解析版本串。旧 helper 返回的串里没有分隔符，此时修订号记作 0。
-    public static func decodeVersion(_ encoded: String) -> (revision: Int, version: String) {
+    public static func decodeVersion(_ encoded: String)
+        -> (revision: Int, version: String, build: String) {
         guard let separator = encoded.firstIndex(of: "|"),
               let revision = Int(encoded[encoded.startIndex..<separator]) else {
-            return (0, encoded)
+            return (0, encoded, "")
         }
-        return (revision, String(encoded[encoded.index(after: separator)...]))
+        let rest = encoded[encoded.index(after: separator)...]
+        guard let second = rest.firstIndex(of: "|") else {
+            return (revision, String(rest), "")
+        }
+        return (revision, String(rest[rest.startIndex..<second]),
+                String(rest[rest.index(after: second)...]))
+    }
+
+    /// The build ID (`"1a2b3c4d5e"`) from a library build description
+    /// (`"build 1a2b3c4d5e, Release, …"`), or nil when absent.
+    public static func buildID(of description: String) -> String? {
+        guard description.hasPrefix("build ") else { return nil }
+        let id = description.dropFirst("build ".count).prefix { $0 != "," }
+        return id.isEmpty ? nil : String(id)
     }
 
     /// 从库的版本串里取出语义化版本号：
