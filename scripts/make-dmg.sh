@@ -108,7 +108,6 @@ ln -s /Applications "${stage}/Applications"
 # One TIFF holding the 1x and 2x pictures, so Retina screens get the sharp one.
 tiffutil -cathidpicheck "${BG_DIR}/background.png" "${BG_DIR}/background@2x.png" \
   -out "${stage}/.background/background.tiff" >/dev/null
-cp "${APP}/Contents/Resources/AppIcon.icns" "${stage}/.VolumeIcon.icns"
 
 if hdiutil info | grep -q "/Volumes/${VOLNAME}\$"; then
   die "a volume named '${VOLNAME}' is already mounted; eject it first"
@@ -120,12 +119,19 @@ mnt="$(hdiutil attach -readwrite -noverify -noautoopen "${rw}" \
   | awk -F'\t' '/\/Volumes\// {print $NF}')"
 [[ "${mnt}" == "/Volumes/${VOLNAME}" ]] || die "unexpected mount point: ${mnt}"
 
-# Custom volume icon: the file alone is not enough, the volume root needs the
+# Custom volume icon. Copied onto the mounted volume rather than staged:
+# `hdiutil create -srcfolder` leaves .VolumeIcon.icns out of the image (the
+# built image had no icon file at all). The file alone is not enough; the volume root also needs the
 # "has custom icon" Finder flag (kHasCustomIcon, 0x0400 in the Finder flags at
 # byte 8 of FinderInfo). Written directly because SetFile is no longer on the
 # PATH of current Xcode installs.
-xattr -wx com.apple.FinderInfo \
-  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
+set_volume_icon() {
+  cp "${APP}/Contents/Resources/AppIcon.icns" "${mnt}/.VolumeIcon.icns"
+  xattr -wx com.apple.FinderInfo \
+    "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
+}
+set_volume_icon
+[[ -f "${mnt}/.VolumeIcon.icns" ]] || die "could not copy the volume icon"
 
 # Centres match the wells drawn in scripts/dmg/background.svg (660 × 400).
 if [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" != "1" ]] && osascript <<APPLESCRIPT
@@ -160,12 +166,26 @@ fi
 sync
 sleep 2
 rm -rf "${mnt}/.fseventsd" "${mnt}/.Trashes"
-# Finder may rewrite the root's FinderInfo while laying out; set the flag again.
-xattr -wx com.apple.FinderInfo \
-  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
+# The icon file did not survive to the finished image even though the copy
+# above succeeded, and Finder may rewrite the root's FinderInfo while laying
+# out: put both back after Finder is done, right before detaching.
+[[ -f "${mnt}/.VolumeIcon.icns" ]] || log "Volume icon was removed during layout; copying it again"
+set_volume_icon
+ls -la "${mnt}"
 hdiutil detach -quiet "${mnt}" || { sleep 3; hdiutil detach -quiet -force "${mnt}"; }
 mnt=""
 hdiutil convert -quiet "${rw}" -format UDZO -imagekey zlib-level=9 -o "${DMG}"
+
+# Check the finished image, since the icon has gone missing here before.
+check="$(hdiutil attach -readonly -nobrowse -noverify -noautoopen -mountrandom "${work}" "${DMG}" \
+  | awk -F'\t' '/Apple_HFS/ {print $NF}' | sed 's/[[:space:]]*$//')"
+if [[ -n "${check}" && -f "${check}/.VolumeIcon.icns" ]]; then
+  log "Volume icon present in the finished image"
+else
+  echo "::warning::the finished DMG has no .VolumeIcon.icns (mounted at '${check}')"
+  [[ -n "${check}" ]] && ls -la "${check}"
+fi
+[[ -n "${check}" ]] && hdiutil detach -quiet "${check}"
 
 if [[ -n "${SIGN_IDENTITY}" ]]; then
   codesign --force --sign "${SIGN_IDENTITY}" --timestamp "${DMG}"

@@ -117,6 +117,8 @@ final class AppModel {
     /// The daemon is registered but the user has not approved it in System
     /// Settings › Login Items yet.
     private(set) var helperNeedsApproval = false
+    /// `installHelper()` is restarting the daemon; it is briefly unreachable.
+    private var isRestartingHelper = false
     /// State of the `/usr/local/bin/tetherkitnext-cli` link.
     private(set) var commandLineToolState: CommandLineToolState = .current
 
@@ -339,6 +341,9 @@ final class AppModel {
             helperNeedsApproval = false
             commandLineToolState = .current
         } catch {
+            // While the daemon restarts it is briefly unreachable. Keep what we
+            // had instead of flashing the setup steps as if it were not installed.
+            if isRestartingHelper { return }
             helperAvailability = .missing(reason: error.localizedDescription)
             helperVersionMismatch = nil
             helperNeedsApproval = HelperInstaller.needsApproval
@@ -660,27 +665,38 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
+        let restarting = helperAvailability.isAvailable
+            || HelperInstaller.status == .enabled
+        isRestartingHelper = restarting
+        defer { isRestartingHelper = false }
         do {
-            if helperAvailability.isAvailable || HelperInstaller.status == .enabled {
+            if restarting {
                 try await HelperInstaller.reregister()
             } else {
                 try HelperInstaller.register()
             }
         } catch {
+            isRestartingHelper = false
+            await refresh()
             alertMessage = error.localizedDescription
             return
         }
 
         helperNeedsApproval = HelperInstaller.needsApproval
         if helperNeedsApproval {
+            isRestartingHelper = false
+            await refresh()
             HelperInstaller.openApprovalSettings()
             return
         }
-        for _ in 0..<10 {
+        // launchd starts the daemon on the first connection; give it time.
+        for _ in 0..<20 {
             await refresh()
             if helperAvailability.isAvailable, helperVersionMismatch == nil { return }
             try? await Task.sleep(for: .milliseconds(500))
         }
+        isRestartingHelper = false
+        await refresh()
     }
 
     /// Unregisters the daemon. launchd sends it SIGTERM, which stops a running

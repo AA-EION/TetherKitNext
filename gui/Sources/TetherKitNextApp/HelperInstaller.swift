@@ -72,9 +72,32 @@ enum HelperInstaller {
 
     /// Restarts the daemon from the current app bundle, e.g. after the app was
     /// replaced by a newer version while the old daemon kept running.
+    ///
+    /// `unregister()` returns before launchd has finished removing the job,
+    /// and a `register()` issued in that window fails with "Operation not
+    /// permitted" and leaves the daemon unregistered: the first click on
+    /// Restart failed and the app fell back to the setup steps, while a second
+    /// click, a moment later, worked. So wait for the removal to show in the
+    /// status, and retry registering for a few seconds.
     static func reregister() async throws {
+        if let problem = locationProblem { throw problem }
         try? await service.unregister()
-        try register()
+        for _ in 0..<20 where status == .enabled {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        var lastError: Error?
+        for attempt in 0..<8 {
+            if attempt > 0 {
+                try? await Task.sleep(for: .milliseconds(500 * attempt))
+            }
+            do {
+                try register()
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? Failure.registrationFailed("")
     }
 
     static func unregister() async throws {

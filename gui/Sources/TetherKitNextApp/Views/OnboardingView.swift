@@ -56,9 +56,9 @@ struct OnboardingView: View {
                 Text(L(.checkingHelper)).foregroundStyle(.secondary)
             }
             .padding(Design.Spacing.large)
-        case .outdated(let installed, let expected):
+        case .outdated:
             StepCard(number: 1, title: L(.helperNeedsUpdateTitle), state: .current,
-                     detail: L(.helperNeedsUpdateBody, String(installed), String(expected))) {
+                     detail: L10n.text(.helperNeedsUpdateBody)) {
                 primaryButton(L(.updateHelperButton)) { await model.installHelper() }
             }
         case .missing(let reason):

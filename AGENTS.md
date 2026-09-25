@@ -260,6 +260,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 41 | `fix(gui): 同版本号的新构建也能发现后台组件过期` | ✅ | beta.1 与 beta.2 版本号都是 0.2.0：App 只比语义化版本 → 不提示重启，而 daemon 永不空闲退出、替换 .app 也不会重启它 → beta.2 的修复根本没跑。库的构建描述现以 `build <git sha>` 开头，daemon 随版本一并回报，App 比较构建 ID |
 | 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 窗口布局由 Finder 经 AppleScript 写入（最初用 dmgbuild，背景图在 macOS 15/26 上不显示，见第 7 节第 26 条），背景图 `scripts/dmg/`。厂商网站（`Vendor.website`）出现在「关于」面板（替换了标准 appInfo 菜单项，带 credits 链接）、设置 › 关于、首次设置页 |
 | 43 | `feat(gui): 特权操作改用 Touch ID 确认`（1.1.0） | ✅ | Developer ID 构建：App 用 LAContext（Touch ID / 手表 / 登录密码）确认后发**空授权**；helper 仅在连接已钉签名且调用者属于 admin 组时放行，否则 App 退回管理员密码框。XPC 协议号 4 → 5。上游「Touch ID 走不通」的结论只对 AuthorizationCopyRights 成立，见 GUI-ARCHITECTURE 4.5。CI 新增 DMG 窗口截图任务（dmg-look） |
+| 44 | `fix(gui): 重启后台组件不再第一次失败`（1.1.1） | ✅ | `reregister` 原为 unregister 后立即 register：launchd 尚未移除旧作业，register 报 "Operation not permitted" 并使 daemon 处于未注册，界面跳回安装引导；第二次点击才成功。现在等状态离开 `.enabled` 并重试 register（约 14 秒）；重启期间 `refresh()` 连不上不再降级为 `.missing`。协议不一致卡片改为「重启以完成更新」，不再显示协议号（用户读成「没装」） |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 
@@ -628,6 +629,9 @@ TX 就从 4.8 回到了 87 Mbps。
    对照实验（dmg-look）证实：同样的内容改由 **Finder 自己**通过 AppleScript 设置背景就正常显示。
    所以 `make-dmg.sh` 改为在临时读写镜像上用 Finder 布局。另一个用户侧原因：若 Finder 把磁盘
    **以标签页打开**（「偏好标签页」/「在标签页中打开文件夹」），任何 DMG 的布局都不会生效。
+27. **SMAppService 的 unregister 返回 ≠ launchd 已移除作业。** 紧接着 register 会报
+   "Operation not permitted"，而且 daemon 就此处于未注册（不是「待批准」）。重启 daemon
+   一律走 `HelperInstaller.reregister()`（等状态 + 重试），不要自己拼 unregister/register。
 22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
    libtetherkitnext；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
 
