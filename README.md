@@ -122,7 +122,10 @@ sidebar:
 | Activity | Live log from the driver, with filtering and copy |
 | Settings | Background component, command-line tool, language, menu bar, launch at login, updates |
 
-**Connect / Disconnect** sits in the toolbar on every page (⌘↩) and in the menu bar panel.
+**Connect / Disconnect** sits in the toolbar on every page (⌘↩) and in the menu bar panel. Connect
+also brings the network up: as soon as the interface exists, the mode chosen on the Network
+page (DHCP by default) is applied automatically, so internet works with one click (can be
+turned off in Settings).
 
 The app runs as a **normal user**. Anything that needs root (creating the virtual
 interface, opening BPF, configuring IP) is done by `tetherkit-helper`, a background

@@ -163,6 +163,8 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case settingsAboutSection
     case projectWebsite
     case showLicenses
+    case autoConfigureNetwork
+    case autoConfigureNetworkHelp
 
     // MARK: - 连接状态（DesignSystem.swift）
 
@@ -585,6 +587,12 @@ extension L10nKey {
         case .showLicenses:
             return ("查看许可证",
                     "Show Licenses")
+        case .autoConfigureNetwork:
+            return ("连接后自动配置网络",
+                    "Configure the network automatically on connect")
+        case .autoConfigureNetworkHelp:
+            return ("连接成功后立即应用“网络”页选择的方式（默认自动 DHCP），无需再点“应用”。",
+                    "Applies the mode chosen on the Network page (DHCP by default) right after connecting, so internet works without another click.")
 
         // MARK: 连接状态
 

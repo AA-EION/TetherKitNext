@@ -21,6 +21,7 @@ struct SettingsPage: View {
 
     @AppStorage(PreferenceKey.menuBarShowsSpeed) private var menuBarShowsSpeed = true
     @AppStorage(PreferenceKey.updateCheckDisabled) private var updateCheckDisabled = false
+    @AppStorage(AppModel.autoConfigureNetworkKey) private var autoConfigureNetwork = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -119,6 +120,10 @@ struct SettingsPage: View {
     private var generalSection: some View {
         Section(L(.settingsGeneralSection)) {
             LanguagePicker(model: model)
+            Toggle(isOn: $autoConfigureNetwork) {
+                Text(L(.autoConfigureNetwork))
+                Text(L(.autoConfigureNetworkHelp))
+            }
             Toggle(L(.menuBarShowSpeed), isOn: $menuBarShowsSpeed)
             Toggle(L(.launchAtLogin), isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, enabled in

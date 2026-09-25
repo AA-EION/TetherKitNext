@@ -457,10 +457,58 @@ final class AppModel {
             configuration.deviceAddress = device.deviceAddress
         }
 
-        await authorized { [self] authorization in
+        let started = await authorized { [self] authorization in
             throughputHistory.removeAll()
             try await client.startSession(authorization: authorization,
                                           configuration: configuration)
+        }
+        if started, UserDefaults.standard.object(forKey: Self.autoConfigureNetworkKey) as? Bool
+            ?? true {
+            await configureNetworkAfterConnect()
+        }
+    }
+
+    /// Defaults key for "configure the network automatically on connect".
+    static let autoConfigureNetworkKey = "autoConfigureNetworkOnConnect"
+
+    /// One-click internet: once the virtual interface exists, apply the
+    /// addressing mode chosen on the Network page — DHCP unless the user set
+    /// up something else — so Connect alone brings the tethered link up.
+    ///
+    /// Runs inside startSession's busy window and reuses the authorization
+    /// token Connect just obtained, so there is no second password prompt.
+    /// Skipped when the mode is "don't configure", when a static form is
+    /// incomplete, or when the interface already has an address (e.g. a
+    /// persistent network service picked it up by itself).
+    private func configureNetworkAfterConnect() async {
+        guard networkConfiguration.mode != .none,
+              NetworkValidator.validationMessage(for: networkConfiguration) == nil else { return }
+
+        // The session reaches running (and names its interface) only after the
+        // RNDIS handshake and feth creation; poll for that, bounded.
+        var interface = ""
+        for _ in 0..<60 {
+            guard let fresh = try? await client.sessionStatus() else { return }
+            if fresh.runState == .failed || fresh.runState == .stopped { return }
+            if fresh.runState == .running, !fresh.systemInterface.isEmpty {
+                interface = fresh.systemInterface
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+        guard !interface.isEmpty else { return }
+
+        if let current = try? await client.queryNetwork(interface: interface),
+           current.hasAddress {
+            networkState = current
+            return
+        }
+
+        let configuration = networkConfiguration
+        await authorized { [self] authorization in
+            try await client.applyNetwork(authorization: authorization, interface: interface,
+                                          configuration: configuration)
+            networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
         }
     }
 
@@ -727,8 +775,10 @@ final class AppModel {
     ///
     /// 用户取消时**不**弹错误提示 —— 取消是正常操作，再弹一个「已取消」的框
     /// 只会烦人。
+    /// Returns whether `body` ran to completion.
+    @discardableResult
     private func authorized(prompt: String = L(.authPromptSession),
-                            _ body: @escaping (Data) async throws -> Void) async {
+                            _ body: @escaping (Data) async throws -> Void) async -> Bool {
         // 第一趟：有缓存就直接用，不打扰用户。
         if let cached = cachedAuthorization {
             // withExtendedLifetime 不能接 async 闭包，所以用 defer 把令牌钉到
@@ -737,13 +787,13 @@ final class AppModel {
             defer { withExtendedLifetime(cached) {} }
             do {
                 try await body(cached.externalForm)
-                return
+                return true
             } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
                 // 凭据过期了。丢掉缓存，往下走「重新授权 + 重试」。
                 cachedAuthorization = nil
             } catch {
                 alertMessage = error.localizedDescription
-                return
+                return false
             }
         }
 
@@ -753,10 +803,12 @@ final class AppModel {
             defer { withExtendedLifetime(token) {} }
             cachedAuthorization = token
             try await body(token.externalForm)
+            return true
         } catch AuthorizationBroker.Failure.userCancelled {
-            return
+            return false
         } catch {
             alertMessage = error.localizedDescription
+            return false
         }
     }
 }
