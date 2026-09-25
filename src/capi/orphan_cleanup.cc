@@ -11,7 +11,11 @@
 // ★ 为什么不是「启动时销毁所有 feth」★
 //   feth 是公共设施，别的程序（或用户手工 ifconfig）也可能在用。只销毁我们
 //   自己登记过的，才不会误伤。
+#include <signal.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <charconv>
 
 #include <cstddef>
 #include <cstdio>
@@ -19,6 +23,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "capi_support.h"
@@ -50,11 +55,19 @@ std::mutex& RegistryMutex() {
   return mutex;
 }
 
-[[nodiscard]] std::vector<std::string> ReadRegistry() {
-  std::vector<std::string> names;
+/// One registry line: interface name plus the PID of the process that created
+/// it. Lines written by older versions carry no PID and parse as pid 0
+/// ("owner unknown"), which cleanup treats as an orphan — the old behaviour.
+struct RegistryEntry {
+  std::string name;
+  ::pid_t owner = 0;
+};
+
+[[nodiscard]] std::vector<RegistryEntry> ReadRegistry() {
+  std::vector<RegistryEntry> entries;
   std::ifstream input{kRegistryPath};
   if (!input) {
-    return names;
+    return entries;
   }
   std::string line;
   while (std::getline(input, line)) {
@@ -62,16 +75,28 @@ std::mutex& RegistryMutex() {
     while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
       line.pop_back();
     }
-    if (IsValidFethName(line)) {
-      names.push_back(line);
+    RegistryEntry entry;
+    const std::size_t space = line.find(' ');
+    entry.name = line.substr(0, space);
+    if (space != std::string::npos) {
+      const char* first = line.data() + space + 1;
+      const char* last = line.data() + line.size();
+      int pid = 0;
+      if (const auto [ptr, ec] = std::from_chars(first, last, pid);
+          ec == std::errc{} && ptr == last && pid > 0) {
+        entry.owner = pid;
+      }
+    }
+    if (IsValidFethName(entry.name)) {
+      entries.push_back(std::move(entry));
     }
   }
-  return names;
+  return entries;
 }
 
-void WriteRegistry(const std::vector<std::string>& names) noexcept {
+void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
   // 空列表就把文件删掉，省得留一个空文件让人以为还有残留。
-  if (names.empty()) {
+  if (entries.empty()) {
     ::unlink(kRegistryPath);
     return;
   }
@@ -79,9 +104,24 @@ void WriteRegistry(const std::vector<std::string>& names) noexcept {
   if (!output) {
     return;
   }
-  for (const std::string& name : names) {
-    output << name << '\n';
+  for (const RegistryEntry& entry : entries) {
+    output << entry.name << ' ' << entry.owner << '\n';
   }
+}
+
+/// Whether `pid` is a live process other than ourselves.
+///
+/// Cleanup must never destroy interfaces that belong to a *running* session in
+/// another process (e.g. the legacy LaunchDaemon still alive while the new
+/// SMAppService daemon starts, or two helper builds side by side). Before the
+/// registry recorded owners, the second process's startup cleanup would tear
+/// down the first one's live feth pair. PID reuse can only make us keep an
+/// entry we could have removed — the safe direction.
+[[nodiscard]] bool IsOtherLiveProcess(::pid_t pid) noexcept {
+  if (pid <= 0 || pid == ::getpid()) {
+    return false;
+  }
+  return ::kill(pid, 0) == 0 || errno == EPERM;
 }
 
 /// 安装给 net::SetInterfaceRegistry 的回调。
@@ -92,19 +132,19 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
   // 整个回调必须 noexcept —— 销毁路径可能在析构里。fstream 默认不抛异常
   // （没有 exceptions() 设置），所以这里只要不自己 throw 就是安全的。
   const std::lock_guard<std::mutex> guard(RegistryMutex());
-  std::vector<std::string> names = ReadRegistry();
+  std::vector<RegistryEntry> entries = ReadRegistry();
 
   if (created) {
-    for (const std::string& existing : names) {
-      if (existing == name) {
+    for (const RegistryEntry& existing : entries) {
+      if (existing.name == name) {
         return;
       }
     }
-    names.emplace_back(name);
+    entries.push_back(RegistryEntry{.name = std::string{name}, .owner = ::getpid()});
   } else {
-    std::erase(names, std::string{name});
+    std::erase_if(entries, [name](const RegistryEntry& entry) { return entry.name == name; });
   }
-  WriteRegistry(names);
+  WriteRegistry(entries);
 }
 
 }  // namespace
@@ -130,31 +170,38 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
   // ⚠️ 销毁循环里**绝不能**持有 RegistryMutex：DestroyInterfaceByName 成功后会
   // 触发登记回调，而回调要拿同一把锁 —— std::mutex 不可重入，持着进去就是当场
   // 自等死锁。所以这里把「读」「销毁」「收尾」拆成三段，锁只在头尾两段持有。
-  std::vector<std::string> names;
+  std::vector<RegistryEntry> entries;
   {
     const std::lock_guard<std::mutex> guard(RegistryMutex());
-    names = ReadRegistry();
+    entries = ReadRegistry();
   }
-  if (names.empty()) {
+  if (entries.empty()) {
     return TK_OK;
   }
 
   std::size_t removed = 0;
-  for (const std::string& name : names) {
+  std::vector<RegistryEntry> still_owned;
+  for (const RegistryEntry& entry : entries) {
+    if (IsOtherLiveProcess(entry.owner)) {
+      // Belongs to a session that is still running elsewhere — not an orphan.
+      still_owned.push_back(entry);
+      continue;
+    }
     // 销毁失败最常见的原因是接口已经不存在了（比如系统重启过），那正是我们
     // 想要的结果。真正的失败只记日志，不阻断其余条目。
-    if (const auto status = tetherkit::net::DestroyInterfaceByName(name); status) {
+    if (const auto status = tetherkit::net::DestroyInterfaceByName(entry.name); status) {
       ++removed;
       continue;
     }
-    TETHERKIT_DEBUG_TR(Msg::kCapiOrphanAlreadyGone, name);
+    TETHERKIT_DEBUG_TR(Msg::kCapiOrphanAlreadyGone, entry.name);
   }
 
   // 收尾：能销毁的已经由回调逐行删掉了，剩下的是「本来就不在内核里」的条目，
-  // 留着只会让下次启动重复尝试，一并清空。
+  // 留着只会让下次启动重复尝试，一并清空 —— but keep entries that are still
+  // owned by a live process.
   {
     const std::lock_guard<std::mutex> guard(RegistryMutex());
-    WriteRegistry({});
+    WriteRegistry(still_owned);
   }
 
   if (out_removed != nullptr) {
