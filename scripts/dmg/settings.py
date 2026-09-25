@@ -16,7 +16,10 @@ filesystem = "HFS+"
 
 files = [app]
 symlinks = {"Applications": "/Applications"}
-hide_extensions = [app_name]
+# No hide_extensions: dmgbuild implements it by setting com.apple.FinderInfo on
+# the .app bundle, which then fails `codesign --verify --strict` ("resource
+# fork, Finder information, or similar detritus not allowed") once the app is
+# copied out. Finder hides the .app extension by default anyway.
 
 # The volume icon: the app icon, so the mounted disk is recognisable.
 icon = defines.get("icon")  # noqa: F821
