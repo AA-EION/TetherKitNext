@@ -1,0 +1,10 @@
+# libtetherkitnext.dylib 的导出符号白名单（-exported_symbols_list）。
+#
+# 只导出 C ABI。C++ 侧的符号（tetherkitnext::* 的重整名、libusb 的静态副本）一律
+# 隐藏，理由有二：
+#   1. 宿主进程里可能已经加载了别的 libusb，导出重名符号会让两者互相污染；
+#   2. C++ 符号带 ABI 指纹，一旦泄漏出去就等于承诺了它的稳定性，而我们只想
+#      承诺 tetherkitnext_c.h 这一层。
+#
+# 前导下划线是 Mach-O 的 C 符号命名约定（C 的 tk_version → _tk_version）。
+_tk_*

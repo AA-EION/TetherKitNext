@@ -1,9 +1,9 @@
 # CompilerWarnings.cmake —— 集中管理警告选项
 #
-# 提供 INTERFACE 目标 tetherkit_warnings，所有本项目自己的目标都 link 它；
+# 提供 INTERFACE 目标 tetherkitnext_warnings，所有本项目自己的目标都 link 它；
 # 第三方代码（third_party/）不 link，避免噪声。
 
-add_library(tetherkit_warnings INTERFACE)
+add_library(tetherkitnext_warnings INTERFACE)
 
 set(_tk_warnings
     -Wall
@@ -28,8 +28,8 @@ set(_tk_warnings
     # 但 -Wpadded 噪声过大，因此不开，改用 static_assert(sizeof(...)) 校验。
 )
 
-target_compile_options(tetherkit_warnings INTERFACE ${_tk_warnings})
+target_compile_options(tetherkitnext_warnings INTERFACE ${_tk_warnings})
 
-if(TETHERKIT_WARNINGS_AS_ERRORS)
-  target_compile_options(tetherkit_warnings INTERFACE -Werror)
+if(TETHERKITNEXT_WARNINGS_AS_ERRORS)
+  target_compile_options(tetherkitnext_warnings INTERFACE -Werror)
 endif()

@@ -7,17 +7,17 @@
 
 #include <doctest.h>
 
-#include "tetherkit/common/byte_order.h"
+#include "tetherkitnext/common/byte_order.h"
 
-using tetherkit::AlignUp;
-using tetherkit::IsPowerOfTwo;
-using tetherkit::LoadBe16;
-using tetherkit::LoadLe16;
-using tetherkit::LoadLe32;
-using tetherkit::LoadLe64;
-using tetherkit::StoreBe16;
-using tetherkit::StoreLe32;
-using tetherkit::StoreLe64;
+using tetherkitnext::AlignUp;
+using tetherkitnext::IsPowerOfTwo;
+using tetherkitnext::LoadBe16;
+using tetherkitnext::LoadLe16;
+using tetherkitnext::LoadLe32;
+using tetherkitnext::LoadLe64;
+using tetherkitnext::StoreBe16;
+using tetherkitnext::StoreLe32;
+using tetherkitnext::StoreLe64;
 
 TEST_SUITE("common.byte_order") {
 
@@ -67,8 +67,8 @@ TEST_CASE("未对齐偏移上的读写同样正确") {
 
 TEST_CASE("单字节读写不做任何转换") {
   std::array<std::byte, 1> buffer{};
-  tetherkit::StoreLe<std::uint8_t>(buffer.data(), 0xA5U);
-  CHECK(tetherkit::LoadLe<std::uint8_t>(buffer.data()) == 0xA5U);
+  tetherkitnext::StoreLe<std::uint8_t>(buffer.data(), 0xA5U);
+  CHECK(tetherkitnext::LoadLe<std::uint8_t>(buffer.data()) == 0xA5U);
 }
 
 TEST_CASE("AlignUp 向上对齐到 2 的幂") {

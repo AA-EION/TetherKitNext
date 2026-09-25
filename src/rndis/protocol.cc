@@ -1,6 +1,6 @@
-#include "tetherkit/rndis/protocol.h"
+#include "tetherkitnext/rndis/protocol.h"
 
-namespace tetherkit::rndis {
+namespace tetherkitnext::rndis {
 
 std::string_view MessageTypeName(std::uint32_t message_type) noexcept {
   switch (static_cast<MessageType>(message_type)) {
@@ -226,4 +226,4 @@ std::string_view OidName(std::uint32_t oid) noexcept {
   return {};
 }
 
-}  // namespace tetherkit::rndis
+}  // namespace tetherkitnext::rndis

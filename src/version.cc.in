@@ -1,20 +1,20 @@
 // 由 CMake 从 src/version.cc.in 生成，请勿手工编辑。
-#include "tetherkit/version.h"
+#include "tetherkitnext/version.h"
 
-namespace tetherkit {
+namespace tetherkitnext {
 
 Version GetVersion() noexcept {
-  return Version{@TetherKit_VERSION_MAJOR@, @TetherKit_VERSION_MINOR@, @TetherKit_VERSION_PATCH@};
+  return Version{@TetherKitNext_VERSION_MAJOR@, @TetherKitNext_VERSION_MINOR@, @TetherKitNext_VERSION_PATCH@};
 }
 
 std::string_view GetVersionString() noexcept {
-  return "TetherKit @TetherKit_VERSION@ (C++@CMAKE_CXX_STANDARD@, macOS @TETHERKIT_MIN_MACOS_VERSION@+)";
+  return "TetherKitNext @TetherKitNext_VERSION@ (C++@CMAKE_CXX_STANDARD@, macOS @TETHERKITNEXT_MIN_MACOS_VERSION@+)";
 }
 
 std::string_view GetBuildDescription() noexcept {
-  return "build @TETHERKIT_BUILD_ID_RESOLVED@, @CMAKE_BUILD_TYPE@, @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@, "
-         "C++@CMAKE_CXX_STANDARD@, native-arch=@TETHERKIT_NATIVE_ARCH@, "
-         "LTO=@TETHERKIT_ENABLE_LTO@, sanitizers=@TETHERKIT_SANITIZER_SUMMARY@";
+  return "build @TETHERKITNEXT_BUILD_ID_RESOLVED@, @CMAKE_BUILD_TYPE@, @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@, "
+         "C++@CMAKE_CXX_STANDARD@, native-arch=@TETHERKITNEXT_NATIVE_ARCH@, "
+         "LTO=@TETHERKITNEXT_ENABLE_LTO@, sanitizers=@TETHERKITNEXT_SANITIZER_SUMMARY@";
 }
 
-}  // namespace tetherkit
+}  // namespace tetherkitnext

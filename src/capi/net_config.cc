@@ -39,29 +39,29 @@
 #include "core_foundation_support.h"
 #include "managed_network_service.h"
 #include "process_runner.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
 
 namespace {
 
-using tetherkit::Error;
-using tetherkit::Msg;
-using tetherkit::Result;
-using tetherkit::Status;
-using tetherkit::Text;
-using tetherkit::Tr;
-using tetherkit::capi::ClearError;
-using tetherkit::capi::CopyText;
-using tetherkit::capi::CopyToStdString;
-using tetherkit::capi::FillError;
-using tetherkit::capi::FillGenericError;
-using tetherkit::capi::IsValidFethName;
-using tetherkit::capi::MakeCFString;
-using tetherkit::capi::ProcessResult;
-using tetherkit::capi::RunTool;
-using tetherkit::capi::ScopedCFRef;
-using tetherkit::capi::SharedDynamicStore;
+using tetherkitnext::Error;
+using tetherkitnext::Msg;
+using tetherkitnext::Result;
+using tetherkitnext::Status;
+using tetherkitnext::Text;
+using tetherkitnext::Tr;
+using tetherkitnext::capi::ClearError;
+using tetherkitnext::capi::CopyText;
+using tetherkitnext::capi::CopyToStdString;
+using tetherkitnext::capi::FillError;
+using tetherkitnext::capi::FillGenericError;
+using tetherkitnext::capi::IsValidFethName;
+using tetherkitnext::capi::MakeCFString;
+using tetherkitnext::capi::ProcessResult;
+using tetherkitnext::capi::RunTool;
+using tetherkitnext::capi::ScopedCFRef;
+using tetherkitnext::capi::SharedDynamicStore;
 
 constexpr std::string_view kIpconfigPath = "/usr/sbin/ipconfig";
 constexpr std::string_view kRoutePath = "/sbin/route";
@@ -100,7 +100,7 @@ constexpr int kDhcpStableSamples = 8;
   if (!IsValidFethName(interface_name)) {
     return std::unexpected(Error::Generic(Tr(Msg::kCapiInterfaceNotOurs, interface_name)));
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ constexpr int kDhcpStableSamples = 8;
 [[nodiscard]] Status RunOrFail(std::string_view executable,
                                const std::vector<std::string>& arguments,
                                std::string_view what) {
-  TETHERKIT_ASSIGN_OR_RETURN(const ProcessResult result, RunTool(executable, arguments));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const ProcessResult result, RunTool(executable, arguments));
   if (!result.Succeeded()) {
     std::string detail{result.output};
     // 工具的输出常带尾随换行，拼进一行错误里很难看。
@@ -125,7 +125,7 @@ constexpr int kDhcpStableSamples = 8;
         Tr(Msg::kCapiCommandFailed, what, result.exit_code,
            detail.empty() ? std::string{Text(Msg::kCapiCommandNoOutput)} : detail)));
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 /// 读接口当前的 IPv4 地址；没有地址时返回 std::nullopt。
@@ -292,7 +292,7 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   const ScopedCFRef<CFStringRef> key =
       MakeCFString(std::format("State:/Network/Service/{}/DNS", service_id));
   if (::SCDynamicStoreSetValue(store, key.Get(), payload.Get()) == 0) {
-    TETHERKIT_WARN_TR(Msg::kCapiDnsPublishFailed, service_id);
+    TETHERKITNEXT_WARN_TR(Msg::kCapiDnsPublishFailed, service_id);
   }
 }
 
@@ -399,7 +399,7 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   const std::vector<std::string> arguments{"-n", "change", "-inet", "default", std::string{router}};
   if (const auto status = RunOrFail(kRoutePath, arguments, Text(Msg::kCapiWhatSwitchGlobalRoute));
       status) {
-    return tetherkit::Ok();
+    return tetherkitnext::Ok();
   }
   // 系统当前可能压根没有全局默认路由（没连任何网络），此时 change 会失败，
   // 该用 add。这正是 USB 网络共享最典型的场景，必须处理。
@@ -413,21 +413,21 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 [[nodiscard]] Status ApplyDhcp(std::string_view interface_name, bool set_default_route) {
   // 先清掉同接口的旧服务。`ipconfig NONE` 负责兼容升级前留下的临时服务；
   // SCNetworkService 才是本次 DHCP 真正使用的服务。
-  TETHERKIT_RETURN_IF_ERROR(tetherkit::capi::RemoveManagedNetworkService(interface_name));
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
+  TETHERKITNEXT_RETURN_IF_ERROR(
       RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
                 Text(Msg::kCapiWhatClearConfig)));
 
   std::optional<std::string> service_id;
-  if (tetherkit::capi::ManagedNetworkServiceAvailable()) {
-    TETHERKIT_ASSIGN_OR_RETURN(
+  if (tetherkitnext::capi::ManagedNetworkServiceAvailable()) {
+    TETHERKITNEXT_ASSIGN_OR_RETURN(
         service_id,
-        tetherkit::capi::ConfigureManagedDhcpService(interface_name, set_default_route));
+        tetherkitnext::capi::ConfigureManagedDhcpService(interface_name, set_default_route));
   } else {
     // SPI gone on this macOS: fall back to the transient IPConfiguration
     // service. Ordinary traffic works; only NetworkExtension VPNs lose the
     // interface-scoped path (upstream XiaoMiku01/TetherKit#3).
-    TETHERKIT_RETURN_IF_ERROR(
+    TETHERKITNEXT_RETURN_IF_ERROR(
         RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "DHCP"},
                   Text(Msg::kCapiWhatStartDhcp)));
   }
@@ -445,12 +445,12 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
     if (set_default_route) {
       return std::unexpected(Error::Generic(Tr(Msg::kCapiDhcpNoRouter)));
     }
-    return tetherkit::Ok();
+    return tetherkitnext::Ok();
   }
 
-  TETHERKIT_RETURN_IF_ERROR(InstallScopedDefaultRoute(interface_name, *router));
+  TETHERKITNEXT_RETURN_IF_ERROR(InstallScopedDefaultRoute(interface_name, *router));
   if (!set_default_route) {
-    return tetherkit::Ok();
+    return tetherkitnext::Ok();
   }
   return PromoteToGlobalDefaultRoute(*router);
 }
@@ -486,17 +486,17 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
     dns_servers.emplace_back(server);
   }
 
-  TETHERKIT_RETURN_IF_ERROR(tetherkit::capi::RemoveManagedNetworkService(interface_name));
+  TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
   // 地址仍然经 IPConfiguration 下发，理由见文件头。
-  TETHERKIT_RETURN_IF_ERROR(RunOrFail(
+  TETHERKITNEXT_RETURN_IF_ERROR(RunOrFail(
       kIpconfigPath,
       {"set", std::string{interface_name}, "MANUAL", config.address, config.netmask},
       Text(Msg::kCapiWhatApplyManual)));
 
   if (!router.empty()) {
-    TETHERKIT_RETURN_IF_ERROR(InstallScopedDefaultRoute(interface_name, router));
+    TETHERKITNEXT_RETURN_IF_ERROR(InstallScopedDefaultRoute(interface_name, router));
     if (config.set_default_route) {
-      TETHERKIT_RETURN_IF_ERROR(PromoteToGlobalDefaultRoute(router));
+      TETHERKITNEXT_RETURN_IF_ERROR(PromoteToGlobalDefaultRoute(router));
     }
   }
 
@@ -507,15 +507,15 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
           service_id.has_value()) {
         TryPublishDns(store, *service_id, dns_servers);
       } else {
-        TETHERKIT_WARN_TR(Msg::kCapiNoServiceForDns, interface_name);
+        TETHERKITNEXT_WARN_TR(Msg::kCapiNoServiceForDns, interface_name);
       }
     }
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 [[nodiscard]] Status ApplyNone(std::string_view interface_name) {
-  TETHERKIT_RETURN_IF_ERROR(tetherkit::capi::RemoveManagedNetworkService(interface_name));
+  TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
   return RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
                    Text(Msg::kCapiWhatClearConfig));
 }
@@ -550,7 +550,7 @@ tk_result_t tk_net_apply(const char* interface_name, const tk_ip_config_t* confi
     return TK_ERR_PERMISSION;
   }
 
-  Status status = tetherkit::Ok();
+  Status status = tetherkitnext::Ok();
   switch (config->mode) {
     case TK_IP_MODE_DHCP:
       status = ApplyDhcp(interface_name, config->set_default_route);

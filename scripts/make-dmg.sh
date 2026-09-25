@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Package dist/TetherKit.app into a drag-to-install disk image, and (when
+# Package dist/TetherKitNext.app into a drag-to-install disk image, and (when
 # credentials are configured) notarize and staple both the app and the DMG.
 #
-#   ./scripts/make-dmg.sh                 # → dist/TetherKit-<version>.dmg
+#   ./scripts/make-dmg.sh                 # → dist/TetherKitNext-<version>.dmg
 #
 # Environment:
-#   TETHERKIT_SIGN_IDENTITY   Developer ID Application identity. Signs the DMG.
+#   TETHERKITNEXT_SIGN_IDENTITY   Developer ID Application identity. Signs the DMG.
 #                             The app must already be signed with it
 #                             (gui/Scripts/build-gui.sh does that).
 #   Notarization — either an App Store Connect API key (recommended for CI):
@@ -26,15 +26,15 @@ set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${REPO_ROOT}/dist"
-APP="${DIST_DIR}/TetherKit.app"
-SIGN_IDENTITY="${TETHERKIT_SIGN_IDENTITY:-}"
+APP="${DIST_DIR}/TetherKitNext.app"
+SIGN_IDENTITY="${TETHERKITNEXT_SIGN_IDENTITY:-}"
 
 log() { printf '\033[32m==>\033[0m %s\n' "$1"; }
 die() { printf '\033[31merror:\033[0m %s\n' "$1" >&2; exit 1; }
 
 [[ -d "${APP}" ]] || die "${APP} not found; run gui/Scripts/build-gui.sh first"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
-DMG="${DIST_DIR}/TetherKit-${VERSION}.dmg"
+DMG="${DIST_DIR}/TetherKitNext-${VERSION}.dmg"
 
 notary_args=()
 if [[ -n "${NOTARY_KEY_PATH:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER_ID:-}" ]]; then
@@ -62,8 +62,8 @@ notarize() {
 }
 
 if [[ ${#notary_args[@]} -gt 0 ]]; then
-  [[ -n "${SIGN_IDENTITY}" ]] || die "notarization requires TETHERKIT_SIGN_IDENTITY"
-  zip="${DIST_DIR}/TetherKit-notarize.zip"
+  [[ -n "${SIGN_IDENTITY}" ]] || die "notarization requires TETHERKITNEXT_SIGN_IDENTITY"
+  zip="${DIST_DIR}/TetherKitNext-notarize.zip"
   ditto -c -k --keepParent "${APP}" "${zip}"
   notarize "${zip}"
   rm -f "${zip}"
@@ -73,14 +73,47 @@ else
   log "Notarization credentials not set; skipping notarization"
 fi
 
+# dmgbuild lays out the Finder window (background, icon positions, no
+# toolbar) by writing .DS_Store itself, which works on headless CI. It is
+# installed into a private virtualenv, pinned, on first use.
+DMGBUILD_VERSION="1.6.7"
+find_dmgbuild() {
+  if command -v dmgbuild >/dev/null 2>&1; then
+    command -v dmgbuild
+    return 0
+  fi
+  local venv="${TMPDIR:-/tmp}/tetherkitnext-dmgbuild-${DMGBUILD_VERSION}"
+  if [[ ! -x "${venv}/bin/dmgbuild" ]]; then
+    python3 -m venv "${venv}" >&2 \
+      && "${venv}/bin/pip" install --quiet --disable-pip-version-check \
+           "dmgbuild==${DMGBUILD_VERSION}" >&2 \
+      || return 1
+  fi
+  echo "${venv}/bin/dmgbuild"
+}
+
 log "Creating ${DMG}"
-staging="$(mktemp -d)"
-trap 'rm -rf "${staging}"' EXIT
-ditto "${APP}" "${staging}/TetherKit.app"
-ln -s /Applications "${staging}/Applications"
 rm -f "${DMG}"
-hdiutil create -quiet -volname "TetherKit ${VERSION}" -srcfolder "${staging}" \
-  -fs HFS+ -format UDZO -imagekey zlib-level=9 "${DMG}"
+work="$(mktemp -d)"
+trap 'rm -rf "${work}"' EXIT
+if [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" != "1" ]] && dmgbuild_bin="$(find_dmgbuild)"; then
+  # One TIFF holding the 1x and 2x backgrounds, so Retina screens get the
+  # sharp one.
+  tiffutil -cathidpicheck "${REPO_ROOT}/scripts/dmg/background.png" \
+    "${REPO_ROOT}/scripts/dmg/background@2x.png" -out "${work}/background.tiff" >/dev/null
+  "${dmgbuild_bin}" -s "${REPO_ROOT}/scripts/dmg/settings.py" \
+    -D app="${APP}" \
+    -D background="${work}/background.tiff" \
+    -D icon="${APP}/Contents/Resources/AppIcon.icns" \
+    "TetherKitNext ${VERSION}" "${DMG}"
+else
+  [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" == "1" ]] \
+    || echo "::warning::dmgbuild unavailable; building a plain disk image without the install layout"
+  ditto "${APP}" "${work}/TetherKitNext.app"
+  ln -s /Applications "${work}/Applications"
+  hdiutil create -quiet -volname "TetherKitNext ${VERSION}" -srcfolder "${work}" \
+    -fs HFS+ -format UDZO -imagekey zlib-level=9 "${DMG}"
+fi
 
 if [[ -n "${SIGN_IDENTITY}" ]]; then
   codesign --force --sign "${SIGN_IDENTITY}" --timestamp "${DMG}"

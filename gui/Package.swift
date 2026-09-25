@@ -5,7 +5,7 @@
 // what provides the macOS 26 SDK the Liquid Glass UI is compiled against; the
 // app still deploys back to macOS 14.
 //
-// TetherKit 的图形界面。
+// TetherKitNext 的图形界面。
 //
 // ★ 为什么是 SwiftPM 而不是 CMake 或 Xcode 工程 ★
 //
@@ -18,11 +18,11 @@
 //   .app 包由 Scripts/build-gui.sh 组装 —— SwiftPM 只产出可执行文件，
 //   Info.plist、图标、内嵌 dylib 都在脚本里拼。
 //
-// ★ 怎么找到 libtetherkit ★
+// ★ 怎么找到 libtetherkitnext ★
 //
 //   C++ 侧先构建，产物在 <repo>/build/lib。路径通过环境变量传进来：
 //
-//     export TETHERKIT_LIB_DIR=$PWD/build/lib
+//     export TETHERKITNEXT_LIB_DIR=$PWD/build/lib
 //     swift build --package-path gui
 //
 //   Scripts/build-gui.sh 会替你设好。没设时退回仓库默认的 build/lib，
@@ -30,12 +30,12 @@
 import Foundation
 import PackageDescription
 
-/// libtetherkit 所在目录。
+/// libtetherkitnext 所在目录。
 ///
 /// 用绝对路径：SwiftPM 的工作目录随调用方式变化，相对路径会在
 /// `swift build --package-path gui` 与 `cd gui && swift build` 之间给出不同结果。
 let libraryDirectory: String = {
-    if let fromEnvironment = ProcessInfo.processInfo.environment["TETHERKIT_LIB_DIR"],
+    if let fromEnvironment = ProcessInfo.processInfo.environment["TETHERKITNEXT_LIB_DIR"],
        !fromEnvironment.isEmpty {
         return fromEnvironment
     }
@@ -47,11 +47,11 @@ let libraryDirectory: String = {
         .path
 }()
 
-/// 链接 libtetherkit 所需的全部标志。
+/// 链接 libtetherkitnext 所需的全部标志。
 ///
 /// 这里必须用 unsafeFlags —— SwiftPM 没有「加一个库搜索路径」的安全接口。
 /// 本包是根包、不会被别人依赖，unsafeFlags 的限制不适用。
-let tetherkitLinkerSettings: [LinkerSetting] = [
+let tetherkitnextLinkerSettings: [LinkerSetting] = [
     .unsafeFlags([
         "-L\(libraryDirectory)",
         // rpath 必须用 -Xlinker 逐段传给链接器。
@@ -71,41 +71,41 @@ let tetherkitLinkerSettings: [LinkerSetting] = [
         "-Xlinker", "-rpath", "-Xlinker", "@executable_path",
         "-Xlinker", "-rpath", "-Xlinker", libraryDirectory,
     ]),
-    .linkedLibrary("tetherkit"),
+    .linkedLibrary("tetherkitnext"),
 ]
 
 let package = Package(
-    name: "TetherKitGUI",
+    name: "TetherKitNextGUI",
     // macOS 14：@Observable 与 ContentUnavailableView 需要它。命令行部分仍然
     // 支持 13.3，两者是各自独立的产物，不必对齐。
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "TetherKitApp", targets: ["TetherKitApp"]),
-        .executable(name: "tetherkit-helper", targets: ["TetherKitHelper"]),
+        .executable(name: "TetherKitNextApp", targets: ["TetherKitNextApp"]),
+        .executable(name: "tetherkitnext-helper", targets: ["TetherKitNextHelper"]),
     ],
     targets: [
-        // C ABI 的模块映射。头文件是指向 include/tetherkit/capi/tetherkit_c.h
+        // C ABI 的模块映射。头文件是指向 include/tetherkitnext/capi/tetherkitnext_c.h
         // 的符号链接，因此永远和 C++ 侧同步，不需要任何生成步骤。
-        .target(name: "CTetherKit"),
+        .target(name: "CTetherKitNext"),
 
         // App 与 helper 共享的 XPC 协议与数据模型。
         // 两边靠同一份源码保持一致，而不是各自抄一遍。
-        .target(name: "TetherKitIPC"),
+        .target(name: "TetherKitNextIPC"),
 
         // C ABI 的 Swift 封装：把 tk_* 翻译成 Swift 的类型与错误。
-        .target(name: "TetherKitCore",
-                dependencies: ["CTetherKit", "TetherKitIPC"],
-                linkerSettings: tetherkitLinkerSettings),
+        .target(name: "TetherKitNextCore",
+                dependencies: ["CTetherKitNext", "TetherKitNextIPC"],
+                linkerSettings: tetherkitnextLinkerSettings),
 
         // 以 root 运行的特权 helper。
-        .executableTarget(name: "TetherKitHelper",
-                          dependencies: ["TetherKitCore", "TetherKitIPC"]),
+        .executableTarget(name: "TetherKitNextHelper",
+                          dependencies: ["TetherKitNextCore", "TetherKitNextIPC"]),
 
         // 用户看到的 SwiftUI App（普通用户身份运行）。
-        .executableTarget(name: "TetherKitApp",
-                          dependencies: ["TetherKitCore", "TetherKitIPC"]),
+        .executableTarget(name: "TetherKitNextApp",
+                          dependencies: ["TetherKitNextCore", "TetherKitNextIPC"]),
 
-        // 只测 TetherKitIPC：它是唯一「纯逻辑、不碰硬件也不需要 root」的层。
+        // 只测 TetherKitNextIPC：它是唯一「纯逻辑、不碰硬件也不需要 root」的层。
         // 会话与网卡配置的测试在 C++ 侧（tests/test_capi.cc），不在这里重复。
-        .testTarget(name: "TetherKitIPCTests", dependencies: ["TetherKitIPC"]),
+        .testTarget(name: "TetherKitNextIPCTests", dependencies: ["TetherKitNextIPC"]),
     ])

@@ -1,44 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  TetherKit.app 的 Info.plist 模板。
+  TetherKitNext.app 的 Info.plist 模板。
 
-  Scripts/build-gui.sh 会把 __TETHERKIT_VERSION__ 替换成真实版本号后拷进
-  TetherKit.app/Contents/。
+  Scripts/build-gui.sh 会把 __TETHERKITNEXT_VERSION__ 替换成真实版本号后拷进
+  TetherKitNext.app/Contents/。
 
   No entitlements are needed (hardened runtime, Developer ID): the app runs as
   the user and never touches USB or network interfaces itself; privileged work
-  goes over XPC to the SMAppService daemon (Contents/MacOS/tetherkit-helper).
+  goes over XPC to the SMAppService daemon (Contents/MacOS/tetherkitnext-helper).
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>TetherKit</string>
+    <string>TetherKitNext</string>
     <key>CFBundleDisplayName</key>
-    <string>TetherKit</string>
+    <string>TetherKitNext</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tetherkit.app</string>
+    <string>com.tetherkitnext.app</string>
     <key>CFBundleExecutable</key>
-    <string>TetherKit</string>
+    <string>TetherKitNext</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <!-- Dock / 访达用的图标。Resources/AppIcon.icns 由 build-gui.sh 拷入。 -->
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>__TETHERKIT_VERSION__</string>
+    <string>__TETHERKITNEXT_VERSION__</string>
     <key>CFBundleVersion</key>
-    <string>__TETHERKIT_BUILD__</string>
+    <string>__TETHERKITNEXT_BUILD__</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key>
-    <string>© XiaoMiku01 and TetherKit contributors. MIT License.</string>
+    <string>© 2026 Issen Software Group. Based on TetherKit by XiaoMiku01. MIT License.</string>
 
     <!-- 支持的界面语言。
-         文案本身是编进二进制的（见 TetherKitIPC/Localization.swift 里为什么不
+         文案本身是编进二进制的（见 TetherKitNextIPC/Localization.swift 里为什么不
          走 .lproj），所以这里**不影响**实际显示什么 —— 它的作用是让
-         「系统设置 → 通用 → 语言与地区 → 应用程序」里能列出 TetherKit 并给出
+         「系统设置 → 通用 → 语言与地区 → 应用程序」里能列出 TetherKitNext 并给出
          这两个选项。App 内的语言菜单与这条各自独立，两者都能用。
          第一项同时充当 CFBundleDevelopmentRegion 的角色。 -->
     <key>CFBundleDevelopmentRegion</key>
@@ -52,7 +52,7 @@
     <!-- Swift 的 Observation 与 ContentUnavailableView 需要 macOS 14。
          命令行部分仍然支持 13.3，两者是各自独立的产物。 -->
     <!-- GitHub owner/repo whose releases the in-app update check reads. -->
-    <key>TetherKitUpdateRepository</key>
+    <key>TetherKitNextUpdateRepository</key>
     <string>AA-EION/TetherKitNext</string>
 
     <key>LSMinimumSystemVersion</key>

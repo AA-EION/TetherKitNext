@@ -1,4 +1,4 @@
-#include "tetherkit/net/bpf_link.h"
+#include "tetherkitnext/net/bpf_link.h"
 
 #include <fcntl.h>
 #include <net/bpf.h>
@@ -11,13 +11,13 @@
 #include <cstring>
 #include <format>
 
-#include "tetherkit/common/byte_order.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/net/darwin_abi.h"
-#include "tetherkit/net/feth_device.h"
+#include "tetherkitnext/common/byte_order.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/net/darwin_abi.h"
+#include "tetherkitnext/net/feth_device.h"
 
-namespace tetherkit::net {
+namespace tetherkitnext::net {
 namespace {
 
 /// 遍历 /dev/bpf%d 的上限。
@@ -48,7 +48,7 @@ constexpr std::size_t kMaxBatchWriteBytes = std::size_t{256} * 1024;
                                     std::string_view what) {
   if (::ioctl(fd, request, argument) < 0) {
     // ENOTTY / EINVAL 表示当前 macOS 版本不支持这个私有 ioctl，属于预期情况。
-    TETHERKIT_DEBUG_TR(Msg::kNetOptionalIoctlUnavailable, what, errno);
+    TETHERKITNEXT_DEBUG_TR(Msg::kNetOptionalIoctlUnavailable, what, errno);
     return false;
   }
   return true;
@@ -124,11 +124,11 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   // 写回参数 —— 所以后面每次 read() 都必须用这个写回值当长度。
   // ---------------------------------------------------------------------------
   auto buffer_bytes = static_cast<unsigned int>(config.kernel_buffer_bytes);
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCSBLEN, &buffer_bytes, "ioctl(BIOCSBLEN)"));
   link->kernel_buffer_bytes_ = buffer_bytes;
   if (buffer_bytes != config.kernel_buffer_bytes) {
-    TETHERKIT_INFO_TR(Msg::kNetBpfBufferClamped, config.kernel_buffer_bytes, buffer_bytes);
+    TETHERKITNEXT_INFO_TR(Msg::kNetBpfBufferClamped, config.kernel_buffer_bytes, buffer_bytes);
   }
 
   // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   // 对照实验见 AGENTS.md 第 7 节第 14 条。排查 ENXIO 时别去怀疑接口名。
   // ---------------------------------------------------------------------------
   int header_complete = 1;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCSHDRCMPLT, &header_complete, "ioctl(BIOCSHDRCMPLT)"));
 
   // ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   // 有人误把 BPF 绑到别的接口类型上，那样帧格式假设就全错了。
   // ---------------------------------------------------------------------------
   unsigned int data_link_type = 0;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCGDLT, &data_link_type, "ioctl(BIOCGDLT)"));
   if (data_link_type != DLT_EN10MB) {
     return std::unexpected(Error::Generic(
@@ -184,7 +184,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   // 低速低延迟、高速自动大批量，行为类似 NAPI。
   // ---------------------------------------------------------------------------
   unsigned int immediate = 1;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCIMMEDIATE, &immediate, "ioctl(BIOCIMMEDIATE)"));
 
   // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   // SEESENT=0 会把它们滤掉，只留下主机从 peer 侧发来的 input 帧。
   // ---------------------------------------------------------------------------
   unsigned int see_sent = 0;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCSSEESENT, &see_sent, "ioctl(BIOCSSEESENT)"));
 
   // ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
   read_timeout.tv_sec = config.read_timeout_millis / 1000;
   read_timeout.tv_usec = static_cast<__darwin_suseconds_t>(
       (config.read_timeout_millis % 1000) * 1000);
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       CallIoctl(link->fd_, BIOCSRTIMEOUT, &read_timeout, "ioctl(BIOCSRTIMEOUT)"));
 
   // 刻意**不设** BIOCPROMISC：feth 的 feth_output_common 无条件把帧投给 peer
@@ -237,7 +237,7 @@ Result<std::unique_ptr<BpfLink>> BpfLink::Open(std::string_view interface_name,
     link->write_buffer_.resize(kMaxBatchWriteBytes);
   }
 
-  TETHERKIT_INFO_TR(Msg::kNetBpfReady, link->device_path_, link->interface_name_,
+  TETHERKITNEXT_INFO_TR(Msg::kNetBpfReady, link->device_path_, link->interface_name_,
                     link->kernel_buffer_bytes_ / 1024, link->max_frame_bytes_,
                     Text(link->batch_write_enabled_ ? Msg::kNetBpfBatchWriteEnabled
                                                     : Msg::kNetBpfBatchWriteUnavailable),
@@ -303,14 +303,14 @@ Result<ReadBatch> BpfLink::ReadFrames() {
     const std::uint32_t header_length = LoadLe16(record + offsetof(::bpf_hdr, bh_hdrlen));
 
     if (header_length < kBpfHeaderMinBytes) [[unlikely]] {
-      TETHERKIT_WARN_TR(Msg::kNetBpfHeaderTooShort, header_length, kBpfHeaderMinBytes);
+      TETHERKITNEXT_WARN_TR(Msg::kNetBpfHeaderTooShort, header_length, kBpfHeaderMinBytes);
       break;
     }
 
     const std::size_t record_bytes = static_cast<std::size_t>(header_length) + capture_length;
     if (offset + record_bytes > total) [[unlikely]] {
       // 记录被截断：正常情况下不该发生（内核不会写出跨越缓冲末尾的记录）。
-      TETHERKIT_WARN_TR(Msg::kNetBpfRecordOutOfBounds, offset, record_bytes, total);
+      TETHERKITNEXT_WARN_TR(Msg::kNetBpfRecordOutOfBounds, offset, record_bytes, total);
       break;
     }
 
@@ -320,7 +320,7 @@ Result<ReadBatch> BpfLink::ReadFrames() {
         capture_length <= max_frame_bytes_) [[likely]] {
       read_frames_.push_back(FrameView{.data = record + header_length, .length = capture_length});
     } else [[unlikely]] {
-      TETHERKIT_TRACE_TR(Msg::kNetBpfSkipOversizedRecord, capture_length, original_length,
+      TETHERKITNEXT_TRACE_TR(Msg::kNetBpfSkipOversizedRecord, capture_length, original_length,
                          max_frame_bytes_);
     }
 
@@ -329,7 +329,7 @@ Result<ReadBatch> BpfLink::ReadFrames() {
     if (read_frames_.size() >= read_frames_.capacity()) {
       // 帧数组满了。剩余记录本次不处理 —— 数据仍在内核缓冲里？不，已经 copyout
       // 了，会丢。因此 max_frames_per_batch 必须配得足够大。这里出警告而非静默。
-      TETHERKIT_WARN_TR(Msg::kNetBpfBatchFrameLimit, read_frames_.capacity(), total - offset);
+      TETHERKITNEXT_WARN_TR(Msg::kNetBpfBatchFrameLimit, read_frames_.capacity(), total - offset);
       break;
     }
   }
@@ -428,7 +428,7 @@ Result<WriteResult> BpfLink::WriteFramesBatched(FrameBatch frames) {
     const std::size_t record_bytes = kBpfHeaderMinBytes + frame.length;
     const std::size_t aligned_bytes = BPF_WORDALIGN(record_bytes);
     if (cursor + aligned_bytes > write_buffer_.size()) {
-      TETHERKIT_RETURN_IF_ERROR(flush());
+      TETHERKITNEXT_RETURN_IF_ERROR(flush());
       if (aligned_bytes > write_buffer_.size()) [[unlikely]] {
         // 单帧就超过整个组装缓冲：配置错误，跳过并计数。
         ++result.frames_skipped;
@@ -455,8 +455,8 @@ Result<WriteResult> BpfLink::WriteFramesBatched(FrameBatch frames) {
     pending_bytes += frame.length;
   }
 
-  TETHERKIT_RETURN_IF_ERROR(flush());
+  TETHERKITNEXT_RETURN_IF_ERROR(flush());
   return result;
 }
 
-}  // namespace tetherkit::net
+}  // namespace tetherkitnext::net

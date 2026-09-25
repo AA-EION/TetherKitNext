@@ -16,12 +16,12 @@
 #include <vector>
 
 #include "harness.h"
-#include "tetherkit/common/byte_order.h"
-#include "tetherkit/common/frame_ring.h"
-#include "tetherkit/common/spsc_ring.h"
-#include "tetherkit/common/stats.h"
+#include "tetherkitnext/common/byte_order.h"
+#include "tetherkitnext/common/frame_ring.h"
+#include "tetherkitnext/common/spsc_ring.h"
+#include "tetherkitnext/common/stats.h"
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 namespace {
 
 /// 以太网上最常见的两种帧长：MTU 满帧与 TCP ACK 小帧。
@@ -290,4 +290,4 @@ void RegisterCommonBenchmarks(Runner& runner) {
              [](std::uint64_t n) { return BenchCounterUpdateFetchAdd(n); });
 }
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

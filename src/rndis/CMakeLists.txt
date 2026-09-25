@@ -10,4 +10,4 @@ add_library(
   messages.cc
   state_machine.cc)
 
-target_link_libraries(tk_rndis PUBLIC tetherkit_base tk_common)
+target_link_libraries(tk_rndis PUBLIC tetherkitnext_base tk_common)

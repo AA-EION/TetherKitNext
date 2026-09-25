@@ -12,12 +12,12 @@
 
 #include <doctest.h>
 
-#include "tetherkit/common/cache.h"
-#include "tetherkit/common/frame_ring.h"
+#include "tetherkitnext/common/cache.h"
+#include "tetherkitnext/common/frame_ring.h"
 
-using tetherkit::FrameRing;
-using tetherkit::FrameView;
-using tetherkit::kCacheLineSize;
+using tetherkitnext::FrameRing;
+using tetherkitnext::FrameView;
+using tetherkitnext::kCacheLineSize;
 
 namespace {
 

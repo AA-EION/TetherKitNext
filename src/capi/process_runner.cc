@@ -1,4 +1,4 @@
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/i18n.h"
 #include "process_runner.h"
 
 #include <spawn.h>
@@ -10,7 +10,7 @@
 #include <format>
 #include <memory>
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 namespace {
 
 /// 读满一个管道直到对端关闭。
@@ -130,4 +130,4 @@ Result<ProcessResult> RunTool(std::string_view executable,
   return Spawn(executable, arguments);
 }
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

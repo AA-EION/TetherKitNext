@@ -1,6 +1,6 @@
 # C ABI 实现层的检查豁免
 #
-# 理由同 include/tetherkit/capi/.clang-tidy：导出的函数名必须是 C 惯例的
+# 理由同 include/tetherkitnext/capi/.clang-tidy：导出的函数名必须是 C 惯例的
 # `tk_snake_case`，且实现里不可避免地要写 C 风格的定长缓冲拷贝与裸指针。
 InheritParentConfig: true
 

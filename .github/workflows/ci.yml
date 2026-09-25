@@ -1,6 +1,6 @@
 # CI: build, test, package — on real macOS runners.
 #
-# TetherKit only builds on macOS (Darwin BPF, xnu's private if_fake ABI).
+# TetherKitNext only builds on macOS (Darwin BPF, xnu's private if_fake ABI).
 # GitHub's hosted macOS runners are Apple Silicon VMs, plus an Intel image
 # (macos-15-intel) that we use to prove the universal binary really runs on
 # x86_64 hardware, not just under Rosetta.
@@ -17,7 +17,7 @@ on:
       prerelease_tag:
         description: >-
           Optional. Publish this run's (ad-hoc signed) DMG as a GitHub prerelease
-          under this new tag, e.g. v0.2.0-beta.1. Leave empty for a normal CI run.
+          under this new tag, e.g. v1.0.0-beta.4. Leave empty for a normal CI run.
         required: false
         default: ""
         type: string
@@ -33,7 +33,7 @@ jobs:
   # ----------------------------------------------------------------------------
   # Native build + unit tests on each supported runner architecture/OS.
   # None of the tests need root or a USB device; feth/BPF cases skip themselves
-  # without TETHERKIT_ROOT_TESTS (the abi-check job runs them as root).
+  # without TETHERKITNEXT_ROOT_TESTS (the abi-check job runs them as root).
   # ----------------------------------------------------------------------------
   native:
     name: C++ · ${{ matrix.os }}
@@ -63,7 +63,7 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DLibUSB_ROOT="$PWD/build/libusb-universal" \
-            -DTETHERKIT_WARNINGS_AS_ERRORS=ON
+            -DTETHERKITNEXT_WARNINGS_AS_ERRORS=ON
           cmake --build build -j"$(sysctl -n hw.ncpu)"
 
       - name: Test
@@ -71,8 +71,8 @@ jobs:
 
       - name: Smoke (--list needs no root)
         run: |
-          ./build/bin/tetherkit-cli --version
-          ./build/bin/tetherkit-cli --list
+          ./build/bin/tetherkitnext-cli --version
+          ./build/bin/tetherkitnext-cli --list
 
   # ----------------------------------------------------------------------------
   # The shipping build: universal C++ + Swift, app bundle, DMG.
@@ -104,31 +104,31 @@ jobs:
 
       - name: Build, test, package
         env:
-          TETHERKIT_BUILD_NUMBER: ${{ github.run_number }}
+          TETHERKITNEXT_BUILD_NUMBER: ${{ github.run_number }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: ./scripts/build-release.sh
 
       - name: Swift unit tests
-        run: TETHERKIT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
+        run: TETHERKITNEXT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
 
       - name: Bundle checks
         run: |
-          app=dist/TetherKit.app
+          app=dist/TetherKitNext.app
           codesign --display --verbose=2 "$app" 2>&1 | sed -n '1,12p'
           for f in "$app/Contents/MacOS/"* "$app/Contents/Frameworks/"*; do
             printf '%-60s %s\n' "${f#dist/}" "$(lipo -archs "$f")"
           done
           # The daemon refuses to run outside launchd (and the legacy
           # --install setuid mode is gone): it must exit non-zero, promptly.
-          if perl -e 'alarm 10; exec @ARGV' "$app/Contents/MacOS/tetherkit-helper" --install; then
-            echo "::error::tetherkit-helper ran outside launchd"; exit 1
+          if perl -e 'alarm 10; exec @ARGV' "$app/Contents/MacOS/tetherkitnext-helper" --install; then
+            echo "::error::tetherkitnext-helper ran outside launchd"; exit 1
           fi
-          plutil -p "$app/Contents/Library/LaunchDaemons/com.tetherkit.helperd.plist"
+          plutil -p "$app/Contents/Library/LaunchDaemons/com.tetherkitnext.helperd.plist"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TetherKit-dmg
+          name: TetherKitNext-dmg
           path: |
             dist/*.dmg
             dist/*.tar.gz
@@ -145,20 +145,20 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: TetherKit-dmg
+          name: TetherKitNext-dmg
       - name: Mount, copy to /Applications, run
         run: |
           uname -m
-          dmg="$(ls TetherKit-*.dmg)"
+          dmg="$(ls TetherKitNext-*.dmg)"
           mnt="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
-          ditto "$mnt/TetherKit.app" /Applications/TetherKit.app
+          ditto "$mnt/TetherKitNext.app" /Applications/TetherKitNext.app
           hdiutil detach "$mnt"
-          app=/Applications/TetherKit.app
+          app=/Applications/TetherKitNext.app
           codesign --verify --deep --strict "$app"
-          "$app/Contents/MacOS/tetherkit-cli" --version
-          "$app/Contents/MacOS/tetherkit-cli" --list
+          "$app/Contents/MacOS/tetherkitnext-cli" --version
+          "$app/Contents/MacOS/tetherkitnext-cli" --list
           # Launch the GUI briefly: proves the x86_64 Swift slice + dylibs load.
-          "$app/Contents/MacOS/TetherKit" & pid=$!
+          "$app/Contents/MacOS/TetherKitNext" & pid=$!
           sleep 8
           kill -0 "$pid" || { echo "::error::GUI exited early on Intel"; exit 1; }
           kill "$pid"
@@ -176,8 +176,8 @@ jobs:
         run: ./scripts/build-libusb.sh "$PWD/build-tsan/libusb-universal"
       - name: Configure & build
         run: |
-          cmake -S . -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON \
-            -DLibUSB_ROOT="$PWD/build-tsan/libusb-universal" -DTETHERKIT_BUILD_BENCHMARKS=OFF
+          cmake -S . -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON \
+            -DLibUSB_ROOT="$PWD/build-tsan/libusb-universal" -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF
           cmake --build build-tsan -j"$(sysctl -n hw.ncpu)"
       - name: Test
         run: ctest --test-dir build-tsan --output-on-failure
@@ -202,14 +202,14 @@ jobs:
         run: |
           ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
           cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DLibUSB_ROOT="$PWD/build/libusb-universal" -DTETHERKIT_BUILD_BENCHMARKS=OFF
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF
           cmake --build build -j"$(sysctl -n hw.ncpu)"
       - name: Disable feth hardware checksum offload
         run: sudo sysctl -w net.link.fake.hwcsum=0
       - name: Run feth/BPF cases as root
         run: |
           # Pin the log language: the gate greps for a message text.
-          sudo env TETHERKIT_ROOT_TESTS=1 TETHERKIT_LANG=en \
+          sudo env TETHERKITNEXT_ROOT_TESTS=1 TETHERKITNEXT_LANG=en \
             ctest --test-dir build -V -R 'net\.' 2>&1 | tee abi.log
           # Skip notice is hard-coded in tests/test_net_link.cc.
           if grep -q "需要 root 且需设置" abi.log; then
@@ -253,7 +253,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: TetherKit-dmg
+          name: TetherKitNext-dmg
           path: artifact
 
       - name: Create prerelease
@@ -261,30 +261,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.prerelease_tag }}
         run: |
-          dmg="$(ls artifact/TetherKit-*.dmg)"
+          dmg="$(ls artifact/TetherKitNext-*.dmg)"
           {
             echo '> [!WARNING]'
             echo '> **Test build: not signed with a Developer ID and not notarized by Apple.**'
-            echo '> macOS will block it the first time. After copying TetherKit to Applications,'
+            echo '> macOS will block it the first time. After copying TetherKitNext to Applications,'
             echo '> open *System Settings › Privacy & Security* and click **Open Anyway**, or run:'
-            echo '> `xattr -dr com.apple.quarantine /Applications/TetherKit.app`'
+            echo '> `xattr -dr com.apple.quarantine /Applications/TetherKitNext.app`'
             echo '>'
             echo '> Because it is not signed with a real certificate, macOS may refuse to enable the'
-            echo '> background component. `sudo /Applications/TetherKit.app/Contents/MacOS/tetherkit-cli`'
+            echo '> background component. `sudo /Applications/TetherKitNext.app/Contents/MacOS/tetherkitnext-cli`'
             echo '> works regardless.'
             echo
             echo '## Install'
             echo
-            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**."
-            echo '2. Open TetherKit and click **Enable Background Component**; allow it once in'
+            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKitNext** to **Applications**."
+            echo '2. Open TetherKitNext and click **Enable Background Component**; allow it once in'
             echo '   *System Settings › General › Login Items & Extensions*.'
             echo '3. Plug in your phone, turn on USB tethering, click **Connect**.'
+            echo
+            echo '### Coming from TetherKit 0.2.0 (beta 1–3)?'
+            echo
+            echo 'TetherKitNext is installed next to the old **TetherKit** app, not over it. Remove the old'
+            echo 'one first so the two do not fight over the phone:'
+            echo '[upgrade steps](https://github.com/AA-EION/TetherKitNext#upgrading-from-tetherkit-020-betas).'
             echo
             echo 'Universal build (Apple Silicon + Intel), macOS 14 or later.'
             echo
             echo "SHA-256: \`$(sha256sum "$dmg" | awk '{print $1}')\`"
           } > notes.md
           gh release create "$TAG" --prerelease --target "$GITHUB_SHA" \
-            --title "TetherKit ${TAG} (test build)" \
+            --title "TetherKitNext ${TAG} (test build)" \
             --notes-file notes.md --generate-notes "$dmg"
           echo "Published: $(gh release view "$TAG" --json url -q .url)" >> "$GITHUB_STEP_SUMMARY"

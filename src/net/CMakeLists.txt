@@ -10,4 +10,4 @@ add_library(
   bpf_link.cc
   loopback_link.cc)
 
-target_link_libraries(tk_net PUBLIC tetherkit_base tk_common)
+target_link_libraries(tk_net PUBLIC tetherkitnext_base tk_common)

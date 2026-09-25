@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 
 class Runner;
 
@@ -26,4 +26,4 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason);
 /// 基准明明全部跑完了，退出码却是失败。
 void ShutdownNetBenchmarks() noexcept;
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

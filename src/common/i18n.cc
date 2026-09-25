@@ -1,8 +1,8 @@
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/i18n.h"
 
 // ContextSeparator() 的声明在 error.h 里（那边不想拖上 <format>），
 // 实现在本文件底部 —— 包含它才能让编译器核对声明与定义一致。
-#include "tetherkit/common/error.h"
+#include "tetherkitnext/common/error.h"
 
 #include <array>
 #include <atomic>
@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace tetherkit {
+namespace tetherkitnext {
 namespace {
 
 /// 文案条数。两张表都按它定长，保证「加了枚举却漏了译文」在编译期就炸。
@@ -20,16 +20,16 @@ constexpr std::size_t kMessageCount = static_cast<std::size_t>(Msg::kMessageCoun
 
 /// 中文表。
 constexpr std::array<std::string_view, kMessageCount> kChineseTable{
-#define TETHERKIT_MESSAGE(id, zh, en) zh,
-#include "tetherkit/common/messages.def"  // NOLINT(bugprone-suspicious-include)
-#undef TETHERKIT_MESSAGE
+#define TETHERKITNEXT_MESSAGE(id, zh, en) zh,
+#include "tetherkitnext/common/messages.def"  // NOLINT(bugprone-suspicious-include)
+#undef TETHERKITNEXT_MESSAGE
 };
 
 /// 英文表。
 constexpr std::array<std::string_view, kMessageCount> kEnglishTable{
-#define TETHERKIT_MESSAGE(id, zh, en) en,
-#include "tetherkit/common/messages.def"  // NOLINT(bugprone-suspicious-include)
-#undef TETHERKIT_MESSAGE
+#define TETHERKITNEXT_MESSAGE(id, zh, en) en,
+#include "tetherkitnext/common/messages.def"  // NOLINT(bugprone-suspicious-include)
+#undef TETHERKITNEXT_MESSAGE
 };
 
 /// 当前语言。进程级单一状态，用原子而非互斥：每条文案都要读它。
@@ -86,8 +86,8 @@ Language LanguageFromLocaleString(std::string_view locale) noexcept {
 
 Language DetectLanguageFromEnvironment() noexcept {
   // 顺序遵循 POSIX：LC_ALL 压过 LC_MESSAGES，LC_MESSAGES 压过 LANG。
-  // TETHERKIT_LANG 排在最前，好让用户在不动区域设置的前提下只改本程序。
-  for (const char* name : {"TETHERKIT_LANG", "LC_ALL", "LC_MESSAGES", "LANG"}) {
+  // TETHERKITNEXT_LANG 排在最前，好让用户在不动区域设置的前提下只改本程序。
+  for (const char* name : {"TETHERKITNEXT_LANG", "LC_ALL", "LC_MESSAGES", "LANG"}) {
     const std::string_view value = ReadEnvironment(name);
     if (value.empty()) {
       continue;
@@ -154,4 +154,4 @@ std::string_view ContextSeparator() noexcept {
 }
 
 }  // namespace detail
-}  // namespace tetherkit
+}  // namespace tetherkitnext

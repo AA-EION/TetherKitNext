@@ -1,7 +1,11 @@
-# AGENTS.md —— TetherKit 实现备忘
+# AGENTS.md —— TetherKitNext 实现备忘
 
 > 本文件是给 AI agent（以及接手的人类）看的**工作记忆**。
 > 每完成一个提交都要更新对应章节。开始任何工作前先读一遍本文件，避免重复踩坑。
+>
+> **命名**：本项目 1.0 起更名为 **TetherKitNext**（Issen Software Group 维护，fork 自
+> XiaoMiku01/TetherKit）。第 5 节第 42 行之前的历史记录里的名字已随代码一起批量替换，
+> 描述的是当时的行为；当时实际的名字是 TetherKit / tetherkit-cli / com.tetherkit.*。
 
 ---
 
@@ -87,7 +91,7 @@ macOS **用户态** RNDIS 驱动：USB 侧用 libusb 与 RNDIS 设备（Android 
 ### 2.5 开发环境的限制（影响测试策略）
 
 - **无 root**：当前会话以 uid 501 运行，无法创建 feth、无法打开 `/dev/bpf*`。
-  → 需要 root 的测试必须**可选、可跳过**，并在 CI/本地用 `TETHERKIT_ROOT_TESTS=1` 之类的开关控制。
+  → 需要 root 的测试必须**可选、可跳过**，并在 CI/本地用 `TETHERKITNEXT_ROOT_TESTS=1` 之类的开关控制。
 - **不保证有 USB 设备**：立项时开发机上一个都没有，后来才接上过真实设备做验证。
   → USB 后端必须抽象成接口，提供内存 loopback mock，端到端测试与吞吐基准都跑在 mock 上。
   自动化测试**不得依赖设备在场**。
@@ -98,7 +102,7 @@ macOS **用户态** RNDIS 驱动：USB 侧用 libusb 与 RNDIS 设备（Android 
 ## 3. 目录结构
 
 ```
-TetherKit/
+TetherKitNext/
 ├── AGENTS.md              本文件：agent 工作记忆
 ├── README.md              用户向文档（**英文，GitHub 默认展示的那份**）
 ├── README.zh-CN.md        同上的中文版；两份内容对等，改一份要同步另一份
@@ -110,7 +114,7 @@ TetherKit/
 │   ├── CompilerWarnings.cmake  警告选项 INTERFACE 目标
 │   ├── Sanitizers.cmake        ASan/UBSan/TSan 开关
 │   └── Optimizations.cmake     数据路径优化选项与取舍说明
-├── include/tetherkit/     公开头文件（按模块分子目录）
+├── include/tetherkitnext/     公开头文件（按模块分子目录）
 │   ├── common/messages.def     **全部面向用户文案**（X-macro，中英两列）
 │   └── capi/                   C ABI —— 全项目唯一的 extern "C" 边界
 ├── src/                   实现
@@ -118,11 +122,11 @@ TetherKit/
 │   ├── capi/                   C ABI 实现（会话、网卡配置、日志、孤儿清理）
 │   └── app/                    命令行入口
 ├── gui/                   SwiftUI 图形界面（SwiftPM 工程，见 docs/GUI-ARCHITECTURE.md）
-│   ├── Sources/CTetherKit/     C ABI 的模块映射（头文件是符号链接）
-│   ├── Sources/TetherKitIPC/   App 与 helper 共享：XPC 协议、模型、授权
-│   ├── Sources/TetherKitCore/  C ABI 的 Swift 封装
-│   ├── Sources/TetherKitHelper/  特权 helper（root，由 launchd 拉起）
-│   ├── Sources/TetherKitApp/   SwiftUI 界面
+│   ├── Sources/CTetherKitNext/     C ABI 的模块映射（头文件是符号链接）
+│   ├── Sources/TetherKitNextIPC/   App 与 helper 共享：XPC 协议、模型、授权
+│   ├── Sources/TetherKitNextCore/  C ABI 的 Swift 封装
+│   ├── Sources/TetherKitNextHelper/  特权 helper（root，由 launchd 拉起）
+│   ├── Sources/TetherKitNextApp/   SwiftUI 界面
 │   ├── Resources/              Info.plist、LaunchDaemon plist
 │   └── Scripts/                构建 / 安装 / 卸载脚本
 ├── tests/                 doctest 单元测试（单一二进制 + test-suite 过滤）
@@ -140,13 +144,13 @@ tk_rndis / tk_net / tk_usb  ← tk_common
    ↑
 tk_core    ← common + rndis + net + usb
    ↑
-tetherkit（可执行）← core
-tk_capi（C ABI）  ← core          → 打包成共享库 libtetherkit
+tetherkitnext（可执行）← core
+tk_capi（C ABI）  ← core          → 打包成共享库 libtetherkitnext
    ↑
-gui/（Swift）     ← libtetherkit
+gui/（Swift）     ← libtetherkitnext
 ```
 
-Swift 侧只能看见 `libtetherkit`，看不见任何 C++ 符号（导出符号白名单卡死在
+Swift 侧只能看见 `libtetherkitnext`，看不见任何 C++ 符号（导出符号白名单卡死在
 `_tk_*`）。C++ 层的接口用了 `std::expected` / `std::span` / 抽象基类，
 Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 
@@ -156,7 +160,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 
 | 类别 | 约定 | 例 |
 |---|---|---|
-| 命名空间 | `lower_case` | `tetherkit`、`tetherkit::rndis` |
+| 命名空间 | `lower_case` | `tetherkitnext`、`tetherkitnext::rndis` |
 | 类型（class/struct/enum/别名） | `CamelCase` | `RndisStateMachine`、`BpfLink` |
 | 函数与方法 | `CamelCase` | `SendEncapsulatedCommand()` |
 | 局部变量与参数 | `lower_case` | `frame_len`、`max_transfer_size` |
@@ -177,9 +181,9 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 
 | | C++（库 + 命令行） | Swift（GUI + helper） |
 |---|---|---|
-| 文案表 | `include/tetherkit/common/messages.def`（X-macro，展开成枚举 + 两张表） | `gui/Sources/TetherKitIPC/LocalizedStrings.swift`（穷尽 switch） |
+| 文案表 | `include/tetherkitnext/common/messages.def`（X-macro，展开成枚举 + 两张表） | `gui/Sources/TetherKitNextIPC/LocalizedStrings.swift`（穷尽 switch） |
 | 取文案 | `Tr(Msg::kFoo, args...)`，参数与 `std::format` 一致 | `L(.foo, args...)`，`String(format:)` 的 printf 风格 |
-| 打日志 | `TETHERKIT_INFO_TR(Msg::kFoo, ...)` 等一组宏 | —— |
+| 打日志 | `TETHERKITNEXT_INFO_TR(Msg::kFoo, ...)` 等一组宏 | —— |
 | 不带参数 | `Text(Msg::kFoo)` 返回 `string_view`，不分配 | `L10n.text(.foo)` |
 | 漏一种语言 | 表长断言 + `common.i18n` 用例 | **编译不过**（switch 穷尽） |
 | 占位符对不上 | `common.i18n` 逐条核对下标与类型 | `LocalizationTests` 逐条核对位置与类型 |
@@ -194,14 +198,14 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 
 语言从哪里来：
 
-- 命令行：`--lang zh|en|auto`，缺省按 `TETHERKIT_LANG` → `LC_ALL` → `LC_MESSAGES`
+- 命令行：`--lang zh|en|auto`，缺省按 `TETHERKITNEXT_LANG` → `LC_ALL` → `LC_MESSAGES`
   → `LANG` 依次推断。**语言在解析参数之前就定下来**，所以帮助文本与参数错误
   本身也是目标语言。⚠️ sudo 未必透传这些变量，那时要显式写 `--lang`。
 - GUI：App 菜单与菜单栏面板里的语言开关（跟随系统 / 中文 / English），存
-  UserDefaults 的 `TetherKitLanguagePreference`。
+  UserDefaults 的 `TetherKitNextLanguagePreference`。
 
 **切语言时必须同步三处，缺一处就会出现「界面英文、日志中文」**：Swift 文案表
-（`L10n.apply`）、libtetherkit（`tk_set_language`）、helper（XPC 的 `setLanguage`
+（`L10n.apply`）、libtetherkitnext（`tk_set_language`）、helper（XPC 的 `setLanguage`
 —— 它以 root 跑在 launchd 下，看不到用户偏好）。三处都在 `AppModel.applyLanguage`
 里一起做，别在别处单独调其中一个。
 
@@ -228,7 +232,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 13 | `refactor(core): Runtime 改为自持控制线程` | ✅ | 非阻塞 Start、一致快照、事件汇 |
 | 14 | `feat(capi): 会话生命周期、状态快照与事件轮询` | ✅ | 枚举对齐用 static_assert 焊死 |
 | 15 | `feat(capi): 网卡上网方式配置与孤儿网卡清理` | ✅ | DHCP / 静态 IP；feth 落盘登记 |
-| 16 | `build: 输出共享库 libtetherkit` | ✅ | tk_capi 改 OBJECT 库；导出符号白名单 |
+| 16 | `build: 输出共享库 libtetherkitnext` | ✅ | tk_capi 改 OBJECT 库；导出符号白名单 |
 | 17 | `feat(gui): SwiftPM 工程骨架、C 互操作与 XPC 协议` | ✅ | 头文件走符号链接，永不失同步 |
 | 18 | `feat(gui): 特权 helper 与授权凭据复核` | ✅ | LaunchDaemon + AuthorizationRef |
 | 19 | `feat(gui): SwiftUI 设计系统与主界面` | ✅ | 状态卡/设备/吞吐/日志 |
@@ -238,7 +242,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 23 | `feat(gui): App 内一键安装与卸载特权组件` | ✅ | AEWP + helper 二进制 setuid(0)；载荷内嵌 .app，dist/helper 废除；「bash 对 euid≠ruid 掉权」的坑记入 SPIKE |
 | 24 | `feat(gui): 应用图标` | ✅ | 外围白底按边缘连通泛洪抠透明（内部白色元素保留）；icns 全尺寸；Dock 实测核对 |
 | 25 | `feat(gui): 检查更新（只查不换）` | ✅ | GitHub releases/latest + 语义化比较；每日静默 + 菜单手动；免证书分发下自动替换会被 Gatekeeper 拦死，故只查不换 |
-| 26 | `feat!: 命令行更名 tetherkit-cli；App 自动维护 Finder 别名` | ✅ | OUTPUT_NAME 改产物名（`tetherkit` formula 名让位 GUI）；别名用 bookmark API（软链聚焦不认），首次启动自动建立 —— **brew 连 postinstall 都在沙箱里，写不了 /Applications（实测）**；本机聚焦索引损坏（mdutil unknown state），入索效果待索引重建后复核 |
+| 26 | `feat!: 命令行更名 tetherkitnext-cli；App 自动维护 Finder 别名` | ✅ | OUTPUT_NAME 改产物名（`tetherkitnext` formula 名让位 GUI）；别名用 bookmark API（软链聚焦不认），首次启动自动建立 —— **brew 连 postinstall 都在沙箱里，写不了 /Applications（实测）**；本机聚焦索引损坏（mdutil unknown state），入索效果待索引重建后复核 |
 | 27 | `build(ci): GUI 构建入 CI；发版附带 .app；tap 同步双 formula` | ✅ | GUI job（macos-14/26）；build-gui.sh 支持 --swift-build-flags=--disable-sandbox（SwiftPM 沙箱嵌不进 brew 沙箱） |
 | 28 | `chore(release): v0.1.2 —— README 图标/截图/双 formula 安装说明` | ✅ | 中英双语；docs/assets |
 | 29 | `chore(release): v0.1.3 —— 设备名不再因会话占用而丢失` | ✅ | capi 字符串记忆回填 + helper 占用判定修正（第 7 节第 17 条） |
@@ -254,13 +258,14 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 | 40 | `fix(capi): 「所有流量走此网卡」改为调整服务顺序` | ✅ | 原实现只 `route change default`：DNS 仍跟随主服务（以太网）、configd 会在下次网络变化时改回路由、托管服务被 SCNetworkSetAddService 追加在末尾。现在 DHCP 模式把托管服务排到 ServiceOrder 第一（= 系统设置「设定服务顺序」），路由与 DNS 一起切到手机；网络页设置持久化到 UserDefaults |
 | 41 | `fix(gui): 同版本号的新构建也能发现后台组件过期` | ✅ | beta.1 与 beta.2 版本号都是 0.2.0：App 只比语义化版本 → 不提示重启，而 daemon 永不空闲退出、替换 .app 也不会重启它 → beta.2 的修复根本没跑。库的构建描述现以 `build <git sha>` 开头，daemon 随版本一并回报，App 比较构建 ID |
+| 42 | `feat!: 更名 TetherKitNext 1.0.0；新图标；带安装引导的 DMG；Issen Software Group` | ✅ | 代码/目录/Swift 模块/C 宏/bundle ID（`com.tetherkitnext.*`）/CLI（`tetherkitnext-cli`）全部改名；**刻意保留旧名**的只有识别旧安装用的：`HelperConstants.Legacy`（上游 `com.tetherkit.helper`）、`libtetherkit*` 前缀、托管网络服务前缀 `"TetherKit"`（同时匹配新旧服务名）、uninstall-helper.sh。图标由 `gui/Resources/Icon/AppIcon.svg` 经 `gui/Scripts/make-icon.py` 生成；DMG 用 dmgbuild（直接写 .DS_Store，无需 Finder/AppleScript，CI 无头可用），背景图 `scripts/dmg/` |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 
 - **分发**：签名 + 公证的通用 DMG（`scripts/build-release.sh`，CI 与发版同一脚本）。
   Homebrew tap 与 `update-tap.yml` 已移除。安全审计见 `docs/SECURITY-AUDIT.md`。
-- **守护进程**：`SMAppService`，标签 `com.tetherkit.helperd`，从 App 包内原地运行；
-  首次启动自动清理旧的 `com.tetherkit.helper`。XPC 协议号 4。
+- **守护进程**：`SMAppService`，标签 `com.tetherkitnext.helperd`，从 App 包内原地运行；
+  首次启动自动清理旧的 `com.tetherkitnext.helper`。XPC 协议号 4。
 - **CI**：macos-15 / macos-26 / macos-15-intel 原生构建与测试、通用包 + DMG、
   DMG 在真 Intel 机器上安装运行、TSan、feth ABI 门禁。
 
@@ -270,7 +275,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
   GUI 侧 `swift test` 17 个用例通过（含 LocalizationTests、HelperConstantsTests）
 - **构建**：`-Werror` 零告警；命令行、共享库、GUI 三套产物均可构建
 - **可运行**：`--version` / `--help` / `--list` 均正常；非 root 启动给出清晰提示
-  并返回退出码 1；`TetherKit.app` 与 `tetherkit-helper` 打包后均可启动；
+  并返回退出码 1；`TetherKitNext.app` 与 `tetherkitnext-helper` 打包后均可启动；
   特权组件可在 App 内一键安装 / 卸载（安装路径已真机走通）；
   组件版本与 App 对不上时管理行点亮「更新特权组件」（`brew upgrade` 只换 .app，
   装在 /Library 的那份不会跟着变 —— 协议号没变时以前完全没有提示，
@@ -346,9 +351,9 @@ RNDIS 内核驱动」这个立项前提。
 
 ### 6.2 已验证：feth / BPF 侧（**需 root**）
 
-③④⑦ 的复现方法：`sudo TETHERKIT_ROOT_TESTS=1 build/bin/tetherkit_tests --test-suite=net.feth`
+③④⑦ 的复现方法：`sudo TETHERKITNEXT_ROOT_TESTS=1 build/bin/tetherkitnext_tests --test-suite=net.feth`
 （不设该环境变量时这些用例**跳过而非失败**，跳过原因会打印出来），以及直接
-`sudo build/bin/tetherkit-cli` 跑一次。⑤⑥ 目前**没有**进测试套件，是用一次性探针测的
+`sudo build/bin/tetherkitnext-cli` 跑一次。⑤⑥ 目前**没有**进测试套件，是用一次性探针测的
 （做法写在各条里，⑥ 的缺口已记进 6.3）。
 
 **③ `feth` 配对的私有 ABI 在 macOS 26 上可用。**
@@ -410,7 +415,7 @@ RNDIS 协商完成（版本 1.0、MTU 1500）→ 查到设备 MAC 与链路速�
 - [x] Android 的 RNDIS quirk → 见 6.4「设备汇报的参数」。
 
 - [x] TX 丢帧的**根因** —— 已查明并修复，见 6.5。
-- [x] 修复后的优雅停机 —— 在真正的终端里 `sudo build/bin/tetherkit-cli` 再 Ctrl-C
+- [x] 修复后的优雅停机 —— 在真正的终端里 `sudo build/bin/tetherkitnext-cli` 再 Ctrl-C
       （SIGINT，与 SIGTERM / SIGHUP 共用同一个处理器）：打出「已停机」，
       `ifconfig` 无 feth 残留。**新增的背压等待没有卡住停机路径。**
       注意这一条只能在真终端里验证，走提权脚本会被吞掉信号，见第 7 节第 15 条。
@@ -449,7 +454,7 @@ RNDIS 协商完成：版本 1.0，MTU 1500，设备聚合上限 15800 字节 / 1
 
 ⚠️ **排查陷阱**：手机侧 `/proc/net/dev` 的 `rndis0` `rx_errs` 计数器**不可信** ——
 它会给每一帧都记一次错误（50 个 ping 全部得到回应，`rx_pkts` 和 `rx_errs` 却同时 +51）。
-排查 TX 问题请以 iperf3 的实际丢包率和 TetherKit 自己的统计为准。
+排查 TX 问题请以 iperf3 的实际丢包率和 TetherKitNext 自己的统计为准。
 
 ### 6.5 已修复：TX 高负载丢帧
 
@@ -470,7 +475,7 @@ RNDIS 协商完成：版本 1.0，MTU 1500，设备聚合上限 15800 字节 / 1
 
 | 指标 | 修复前 | 修复后 |
 |---|---:|---:|
-| TetherKit 自己的 TX 丢帧 | 1889 | **0** |
+| TetherKitNext 自己的 TX 丢帧 | 1889 | **0** |
 | TCP TX 重传 | 3829 | **0** |
 | 双向并发 TX | 4.8 Mbps | **87 Mbps** |
 | 单向 TCP RX（回归） | 324~327 | 326~327 |
@@ -508,7 +513,7 @@ TX 就从 4.8 回到了 87 Mbps。
 8. **别默认跑测试时有设备、有 root**，所以「跑不起来」不等于「代码错了」；
    离线可验证的部分必须全部覆盖到 mock 测试里，需要 root 的用例要能干净跳过。
 9. **CTest 的 `add_test` 里绝不能给参数加引号。** 写
-   `COMMAND tetherkit_tests --test-suite="${_suite}"` 时，CMake 会把引号当作参数
+   `COMMAND tetherkitnext_tests --test-suite="${_suite}"` 时，CMake 会把引号当作参数
    内容原样传下去（`ctest -V` 可见传的是 `"--test-suite="foo""`），doctest 匹配不到
    任何用例 → 跑 0 个用例 → doctest 对零匹配返回退出码 0 → ctest 报 Passed。
    **整套测试静默失效却全绿**，实际掩盖了 4 个真实失败。
@@ -558,7 +563,7 @@ TX 就从 4.8 回到了 87 Mbps。
    → 后果：**别用这条提权链去验证优雅停机**，会得到「停机卡死」的假故障，
    而且它跟被测代码毫无关系（修复前后的运行日志里都是清一色的 `Killed: 9`，
    一度被误当成新引入的回归）。要验证端到端停机，得在真正的终端里
-   `sudo build/bin/tetherkit-cli` 再 Ctrl-C —— 这样验证过，正常打出「已停机」
+   `sudo build/bin/tetherkitnext-cli` 再 Ctrl-C —— 这样验证过，正常打出「已停机」
    且 feth 无残留。
 
 16. **「刻意这样做」的注释也可能是错的 —— 尤其是当它读起来很有说服力时。**
@@ -603,9 +608,9 @@ TX 就从 4.8 回到了 87 Mbps。
    —— 结果是窗口没了、程序坞图标还在。激活策略一律由 `AppDelegate` 监听
    `NSWindow.willCloseNotification` 等通知推导（有可见的非 NSPanel 窗口 → regular）。
 20. **CI 门禁 grep 日志文案，文案一国际化就永远过不了。** 上游 ABI 门禁找
-   「创建了 feth」，i18n 之后这句已不存在。现在固定 `TETHERKIT_LANG=en` 再匹配。
+   「创建了 feth」，i18n 之后这句已不存在。现在固定 `TETHERKITNEXT_LANG=en` 再匹配。
 21. **ad-hoc 签名的 App 注册不了 SMAppService 守护进程。** 本机调试后台组件要用
-   Apple Development / Developer ID 证书签名（`TETHERKIT_SIGN_IDENTITY`）。
+   Apple Development / Developer ID 证书签名（`TETHERKITNEXT_SIGN_IDENTITY`）。
    ad-hoc 构建里 XPC 也会退回「仅授权复核」模式（没有 Team ID 可钉）。
 23. **改默认路由 ≠ 让流量走这张网卡。** 主服务（IPMonitor 按 ServiceOrder 选）同时决定
    全局默认路由**和** DNS 解析器；只 `route change` 的话 DNS 仍走原主服务，
@@ -614,8 +619,11 @@ TX 就从 4.8 回到了 87 Mbps。
 24. **daemon 不会随 App 更新而重启。** SMAppService 的 daemon 从 App 包内运行，但进程
    一直活着（没有空闲退出），替换 .app 后跑的仍是内存里的旧二进制。版本比较必须能区分
    同版本号的不同构建（现在比 `build <git sha>`），否则「修好了却没生效」。
+25. **批量改名时别把「识别旧安装」的字符串一起改掉。** 旧 daemon 标签、旧 dylib 前缀、
+   旧网络服务名都是用来**找到并清理**旧版本残留的，改成新名字等于永远找不到它们。
+   改名脚本之后要逐个核对 `Legacy` / 清理脚本 / 服务名前缀。
 22. **私有 SPI 不能直接链接。** 直接引用的符号被未来系统删掉时 dyld 会拒绝加载整个
-   libtetherkit；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
+   libtetherkitnext；一律 `dlsym` 并准备回退路径（见 managed_network_service.cc）。
 
 ---
 
@@ -623,29 +631,29 @@ TX 就从 4.8 回到了 87 Mbps。
 
 ```bash
 # 配置 + 构建（警告当错误）
-cmake -S . -B build -DTETHERKIT_WARNINGS_AS_ERRORS=ON && cmake --build build -j10
+cmake -S . -B build -DTETHERKITNEXT_WARNINGS_AS_ERRORS=ON && cmake --build build -j10
 
 # 跑测试
 ctest --test-dir build --output-on-failure
 
 # ThreadSanitizer 验证无锁队列（重要！）
-cmake -S . -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON && cmake --build build-tsan -j10 \
+cmake -S . -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && cmake --build build-tsan -j10 \
   && ctest --test-dir build-tsan --output-on-failure
 
 # 性能基准（务必用未开消毒器的 Release 构建）
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel -j10 \
-  && ./build-rel/bin/tetherkit_bench
+  && ./build-rel/bin/tetherkitnext_bench
 
 # GUI：构建、测试、打包（需要 Xcode 26）
-TETHERKIT_LIB_DIR=$PWD/build/lib swift build --package-path gui
-TETHERKIT_LIB_DIR=$PWD/build/lib swift test  --package-path gui
+TETHERKITNEXT_LIB_DIR=$PWD/build/lib swift build --package-path gui
+TETHERKITNEXT_LIB_DIR=$PWD/build/lib swift test  --package-path gui
 ./gui/Scripts/build-gui.sh
 
 # 完整发布构建：通用 libusb + 通用 C++ + 测试 + App + DMG
 ./scripts/build-release.sh
 
 # 两种语言各看一眼（改过文案就跑一下）
-./build/bin/tetherkit-cli --lang en --help
-./build/bin/tetherkit-cli --lang zh --list
+./build/bin/tetherkitnext-cli --lang en --help
+./build/bin/tetherkitnext-cli --lang zh --list
 ctest --test-dir build -R common.i18n --output-on-failure
 ```

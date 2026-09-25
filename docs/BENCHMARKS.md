@@ -1,8 +1,8 @@
-# TetherKit 性能基准
+# TetherKitNext 性能基准
 
-由 `tetherkit_bench` 自动生成 —— TetherKit 0.1.2 (C++23, macOS 13.3+)
+由 `tetherkitnext_bench` 自动生成 —— TetherKitNext 0.1.2 (C++23, macOS 13.3+)
 
-> 重新生成：`./build-rel/bin/tetherkit_bench > docs/BENCHMARKS.md`
+> 重新生成：`./build-rel/bin/tetherkitnext_bench > docs/BENCHMARKS.md`
 > 必须使用 **未启用消毒器的 Release 构建**，否则数字无参考价值。
 
 ## 测量环境
@@ -197,7 +197,7 @@ USB 2.0 高速下 RNDIS 的有效载荷理论上限约 **426 Mbps**，RX 方向�
 **① RX 干净，TX 是弱侧。** RX 在所有配置下都稳定在 ~325 Mbps 且零重传、零丢帧；
 TX 在同样的链路上只能到 ~235 Mbps，且伴随数千次 TCP 重传。
 
-**② TX 的丢帧发生在 TetherKit 自己的 TX 路径上，不是设备拒收。**
+**② TX 的丢帧发生在 TetherKitNext 自己的 TX 路径上，不是设备拒收。**
 运行时统计直接给出证据（`--tx-transfers 4`，默认值）：
 
 ```
@@ -277,7 +277,7 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
 
 | 指标 | 修复前 | 修复后 |
 |---|---:|---:|
-| TetherKit 自己的 TX 丢帧（6~8 秒窗口） | 1889 | **0** |
+| TetherKitNext 自己的 TX 丢帧（6~8 秒窗口） | 1889 | **0** |
 | TCP TX 重传 | 3829 | **0** |
 | TCP TX 吞吐 | 234~241 Mbps | 239~302 Mbps |
 | **双向并发 TX** | **4.8 Mbps** | **87 Mbps** |
@@ -317,7 +317,7 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
 ```
 
 每一帧都同时被计入「收到」和「错误」，而应答完全正常。
-**排查 TX 问题时请以 iperf3 的实际丢包率与 TetherKit 自己的统计为准，
+**排查 TX 问题时请以 iperf3 的实际丢包率与 TetherKitNext 自己的统计为准，
 不要用手机侧的 `rx_errs`。**
 
 ---
@@ -338,7 +338,7 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
   不同组合上（本机 4 P + 6 E），而 macOS 不提供绑核接口
   （`thread_affinity_policy` 在 Apple Silicon 上基本无效）。
 - **链路层基准需要 root**，非 root 运行时该组不会静默消失，而是在报告里留下
-  「本次未测量」的说明。重新测量：`sudo ./build/bin/tetherkit_bench > docs/BENCHMARKS.md`。
+  「本次未测量」的说明。重新测量：`sudo ./build/bin/tetherkitnext_bench > docs/BENCHMARKS.md`。
   注意夹具必须在 `main` 返回前显式拆除（`ShutdownNetBenchmarks`）—— 留给静态析构
   会因日志互斥量已被销毁而抛异常，表现为「基准全跑完了但退出码是 134」。
 - 曾经踩过的一个测量错误：统计计数器最初测出 **0.00 ns/op**，因为 relaxed 原子的
@@ -360,9 +360,9 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
 - [x] 真机端到端吞吐 —— RX 324~327 Mbps / TX 234~241 Mbps，见「真机端到端实测」。
 
 - [x] TX 丢帧的**根因** —— 已查明并修复：桥接层在传输池占满时立即丢弃而非等待，
-      见「TX 丢帧的根因与修复」。TetherKit 自己的 TX 丢帧从 1889 降到 0。
+      见「TX 丢帧的根因与修复」。TetherKitNext 自己的 TX 丢帧从 1889 降到 0。
 
-- [x] 修复后的优雅停机 —— 已在真终端确认：`sudo build/bin/tetherkit-cli` 再 Ctrl-C
+- [x] 修复后的优雅停机 —— 已在真终端确认：`sudo build/bin/tetherkitnext-cli` 再 Ctrl-C
       打出「已停机」，`ifconfig` 无 feth 残留。新增的背压等待（`WaitForSendCapacity`）
       没有卡住停机路径。⚠️ 这一条**只能在真终端里验证** —— 提权脚本会吞掉信号，
       见下文与 AGENTS.md 第 7 节第 15 条。
@@ -385,7 +385,7 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
 `sigaction` 装的 handler 也确实在位（`sample` 能看到 handler 地址不是 `SIG_IGN`），
 但信号永远不会到达，进程只能 `kill -9`。
 
-用一个 15 行的 C 程序做过对照，与 TetherKit 无关：
+用一个 15 行的 C 程序做过对照，与 TetherKitNext 无关：
 
 | 执行环境 | 收到 SIGTERM？ |
 |---|---|
@@ -395,4 +395,4 @@ skipped}`；桥接层在 `consumed == 0` 时调 `WaitForSendCapacity(50ms)` 等�
 
 **后果：别用这条链验证优雅停机**，它会造出一个「停机卡死」的假故障，而且跟被测
 代码毫无关系 —— 修复前后的运行日志里都是清一色的 `Killed: 9`。要验证端到端停机，
-在真正的终端里 `sudo build/bin/tetherkit-cli` 再 Ctrl-C（已如此验证，见上）。
+在真正的终端里 `sudo build/bin/tetherkitnext-cli` 再 Ctrl-C（已如此验证，见上）。

@@ -14,21 +14,21 @@
 #include <utility>
 
 #include "capi_support.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/time.h"
-#include "tetherkit/core/runtime.h"
-#include "tetherkit/net/feth_device.h"
-#include "tetherkit/rndis/state_machine.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/time.h"
+#include "tetherkitnext/core/runtime.h"
+#include "tetherkitnext/net/feth_device.h"
+#include "tetherkitnext/rndis/state_machine.h"
 
 namespace {
 
-using tetherkit::capi::ClearError;
-using tetherkit::capi::CopyText;
-using tetherkit::capi::FillError;
-using tetherkit::capi::WallNanos;
-using tetherkit::core::RunState;
-using tetherkit::core::RuntimeEvent;
+using tetherkitnext::capi::ClearError;
+using tetherkitnext::capi::CopyText;
+using tetherkitnext::capi::FillError;
+using tetherkitnext::capi::WallNanos;
+using tetherkitnext::core::RunState;
+using tetherkitnext::core::RuntimeEvent;
 
 // ---------------------------------------------------------------------------
 // 枚举值对齐检查
@@ -44,12 +44,12 @@ static_assert(static_cast<int>(RunState::kStopping) == TK_RUN_STOPPING);
 static_assert(static_cast<int>(RunState::kStopped) == TK_RUN_STOPPED);
 static_assert(static_cast<int>(RunState::kFailed) == TK_RUN_FAILED);
 
-static_assert(static_cast<int>(tetherkit::rndis::State::kUninitialized) == TK_RNDIS_UNINITIALIZED);
-static_assert(static_cast<int>(tetherkit::rndis::State::kInitializing) == TK_RNDIS_INITIALIZING);
-static_assert(static_cast<int>(tetherkit::rndis::State::kInitialized) == TK_RNDIS_INITIALIZED);
-static_assert(static_cast<int>(tetherkit::rndis::State::kDataInitialized) ==
+static_assert(static_cast<int>(tetherkitnext::rndis::State::kUninitialized) == TK_RNDIS_UNINITIALIZED);
+static_assert(static_cast<int>(tetherkitnext::rndis::State::kInitializing) == TK_RNDIS_INITIALIZING);
+static_assert(static_cast<int>(tetherkitnext::rndis::State::kInitialized) == TK_RNDIS_INITIALIZED);
+static_assert(static_cast<int>(tetherkitnext::rndis::State::kDataInitialized) ==
               TK_RNDIS_DATA_INITIALIZED);
-static_assert(static_cast<int>(tetherkit::rndis::State::kHalting) == TK_RNDIS_HALTING);
+static_assert(static_cast<int>(tetherkitnext::rndis::State::kHalting) == TK_RNDIS_HALTING);
 
 static_assert(static_cast<int>(RuntimeEvent::Kind::kRndisState) == TK_EVENT_RNDIS_STATE);
 static_assert(static_cast<int>(RuntimeEvent::Kind::kNegotiated) == TK_EVENT_NEGOTIATED);
@@ -65,7 +65,7 @@ static_assert(static_cast<int>(RuntimeEvent::Kind::kRunState) == TK_EVENT_RUN_ST
 /// 满了丢最旧 —— 事件只用于做动画和提示，权威状态在快照里，漏几条不影响正确性。
 constexpr std::size_t kEventRingCapacity = 128;
 
-class EventRing final : public tetherkit::core::RuntimeEventSink {
+class EventRing final : public tetherkitnext::core::RuntimeEventSink {
  public:
   /// 由控制线程调用。
   void OnRuntimeEvent(const RuntimeEvent& event) noexcept override {
@@ -113,10 +113,10 @@ class EventRing final : public tetherkit::core::RuntimeEventSink {
   return value != 0 ? value : fallback;
 }
 
-[[nodiscard]] tetherkit::core::RuntimeConfig ToRuntimeConfig(const tk_session_config_t& config,
+[[nodiscard]] tetherkitnext::core::RuntimeConfig ToRuntimeConfig(const tk_session_config_t& config,
                                                              EventRing& sink) {
-  const tetherkit::core::RuntimeConfig defaults;
-  tetherkit::core::RuntimeConfig result;
+  const tetherkitnext::core::RuntimeConfig defaults;
+  tetherkitnext::core::RuntimeConfig result;
 
   result.device_filter.vendor_id = config.vendor_id;
   result.device_filter.product_id = config.product_id;
@@ -151,14 +151,14 @@ class EventRing final : public tetherkit::core::RuntimeEventSink {
 //   反过来就是 use-after-free。
 struct tk_session {
   EventRing events;
-  std::unique_ptr<tetherkit::core::Runtime> runtime;
+  std::unique_ptr<tetherkitnext::core::Runtime> runtime;
 };
 
 void tk_session_config_init(tk_session_config_t* out_config) {
   if (out_config == nullptr) {
     return;
   }
-  const tetherkit::core::RuntimeConfig defaults;
+  const tetherkitnext::core::RuntimeConfig defaults;
   *out_config = tk_session_config_t{};
   out_config->mtu = defaults.mtu;
   out_config->adopt_device_mac = defaults.adopt_device_mac;
@@ -172,23 +172,23 @@ void tk_session_config_init(tk_session_config_t* out_config) {
 tk_session_t* tk_session_create(const tk_session_config_t* config, tk_error_t* out_error) {
   ClearError(out_error);
   if (config == nullptr) {
-    tetherkit::capi::FillGenericError(out_error,
-                                      tetherkit::Tr(tetherkit::Msg::kCapiSessionConfigNull));
+    tetherkitnext::capi::FillGenericError(out_error,
+                                      tetherkitnext::Tr(tetherkitnext::Msg::kCapiSessionConfigNull));
     return nullptr;
   }
 
   // 会话是唯一会创建 feth 的入口，登记回调在这里装上就够 —— 免 root 的那组
   // 接口（版本、枚举、预检）因此保持零副作用，不会去碰 /var/run。
-  tetherkit::capi::InstallInterfaceRegistry();
+  tetherkitnext::capi::InstallInterfaceRegistry();
 
   auto session = std::unique_ptr<tk_session>(new (std::nothrow) tk_session());
   if (session == nullptr) {
-    tetherkit::capi::FillGenericError(out_error,
-                                      tetherkit::Tr(tetherkit::Msg::kCapiSessionOutOfMemory));
+    tetherkitnext::capi::FillGenericError(out_error,
+                                      tetherkitnext::Tr(tetherkitnext::Msg::kCapiSessionOutOfMemory));
     return nullptr;
   }
 
-  auto runtime = tetherkit::core::Runtime::Create(ToRuntimeConfig(*config, session->events));
+  auto runtime = tetherkitnext::core::Runtime::Create(ToRuntimeConfig(*config, session->events));
   if (!runtime) {
     FillError(out_error, runtime.error());
     return nullptr;
@@ -207,7 +207,7 @@ tk_result_t tk_session_start(tk_session_t* session, tk_error_t* out_error) {
     FillError(out_error, status.error());
     // 唯一会同步失败的是 root 检查（见 Runtime::Start），单独给个专门的码，
     // GUI 好据此弹「需要授权」而不是笼统的「启动失败」。
-    return tetherkit::net::IsRunningAsRoot() ? TK_ERR_FAILED : TK_ERR_PERMISSION;
+    return tetherkitnext::net::IsRunningAsRoot() ? TK_ERR_FAILED : TK_ERR_PERMISSION;
   }
   return TK_OK;
 }
@@ -230,7 +230,7 @@ tk_result_t tk_session_status_get(tk_session_t* session, tk_session_status_t* ou
     return TK_ERR_INVALID_ARGUMENT;
   }
 
-  const tetherkit::core::RuntimeSnapshot snapshot = session->runtime->Snapshot();
+  const tetherkitnext::core::RuntimeSnapshot snapshot = session->runtime->Snapshot();
   *out_status = tk_session_status_t{};
 
   out_status->run_state = static_cast<std::int32_t>(snapshot.run_state);
@@ -246,7 +246,7 @@ tk_result_t tk_session_status_get(tk_session_t* session, tk_session_status_t* ou
   // 用 permanent 而非 current：RNDIS 语义下设备就是这块网卡，对端的 ARP 表与
   // DHCP 租约都按永久地址建立，界面上显示它才对得上用户在路由器里看到的条目。
   static_assert(sizeof(out_status->device_mac) ==
-                std::tuple_size_v<tetherkit::rndis::MacAddress>);
+                std::tuple_size_v<tetherkitnext::rndis::MacAddress>);
   std::ranges::copy(snapshot.device_info.permanent_address, std::begin(out_status->device_mac));
 
   out_status->mtu = snapshot.parameters.mtu;
@@ -264,7 +264,7 @@ tk_result_t tk_session_status_get(tk_session_t* session, tk_session_status_t* ou
 
   // 用库这边的单调时钟给快照打时间戳，而不是让宿主用自己的时钟做差：
   // 两次拉取之间的真实间隔会被调度拉长，用宿主的定时器周期当分母会把速率算高。
-  out_status->monotonic_nanos = static_cast<std::int64_t>(tetherkit::MonotonicNanos());
+  out_status->monotonic_nanos = static_cast<std::int64_t>(tetherkitnext::MonotonicNanos());
 
   CopyText(out_status->fatal, snapshot.fatal_message);
   return TK_OK;

@@ -1,4 +1,4 @@
-#include "tetherkit/common/error.h"
+#include "tetherkitnext/common/error.h"
 
 #include <libusb.h>
 
@@ -6,7 +6,7 @@
 #include <cstring>
 #include <format>
 
-namespace tetherkit {
+namespace tetherkitnext {
 namespace {
 
 /// 线程安全的 strerror。
@@ -50,4 +50,4 @@ std::string Error::ToString() const {
   return context_;
 }
 
-}  // namespace tetherkit
+}  // namespace tetherkitnext

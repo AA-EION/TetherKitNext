@@ -2,7 +2,7 @@
 
 #include <vector>
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 ScopedCFRef<CFStringRef> MakeCFString(std::string_view text) {
   return ScopedCFRef<CFStringRef>{::CFStringCreateWithBytes(
@@ -38,8 +38,8 @@ SCDynamicStoreRef SharedDynamicStore() {
   // 不加锁是安全的 —— C++11 起，函数内静态量的初始化由编译器保证线程安全
   // （magic static），并发首次调用只会有一个线程真正执行初始化。
   static SCDynamicStoreRef store = ::SCDynamicStoreCreate(
-      kCFAllocatorDefault, CFSTR("TetherKit"), /*callout=*/nullptr, /*context=*/nullptr);
+      kCFAllocatorDefault, CFSTR("TetherKitNext"), /*callout=*/nullptr, /*context=*/nullptr);
   return store;
 }
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

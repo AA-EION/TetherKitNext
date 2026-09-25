@@ -1,12 +1,12 @@
 # tests —— 单元测试
 #
-# 全部测试链接进单个可执行文件 tetherkit_tests，理由：
+# 全部测试链接进单个可执行文件 tetherkitnext_tests，理由：
 #  * doctest 的注册是全局的，单一二进制启动开销最低；
 #  * 通过 doctest 的 --test-suite 过滤即可按模块运行；
 #  * CTest 侧按 test-suite 注册多个用例，失败定位仍然精确。
 
 add_executable(
-  tetherkit_tests
+  tetherkitnext_tests
   test_main.cc
   test_version.cc
   test_common_byte_order.cc
@@ -26,9 +26,9 @@ add_executable(
 # "ignoring duplicate libraries"）。
 # tk_core PUBLIC 链接了 tk_common/tk_rndis/tk_net/tk_usb，列它一个就够。
 # tk_capi PUBLIC 链接了 tk_version 与 tk_core，因此这两个都不用重复列出。
-target_link_libraries(tetherkit_tests PRIVATE tetherkit_base doctest tk_capi)
+target_link_libraries(tetherkitnext_tests PRIVATE tetherkitnext_base doctest tk_capi)
 # src/capi 目录：capi_support.h 是实现内部头，不对外安装，但要能被测试直接覆盖。
-target_include_directories(tetherkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+target_include_directories(tetherkitnext_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
                                                    "${PROJECT_SOURCE_DIR}/src/capi")
 
 # ------------------------------------------------------------------------------
@@ -51,9 +51,9 @@ target_include_directories(tetherkit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
 # 另外单独注册一个 `all` 用例跑整个二进制作为**权威结果** —— 即使某个 suite
 # 忘了加进下面的列表，它也会把失败暴露出来。
 # ------------------------------------------------------------------------------
-add_test(NAME all COMMAND tetherkit_tests)
+add_test(NAME all COMMAND tetherkitnext_tests)
 
-set(TETHERKIT_TEST_SUITES
+set(TETHERKITNEXT_TEST_SUITES
     version
     common.byte_order
     common.error
@@ -77,8 +77,8 @@ set(TETHERKIT_TEST_SUITES
     capi.process
     capi.net_config)
 
-foreach(_suite IN LISTS TETHERKIT_TEST_SUITES)
+foreach(_suite IN LISTS TETHERKITNEXT_TEST_SUITES)
   # 注意：--test-suite= 后面**不要**加引号，见上方说明。
-  add_test(NAME "${_suite}" COMMAND tetherkit_tests --test-suite=${_suite})
+  add_test(NAME "${_suite}" COMMAND tetherkitnext_tests --test-suite=${_suite})
   set_tests_properties("${_suite}" PROPERTIES FAIL_REGULAR_EXPRESSION "assertions: +0 \\|")
 endforeach()

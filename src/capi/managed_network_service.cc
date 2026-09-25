@@ -1,4 +1,4 @@
-// Register feth as a real macOS network service while TetherKit owns it.
+// Register feth as a real macOS network service while TetherKitNext owns it.
 //
 // `ipconfig set <if> DHCP` publishes a dynamic State:/ service, but no
 // Setup:/Network/Service entry. Packet-tunnel providers can lose that transient
@@ -18,18 +18,18 @@
 
 #include "capi_support.h"
 #include "core_foundation_support.h"
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/i18n.h"
 
 namespace {
 
-using tetherkit::Error;
-using tetherkit::Msg;
-using tetherkit::Status;
-using tetherkit::Tr;
-using tetherkit::capi::CopyToStdString;
-using tetherkit::capi::IsValidFethName;
-using tetherkit::capi::MakeCFString;
-using tetherkit::capi::ScopedCFRef;
+using tetherkitnext::Error;
+using tetherkitnext::Msg;
+using tetherkitnext::Status;
+using tetherkitnext::Tr;
+using tetherkitnext::capi::CopyToStdString;
+using tetherkitnext::capi::IsValidFethName;
+using tetherkitnext::capi::MakeCFString;
+using tetherkitnext::capi::ScopedCFRef;
 
 // SystemConfiguration exports this SPI on every supported macOS version. The
 // public API can enumerate only IOKit-backed interfaces, while feth is a pure
@@ -39,7 +39,7 @@ using tetherkit::capi::ScopedCFRef;
 //
 // Resolved at runtime with dlsym rather than linked directly: a hard reference
 // to an SPI means that if a future macOS drops the symbol, dyld refuses to load
-// libtetherkit at all and the whole app/helper dies at launch. Looked up
+// libtetherkitnext at all and the whole app/helper dies at launch. Looked up
 // lazily, a missing symbol only disables the managed service and DHCP falls
 // back to the transient `ipconfig set` path.
 using CreateWithBsdNameFunction = SCNetworkInterfaceRef (*)(CFAllocatorRef allocator,
@@ -55,7 +55,11 @@ using CreateWithBsdNameFunction = SCNetworkInterfaceRef (*)(CFAllocatorRef alloc
 }
 
 constexpr std::uint32_t kIncludeAllVirtualInterfaces = 0xFFFF'FFFFU;
-constexpr std::string_view kManagedServicePrefix = "TetherKit ";
+// Services are named "TetherKitNext (fethN)". Matching on the shorter
+// "TetherKit" prefix also catches the "TetherKit (fethN)" services left behind
+// by builds from before the rename, so orphan cleanup removes those too. A
+// service only counts as ours if it is also bound to a feth interface.
+constexpr std::string_view kManagedServicePrefix = "TetherKit";
 
 [[nodiscard]] std::unexpected<Error> SystemConfigurationFailure(
     std::string_view operation) {
@@ -105,7 +109,7 @@ constexpr std::string_view kManagedServicePrefix = "TetherKit ";
     }
     changed = true;
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 [[nodiscard]] Status CommitAndApply(SCPreferencesRef preferences) {
@@ -115,12 +119,12 @@ constexpr std::string_view kManagedServicePrefix = "TetherKit ";
   if (::SCPreferencesApplyChanges(preferences) == 0) {
     return SystemConfigurationFailure("SCPreferencesApplyChanges");
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 [[nodiscard]] ScopedCFRef<SCPreferencesRef> CreatePreferences() {
   return ScopedCFRef<SCPreferencesRef>{
-      ::SCPreferencesCreate(kCFAllocatorDefault, CFSTR("TetherKit"), nullptr)};
+      ::SCPreferencesCreate(kCFAllocatorDefault, CFSTR("TetherKitNext"), nullptr)};
 }
 
 /// Holds the SCPreferences write lock for a scope.
@@ -163,14 +167,14 @@ class PreferencesLock {
   }
 
   bool changed = false;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       RemoveMatchingServices(preferences.Get(), interface_name, changed));
-  return changed ? CommitAndApply(preferences.Get()) : tetherkit::Ok();
+  return changed ? CommitAndApply(preferences.Get()) : tetherkitnext::Ok();
 }
 
 }  // namespace
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 bool ManagedNetworkServiceAvailable() noexcept {
   return ResolveCreateWithBsdName() != nullptr;
@@ -194,7 +198,7 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name,
   }
 
   bool removed_existing = false;
-  TETHERKIT_RETURN_IF_ERROR(
+  TETHERKITNEXT_RETURN_IF_ERROR(
       RemoveMatchingServices(preferences.Get(), interface_name, removed_existing));
 
   const ScopedCFRef<CFStringRef> bsd_name = MakeCFString(interface_name);
@@ -211,7 +215,7 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name,
   }
 
   const ScopedCFRef<CFStringRef> service_name =
-      MakeCFString(std::format("TetherKit ({})", interface_name));
+      MakeCFString(std::format("TetherKitNext ({})", interface_name));
   if (::SCNetworkServiceSetName(service.Get(), service_name.Get()) == 0) {
     return SystemConfigurationFailure("SCNetworkServiceSetName");
   }
@@ -276,7 +280,7 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name,
   }
 
   const std::string service_id = CopyToStdString(::SCNetworkServiceGetServiceID(service.Get()));
-  TETHERKIT_RETURN_IF_ERROR(CommitAndApply(preferences.Get()));
+  TETHERKITNEXT_RETURN_IF_ERROR(CommitAndApply(preferences.Get()));
   return service_id;
 }
 
@@ -288,4 +292,4 @@ Status RemoveAllManagedNetworkServices() {
   return RemoveManagedServices(std::nullopt);
 }
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

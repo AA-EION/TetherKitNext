@@ -1,15 +1,15 @@
-#include "tetherkit/usb/data_channel.h"
+#include "tetherkitnext/usb/data_channel.h"
 
 #include <sys/sysctl.h>
 
 #include <cstdlib>
 #include <format>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/rndis/packet_codec.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/rndis/packet_codec.h"
 
-namespace tetherkit::usb {
+namespace tetherkitnext::usb {
 namespace {
 
 /// 传输缓冲的对齐字节数。
@@ -50,9 +50,9 @@ Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
         rndis::kPacketMsgHeaderBytes + parameters.mtu + rndis::kEthernetHeaderBytes)));
   }
 
-  TETHERKIT_RETURN_IF_ERROR(channel->AllocatePool(channel->rx_pool_, config.rx_transfer_count,
+  TETHERKITNEXT_RETURN_IF_ERROR(channel->AllocatePool(channel->rx_pool_, config.rx_transfer_count,
                                                   config.rx_transfer_bytes));
-  TETHERKIT_RETURN_IF_ERROR(channel->AllocatePool(channel->tx_pool_, config.tx_transfer_count,
+  TETHERKITNEXT_RETURN_IF_ERROR(channel->AllocatePool(channel->tx_pool_, config.tx_transfer_count,
                                                   channel->tx_transfer_bytes_));
 
   // TX 空闲槽位队列：初始全部空闲。
@@ -63,7 +63,7 @@ Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
     }
   }
 
-  TETHERKIT_INFO_TR(
+  TETHERKITNEXT_INFO_TR(
       Msg::kUsbDataChannelReady,
       config.rx_transfer_count, config.rx_transfer_bytes / 1024,
       config.rx_transfer_count * config.rx_transfer_bytes / 1024, config.tx_transfer_count,
@@ -132,9 +132,9 @@ Status UsbDataChannel::StartReceiving(FrameRing& rx_ring, DirectionCounters& rx_
   rx_counters_ = &rx_counters;
 
   for (Slot& slot : rx_pool_) {
-    TETHERKIT_RETURN_IF_ERROR(SubmitReceive(slot));
+    TETHERKITNEXT_RETURN_IF_ERROR(SubmitReceive(slot));
   }
-  TETHERKIT_DEBUG_TR(Msg::kUsbBulkInSubmitted, rx_pool_.size());
+  TETHERKITNEXT_DEBUG_TR(Msg::kUsbBulkInSubmitted, rx_pool_.size());
   return Ok();
 }
 
@@ -202,7 +202,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
           if (outcome == rndis::ReadOutcome::kMalformed) {
             malformed_transfers_.fetch_add(1, std::memory_order_relaxed);
             rx_counters_->AddDroppedMalformed();
-            TETHERKIT_TRACE_TR(Msg::kUsbMalformedRndisMessage,
+            TETHERKITNEXT_TRACE_TR(Msg::kUsbMalformedRndisMessage,
                                rndis::MalformedReasonName(reader.Reason()),
                                reader.FramesDecoded());
           }
@@ -223,9 +223,9 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
       // usbi_handling_events 守卫，在回调里调用是安全的（代价是阻塞事件线程
       // 几十微秒到毫秒级，所以只在真 STALL 时做）。
       rx_counters_->AddIoError();
-      TETHERKIT_WARN_TR(Msg::kUsbBulkInStall);
+      TETHERKITNEXT_WARN_TR(Msg::kUsbBulkInStall);
       if (const auto status = device_->ClearHalt(device_->BulkInEndpoint()); !status) {
-        TETHERKIT_ERROR_TR(Msg::kUsbBulkInClearHaltFailed, status.error().ToString());
+        TETHERKITNEXT_ERROR_TR(Msg::kUsbBulkInClearHaltFailed, status.error().ToString());
         should_resubmit = false;
       }
       break;
@@ -238,7 +238,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
     case LIBUSB_TRANSFER_NO_DEVICE:
       // 设备拔了。停止重提交，让在飞计数收敛，由上层重连逻辑处理。
       should_resubmit = false;
-      TETHERKIT_INFO_TR(Msg::kUsbBulkInDeviceGone);
+      TETHERKITNEXT_INFO_TR(Msg::kUsbBulkInDeviceGone);
       break;
 
     case LIBUSB_TRANSFER_TIMED_OUT:
@@ -250,7 +250,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
     case LIBUSB_TRANSFER_OVERFLOW:
     default:
       rx_counters_->AddIoError();
-      TETHERKIT_WARN_TR(Msg::kUsbBulkInFailed, static_cast<int>(transfer->status));
+      TETHERKITNEXT_WARN_TR(Msg::kUsbBulkInFailed, static_cast<int>(transfer->status));
       break;
   }
 
@@ -266,7 +266,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
     if (rc == LIBUSB_SUCCESS) {
       return;  // 在飞计数保持不变：一进一出
     }
-    TETHERKIT_WARN_TR(Msg::kUsbBulkInResubmitFailed, ::libusb_error_name(rc));
+    TETHERKITNEXT_WARN_TR(Msg::kUsbBulkInResubmitFailed, ::libusb_error_name(rc));
   }
 
   // 该传输就此退出飞行。通知可能正在等待归零的 Shutdown()。
@@ -341,7 +341,7 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
         ++outcome.skipped;
       }
       if (!tx_free_slots_->TryPush(slot_index)) {
-        TETHERKIT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
+        TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
       }
       continue;
     }
@@ -362,7 +362,7 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
     if (rc != LIBUSB_SUCCESS) {
       outstanding_.fetch_sub(1, std::memory_order_acq_rel);
       if (!tx_free_slots_->TryPush(slot_index)) {
-        TETHERKIT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
+        TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
       }
       async_send_errors_.fetch_add(1, std::memory_order_relaxed);
       return std::unexpected(Error::FromLibUsb(rc, Tr(Msg::kUsbSubmitBulkOutFailed)));
@@ -370,7 +370,7 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
 
     // 帧数与字节数由**桥接层**统计（它是 TX 计数器的唯一写者）。这里只记
     // 供诊断用的聚合效果。
-    TETHERKIT_TRACE_TR(Msg::kUsbBulkOutSubmitted, message_count, payload_bytes, transfer_bytes);
+    TETHERKITNEXT_TRACE_TR(Msg::kUsbBulkOutSubmitted, message_count, payload_bytes, transfer_bytes);
     outcome.consumed += scanned;
     outcome.sent_frames += appended;
     outcome.sent_bytes += payload_bytes;
@@ -400,9 +400,9 @@ void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
 
     case LIBUSB_TRANSFER_STALL:
       async_send_errors_.fetch_add(1, std::memory_order_relaxed);
-      TETHERKIT_WARN_TR(Msg::kUsbBulkOutStall);
+      TETHERKITNEXT_WARN_TR(Msg::kUsbBulkOutStall);
       if (const auto status = device_->ClearHalt(device_->BulkOutEndpoint()); !status) {
-        TETHERKIT_ERROR_TR(Msg::kUsbBulkOutClearHaltFailed, status.error().ToString());
+        TETHERKITNEXT_ERROR_TR(Msg::kUsbBulkOutClearHaltFailed, status.error().ToString());
       }
       break;
 
@@ -412,14 +412,14 @@ void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
 
     default:
       async_send_errors_.fetch_add(1, std::memory_order_relaxed);
-      TETHERKIT_WARN_TR(Msg::kUsbBulkOutFailed, static_cast<int>(slot.transfer->status));
+      TETHERKITNEXT_WARN_TR(Msg::kUsbBulkOutFailed, static_cast<int>(slot.transfer->status));
       break;
   }
 
   // 归还槽位。停机时不归还也无所谓 —— 反正不会再有人取。
   if (!shutting_down_.load(std::memory_order_acquire)) {
     if (!tx_free_slots_->TryPush(slot.index)) {
-      TETHERKIT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot.index);
+      TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot.index);
     }
     // 唤醒可能在 WaitForSendCapacity 里等槽位的 TX 线程。空临界区惯用法：
     // 取一下锁保证等待方不会在「查完谓词、还没睡下」的窗口里漏掉这次通知。
@@ -461,7 +461,7 @@ void UsbDataChannel::Shutdown() {
     if (slot.transfer != nullptr) {
       const int rc = ::libusb_cancel_transfer(slot.transfer);
       if (rc != LIBUSB_SUCCESS && rc != LIBUSB_ERROR_NOT_FOUND) {
-        TETHERKIT_DEBUG_TR(Msg::kUsbCancelBulkInReturned, ::libusb_error_name(rc));
+        TETHERKITNEXT_DEBUG_TR(Msg::kUsbCancelBulkInReturned, ::libusb_error_name(rc));
       }
     }
   }
@@ -469,7 +469,7 @@ void UsbDataChannel::Shutdown() {
     if (slot.transfer != nullptr) {
       const int rc = ::libusb_cancel_transfer(slot.transfer);
       if (rc != LIBUSB_SUCCESS && rc != LIBUSB_ERROR_NOT_FOUND) {
-        TETHERKIT_DEBUG_TR(Msg::kUsbCancelBulkOutReturned, ::libusb_error_name(rc));
+        TETHERKITNEXT_DEBUG_TR(Msg::kUsbCancelBulkOutReturned, ::libusb_error_name(rc));
       }
     }
   }
@@ -486,7 +486,7 @@ void UsbDataChannel::Shutdown() {
       // 超时。这时释放缓冲是危险的（回调可能还会访问），所以**故意泄漏** ——
       // 泄漏几百 KB 远好于 use-after-free 崩溃。
       const std::uint32_t stuck = outstanding_.load(std::memory_order_acquire);
-      TETHERKIT_ERROR_TR(Msg::kUsbTransferReclaimTimeout, stuck,
+      TETHERKITNEXT_ERROR_TR(Msg::kUsbTransferReclaimTimeout, stuck,
                          (stuck * config_.rx_transfer_bytes) / 1024);
       // 把 transfer 指针清空，让 FreePool 跳过它们。
       for (Slot& slot : rx_pool_) {
@@ -501,7 +501,7 @@ void UsbDataChannel::Shutdown() {
   }
 
   shutdown_complete_ = true;
-  TETHERKIT_DEBUG_TR(Msg::kUsbDataChannelStopped);
+  TETHERKITNEXT_DEBUG_TR(Msg::kUsbDataChannelStopped);
 }
 
-}  // namespace tetherkit::usb
+}  // namespace tetherkitnext::usb

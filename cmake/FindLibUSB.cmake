@@ -11,7 +11,7 @@
 #   LibUSB::LibUSB      —— 可直接 link 的 IMPORTED 目标
 
 # LibUSB_ROOT (see scripts/build-libusb.sh) pins a specific build — the
-# universal, @rpath-named libusb that release builds embed in TetherKit.app.
+# universal, @rpath-named libusb that release builds embed in TetherKitNext.app.
 # When it is set, never fall back to pkg-config / Homebrew: silently linking
 # the host's single-arch Homebrew copy would produce a bundle that only runs
 # on the build machine.

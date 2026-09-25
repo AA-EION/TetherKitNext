@@ -29,19 +29,19 @@
 
 #include "capi_support.h"
 #include "managed_network_service.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/net/feth_device.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/net/feth_device.h"
 
 namespace {
 
-using tetherkit::Msg;
-using tetherkit::Text;
-using tetherkit::Tr;
-using tetherkit::capi::ClearError;
-using tetherkit::capi::FillGenericError;
-using tetherkit::capi::IsValidFethName;
+using tetherkitnext::Msg;
+using tetherkitnext::Text;
+using tetherkitnext::Tr;
+using tetherkitnext::capi::ClearError;
+using tetherkitnext::capi::FillGenericError;
+using tetherkitnext::capi::IsValidFethName;
 
 /// 登记文件路径。
 ///
@@ -51,7 +51,7 @@ using tetherkit::capi::IsValidFethName;
 ///
 /// 系统重启时 /var/run 会被清空，而重启也会顺带清掉所有 feth —— 两者的生命周期
 /// 恰好一致，不需要额外处理陈旧条目。
-constexpr const char* kRegistryPath = "/var/run/tetherkit-interfaces";
+constexpr const char* kRegistryPath = "/var/run/tetherkitnext-interfaces";
 
 std::mutex& RegistryMutex() {
   static std::mutex mutex;
@@ -155,24 +155,24 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
     // 网卡没了，为它注册的网络服务也该跟着走，否则会在「系统设置 → 网络」里
     // 留下一条指向不存在接口的死条目。
     try {
-      if (const auto status = tetherkit::capi::RemoveManagedNetworkService(name); !status) {
-        TETHERKIT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, status.error().ToString());
+      if (const auto status = tetherkitnext::capi::RemoveManagedNetworkService(name); !status) {
+        TETHERKITNEXT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, status.error().ToString());
       }
     } catch (...) {
-      TETHERKIT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, Text(Msg::kCapiCommandNoOutput));
+      TETHERKITNEXT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, Text(Msg::kCapiCommandNoOutput));
     }
   }
 }
 
 }  // namespace
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 void InstallInterfaceRegistry() {
   net::SetInterfaceRegistry(&OnInterfaceChanged);
 }
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi
 
 tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_error) {
   ClearError(out_error);
@@ -193,7 +193,7 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
     entries = ReadRegistry();
   }
 
-  // Setup:/Network/Service 会跨进程乃至重启持久化。先扫掉带 TetherKit 标记的
+  // Setup:/Network/Service 会跨进程乃至重启持久化。先扫掉带 TetherKitNext 标记的
   // feth 服务，才能兜住上次 helper 被 SIGKILL、系统随后又重启的情况：那时
   // /var/run 的接口登记已经没了，但网络偏好设置里的服务仍可能留着。
   //
@@ -206,8 +206,8 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
   const bool another_session_alive = std::ranges::any_of(
       entries, [](const RegistryEntry& entry) { return IsOtherLiveProcess(entry.owner); });
   if (!another_session_alive) {
-    if (const auto status = tetherkit::capi::RemoveAllManagedNetworkServices(); !status) {
-      TETHERKIT_WARN_TR(Msg::kCapiStaleServiceCleanupFailed, status.error().ToString());
+    if (const auto status = tetherkitnext::capi::RemoveAllManagedNetworkServices(); !status) {
+      TETHERKITNEXT_WARN_TR(Msg::kCapiStaleServiceCleanupFailed, status.error().ToString());
     }
   }
 
@@ -225,11 +225,11 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
     }
     // 销毁失败最常见的原因是接口已经不存在了（比如系统重启过），那正是我们
     // 想要的结果。真正的失败只记日志，不阻断其余条目。
-    if (const auto status = tetherkit::net::DestroyInterfaceByName(entry.name); status) {
+    if (const auto status = tetherkitnext::net::DestroyInterfaceByName(entry.name); status) {
       ++removed;
       continue;
     }
-    TETHERKIT_DEBUG_TR(Msg::kCapiOrphanAlreadyGone, entry.name);
+    TETHERKITNEXT_DEBUG_TR(Msg::kCapiOrphanAlreadyGone, entry.name);
   }
 
   // 收尾：能销毁的已经由回调逐行删掉了，剩下的是「本来就不在内核里」的条目，

@@ -15,13 +15,13 @@
 #include <string>
 #include <vector>
 
-#include "tetherkit/common/byte_order.h"
-#include "tetherkit/rndis/control_channel.h"
-#include "tetherkit/rndis/messages.h"
-#include "tetherkit/rndis/protocol.h"
-#include "tetherkit/rndis/state_machine.h"
+#include "tetherkitnext/common/byte_order.h"
+#include "tetherkitnext/rndis/control_channel.h"
+#include "tetherkitnext/rndis/messages.h"
+#include "tetherkitnext/rndis/protocol.h"
+#include "tetherkitnext/rndis/state_machine.h"
 
-namespace tetherkit::testing {
+namespace tetherkitnext::testing {
 
 /// 模拟设备行为的控制通道。
 class MockControlChannel final : public rndis::ControlChannel {
@@ -422,4 +422,4 @@ class RecordingObserver final : public rndis::StateMachineObserver {
   rndis::DeviceInfo info_snapshot{};
 };
 
-}  // namespace tetherkit::testing
+}  // namespace tetherkitnext::testing

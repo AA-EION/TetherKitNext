@@ -1,12 +1,12 @@
-#include "tetherkit/net/loopback_link.h"
+#include "tetherkitnext/net/loopback_link.h"
 
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/i18n.h"
 
 #include <algorithm>
 #include <format>
 #include <iterator>
 
-namespace tetherkit::net {
+namespace tetherkitnext::net {
 
 LoopbackLink::LoopbackLink(const LoopbackConfig& config) : config_(config) {
   inbound_.reserve(config_.inbound_capacity);
@@ -95,4 +95,4 @@ std::vector<std::vector<std::byte>> LoopbackLink::DrainSent() {
   return drained;
 }
 
-}  // namespace tetherkit::net
+}  // namespace tetherkitnext::net

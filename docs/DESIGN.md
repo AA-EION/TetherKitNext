@@ -1,4 +1,4 @@
-# TetherKit 设计文档
+# TetherKitNext 设计文档
 
 本文说明**为什么这样设计**。具体的字段偏移与常量见
 [RNDIS-PROTOCOL.md](RNDIS-PROTOCOL.md)；实测数字见 [BENCHMARKS.md](BENCHMARKS.md)；
@@ -58,7 +58,7 @@ TX 有「整帧 ≤ MTU + 18」的长度限制。
         └───────────────────────────────────────┼────────────────────┘
                                                 │
         ┌───────────────────────────────────────┼────────────────────┐
-        │  TetherKit（用户态）                   ▼                    │
+        │  TetherKitNext（用户态）                   ▼                    │
         │  ┌────────────── core::Bridge（3 个数据路径线程）────────┐  │
         │  │  RX: bulk IN 回调 → FrameRing → BPF 批量 write        │  │
         │  │  TX: BPF 批量 read → RNDIS 多包聚合 → bulk OUT        │  │
@@ -91,7 +91,7 @@ tk_usb     ← common, rndis  libusb 封装（rndis 只用来拿协议常量）
    ↑
 tk_core    ← 以上全部        数据路径桥接 + 运行时编排
    ↑
-tetherkit  ← core           命令行
+tetherkitnext  ← core           命令行
 ```
 
 **`tk_rndis` 不碰 I/O 是刻意的约束**，它让整个 RNDIS 实现（包括状态机）能在
@@ -232,7 +232,7 @@ TX 方向的零拷贝更是**根本不可行**：`struct bpf_hdr` 只有 20 字�
 ## 6b. 文案与多语言
 
 面向用户的文字（错误、日志、帮助、状态名）**一条都不写字面量**，全部集中在
-`include/tetherkit/common/messages.def`。该文件是一份 X-macro 清单，被展开三次
+`include/tetherkitnext/common/messages.def`。该文件是一份 X-macro 清单，被展开三次
 分别生成 `Msg` 枚举、中文表与英文表 —— 三者同源，**结构上不可能出现某种语言
 漏了一条**。
 
@@ -240,7 +240,7 @@ TX 方向的零拷贝更是**根本不可行**：`struct bpf_hdr` 只有 20 字�
 |---|---|---|
 | `Tr(Msg::kFoo, args...)` | 带参数，语义同 `std::format` | 会（返回 `std::string`） |
 | `Text(Msg::kFoo)` | 不带参数，返回 `string_view` | 不会，`noexcept` |
-| `TETHERKIT_INFO_TR(Msg::kFoo, ...)` 等 | 打日志 | 级别没开时不求值 |
+| `TETHERKITNEXT_INFO_TR(Msg::kFoo, ...)` 等 | 打日志 | 级别没开时不求值 |
 
 **为什么不用 gettext**：要引入 libintl、构建期跑 msgfmt、运行期按路径查目录，
 换来的是「装到别的机器上找不到 `.mo` 于是全变英文」这类运行期故障。两种语言、
@@ -324,7 +324,7 @@ TX 方向的零拷贝更是**根本不可行**：`struct bpf_hdr` 只有 20 字�
 于是状态机的全部路径（含设备插队推送、保活失败、复位重放）、桥接层的全部路径
 （含双向并发、背压、暂停、有流量时停机）都能离线测试，并在 ThreadSanitizer 下
 验证。需要 root 的 feth/BPF 用例默认**跳过而非失败**，用
-`TETHERKIT_ROOT_TESTS=1` 显式开启。
+`TETHERKITNEXT_ROOT_TESTS=1` 显式开启。
 
 ---
 
@@ -347,7 +347,7 @@ TX 方向的零拷贝更是**根本不可行**：`struct bpf_hdr` 只有 20 字�
 
 | 类别 | 约定 | 例 |
 |---|---|---|
-| 命名空间 | `lower_case` | `tetherkit::rndis` |
+| 命名空间 | `lower_case` | `tetherkitnext::rndis` |
 | 类型 | `CamelCase` | `PacketMessageWriter` |
 | 函数与方法（含访问器） | `CamelCase` | `MaxFrameBytes()` |
 | 局部变量与参数 | `lower_case` | `frame_length` |

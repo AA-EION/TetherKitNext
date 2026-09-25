@@ -11,5 +11,5 @@ add_library(
   logging.cc
   scheduling.cc)
 
-target_link_libraries(tk_common PUBLIC tetherkit_base)
+target_link_libraries(tk_common PUBLIC tetherkitnext_base)
 target_link_libraries(tk_common PRIVATE LibUSB::LibUSB)

@@ -1,4 +1,4 @@
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/common/logging.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -11,7 +11,7 @@
 #include <ctime>
 #include <mutex>
 
-namespace tetherkit {
+namespace tetherkitnext {
 namespace {
 
 // 日志配置是进程级的单一状态，天然是可变全局量；用原子保证线程安全后，
@@ -161,4 +161,4 @@ void EmitLogLine(LogLevel level, std::string_view file, unsigned line,
 }
 
 }  // namespace detail
-}  // namespace tetherkit
+}  // namespace tetherkitnext

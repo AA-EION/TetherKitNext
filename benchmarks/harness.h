@@ -25,9 +25,9 @@
 #include <utility>
 #include <vector>
 
-#include "tetherkit/common/time.h"
+#include "tetherkitnext/common/time.h"
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 
 /// 阻止编译器把被测代码优化掉。
 ///
@@ -161,4 +161,4 @@ void PrintMarkdownReport(const std::vector<Result>& results, std::string_view ti
 /// 打印本机环境信息（CPU、核数、缓存行、编译配置），基准结果必须带上下文才有意义。
 void PrintEnvironment();
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

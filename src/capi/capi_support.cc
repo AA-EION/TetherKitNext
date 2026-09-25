@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <ctime>
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 std::int64_t WallNanos() noexcept {
   ::timespec now{};
@@ -62,4 +62,4 @@ bool IsValidFethName(std::string_view name) noexcept {
                              [](char character) { return character >= '0' && character <= '9'; });
 }
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

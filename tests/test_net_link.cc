@@ -3,7 +3,7 @@
 // 分两部分：
 //   * loopback 后端 —— 任何环境都能跑，是桥接层测试的基础设施，必须自身可靠；
 //   * feth + BPF —— 需要 root，非 root 环境下**跳过而非失败**。
-//     用 TETHERKIT_ROOT_TESTS=1 显式开启（避免 CI 上误跑真实网卡操作）。
+//     用 TETHERKITNEXT_ROOT_TESTS=1 显式开启（避免 CI 上误跑真实网卡操作）。
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -25,14 +25,14 @@
 
 #include <doctest.h>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/net/bpf_link.h"
-#include "tetherkit/net/darwin_abi.h"
-#include "tetherkit/net/feth_device.h"
-#include "tetherkit/net/loopback_link.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/net/bpf_link.h"
+#include "tetherkitnext/net/darwin_abi.h"
+#include "tetherkitnext/net/feth_device.h"
+#include "tetherkitnext/net/loopback_link.h"
 
-using namespace tetherkit;       // NOLINT(google-build-using-namespace)
-using namespace tetherkit::net;  // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext;       // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext::net;  // NOLINT(google-build-using-namespace)
 
 namespace {
 
@@ -59,7 +59,7 @@ std::vector<std::byte> MakeEthernetFrame(std::uint32_t total_length, std::uint8_
 /// 并发的 setenv，因此豁免检查。
 // NOLINTNEXTLINE(concurrency-mt-unsafe)
 bool RootTestsEnabled() {
-  const char* flag = std::getenv("TETHERKIT_ROOT_TESTS");
+  const char* flag = std::getenv("TETHERKITNEXT_ROOT_TESTS");
   return flag != nullptr && flag[0] == '1' && IsRunningAsRoot();
 }
 
@@ -78,7 +78,7 @@ std::string Why(const T& result) {
 /// MessageBuilder 对 `const char*` 会按指针字符串化，直接流进去会打出地址。
 void ReportSkip(std::string_view what) {
   const std::string message =
-      std::format("跳过 {}：需要 root 且需设置 TETHERKIT_ROOT_TESTS=1（当前 euid={}）", what,
+      std::format("跳过 {}：需要 root 且需设置 TETHERKITNEXT_ROOT_TESTS=1（当前 euid={}）", what,
                   IsRunningAsRoot() ? "0" : "非 0");
   MESSAGE(message);
 }
@@ -227,8 +227,8 @@ TEST_CASE("feth 创建期 sysctl 清单非空且都有说明") {
     CHECK(entry.name != nullptr);
     // why 存的是文案标识，两种语言都必须真的有译文（漏译会渲染成空串，
     // 于是 sysctl 报错里那句「原因：」后面什么都没有）。
-    for (const auto language : {tetherkit::Language::kChinese, tetherkit::Language::kEnglish}) {
-      const std::string_view why = tetherkit::TextIn(language, entry.why);
+    for (const auto language : {tetherkitnext::Language::kChinese, tetherkitnext::Language::kEnglish}) {
+      const std::string_view why = tetherkitnext::TextIn(language, entry.why);
       // 说明必须是人话，不能只有一个词。
       CHECK(why.size() > 10);
     }

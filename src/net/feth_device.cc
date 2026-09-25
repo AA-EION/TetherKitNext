@@ -1,4 +1,4 @@
-#include "tetherkit/net/feth_device.h"
+#include "tetherkitnext/net/feth_device.h"
 
 #include <ifaddrs.h>
 #include <net/if_dl.h>
@@ -15,11 +15,11 @@
 #include <memory>
 #include <utility>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/net/darwin_abi.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/net/darwin_abi.h"
 
-namespace tetherkit::net {
+namespace tetherkitnext::net {
 namespace {
 
 /// 宿主安装的接口登记回调。用原子而非互斥锁：读发生在每次创建/销毁，
@@ -140,7 +140,7 @@ bool IsRunningAsRoot() noexcept {
 }
 
 Result<std::uint32_t> QueryFethMaxMtu() {
-  TETHERKIT_ASSIGN_OR_RETURN(const std::int32_t value, ReadInt32Sysctl("net.link.fake.max_mtu"));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const std::int32_t value, ReadInt32Sysctl("net.link.fake.max_mtu"));
   if (value <= 0) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetFethMaxMtuInvalid, value)));
   }
@@ -152,7 +152,7 @@ Status VerifyFethSysctls() {
     const auto value = ReadInt32Sysctl(entry.name);
     if (!value) {
       // 某些 sysctl 在特定 macOS 版本上可能不存在；缺失不算错误，只记一条。
-      TETHERKIT_DEBUG_TR(Msg::kNetSysctlUnreadableSkipped, entry.name,
+      TETHERKITNEXT_DEBUG_TR(Msg::kNetSysctlUnreadableSkipped, entry.name,
                          value.error().ToString());
       continue;
     }
@@ -169,8 +169,8 @@ void SetInterfaceRegistry(InterfaceRegistry registry) noexcept {
 }
 
 Status DestroyInterfaceByName(std::string_view name) {
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name));
 
   if (const auto status = socket.Call(SIOCIFDESTROY, &request, "ioctl(SIOCIFDESTROY)"); !status) {
     Error error = status.error();
@@ -178,7 +178,7 @@ Status DestroyInterfaceByName(std::string_view name) {
         std::move(error).WithContext(Tr(Msg::kNetDestroyOrphanFailed, name)));
   }
   NotifyRegistry(name, false);
-  TETHERKIT_INFO_TR(Msg::kNetDestroyedOrphan, name);
+  TETHERKITNEXT_INFO_TR(Msg::kNetDestroyedOrphan, name);
   return Ok();
 }
 
@@ -209,30 +209,30 @@ void FethInterface::Destroy() noexcept {
 
   const auto socket = IoctlSocket::Open();
   if (!socket) {
-    TETHERKIT_ERROR_TR(Msg::kNetDestroyFailed, name, socket.error().ToString());
+    TETHERKITNEXT_ERROR_TR(Msg::kNetDestroyFailed, name, socket.error().ToString());
     return;
   }
   auto request = MakeIfreq(name);
   if (!request) {
-    TETHERKIT_ERROR_TR(Msg::kNetDestroyFailed, name, request.error().ToString());
+    TETHERKITNEXT_ERROR_TR(Msg::kNetDestroyFailed, name, request.error().ToString());
     return;
   }
   // feth_clone_destroy 内部会自动先解绑 peer，无需我们先 Unpeer。
   if (const auto status = socket->Call(SIOCIFDESTROY, &*request, "ioctl(SIOCIFDESTROY)"); !status) {
-    TETHERKIT_ERROR_TR(Msg::kNetDestroyFailed, name, status.error().ToString());
+    TETHERKITNEXT_ERROR_TR(Msg::kNetDestroyFailed, name, status.error().ToString());
     return;
   }
   NotifyRegistry(name, false);
-  TETHERKIT_INFO_TR(Msg::kNetDestroyed, name);
+  TETHERKITNEXT_INFO_TR(Msg::kNetDestroyed, name);
 }
 
 Result<FethInterface> FethInterface::Create(std::string_view requested_name) {
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
   // 名字为空 → 填驱动名 "feth" 作为通配，内核选最小空闲编号并写回完整名字。
   const std::string_view name_to_request =
       requested_name.empty() ? std::string_view{kFethCloneName} : requested_name;
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_to_request));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_to_request));
 
   // SIOCIFCREATE 与 SIOCIFCREATE2 对 feth 完全等价 —— feth_clone_create 忽略
   // params，而 SIOCIFCREATE2 唯一的区别就是多传一个 params 指针。用简单的那个。
@@ -256,7 +256,7 @@ Result<FethInterface> FethInterface::Create(std::string_view requested_name) {
   // 先登记再返回：登记的意义就是「万一从这一刻起进程被强杀，下次也能清掉它」，
   // 所以中间不能留任何窗口。
   NotifyRegistry(created_name, true);
-  TETHERKIT_INFO_TR(Msg::kNetCreated, created_name);
+  TETHERKITNEXT_INFO_TR(Msg::kNetCreated, created_name);
   return FethInterface{std::move(created_name)};
 }
 
@@ -268,7 +268,7 @@ Status FethInterface::PeerWith(const FethInterface& peer) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetPeerNameTooLong, peer.Name())));
   }
 
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
   // reserved 字段保持全零 —— 内核会校验，非零直接 EINVAL。
   FethRequest payload{};
@@ -291,7 +291,7 @@ Status FethInterface::PeerWith(const FethInterface& peer) {
         std::move(error).WithContext(Tr(Msg::kNetPeerFailed, name_, peer.Name())));
   }
 
-  TETHERKIT_INFO_TR(Msg::kNetPeered, name_, peer.Name());
+  TETHERKITNEXT_INFO_TR(Msg::kNetPeered, name_, peer.Name());
   return Ok();
 }
 
@@ -299,11 +299,11 @@ Status FethInterface::Unpeer() {
   if (!Valid()) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetUnpeerInvalidObject)));
   }
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
   // 空 peer 名（首字节 '\0'）即表示解绑。
   FethRequest payload{};
-  TETHERKIT_RETURN_IF_ERROR(CallFethDriverIoctl(
+  TETHERKITNEXT_RETURN_IF_ERROR(CallFethDriverIoctl(
       socket, name_, kSetDriverSpec, static_cast<unsigned long>(FethSetCommand::kSetPeer), payload,
       Tr(Msg::kNetUnpeerIoctlWhat)));
   return Ok();
@@ -313,10 +313,10 @@ Result<std::string> FethInterface::QueryPeer() const {
   if (!Valid()) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetQueryPeerInvalidObject)));
   }
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
   FethRequest payload{};
-  TETHERKIT_RETURN_IF_ERROR(CallFethDriverIoctl(
+  TETHERKITNEXT_RETURN_IF_ERROR(CallFethDriverIoctl(
       socket, name_, kGetDriverSpec, static_cast<unsigned long>(FethGetCommand::kGetPeer), payload,
       "ioctl(SIOCGDRVSPEC, IF_FAKE_G_CMD_GET_PEER)"));
 
@@ -328,8 +328,8 @@ Status FethInterface::SetMtu(std::uint32_t mtu) {
   if (!Valid()) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetSetMtuInvalidObject)));
   }
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
   request.ifr_mtu = static_cast<int>(mtu);
 
   if (const auto status = socket.Call(SIOCSIFMTU, &request, "ioctl(SIOCSIFMTU)"); !status) {
@@ -347,9 +347,9 @@ Status FethInterface::SetMtu(std::uint32_t mtu) {
 }
 
 Result<std::uint32_t> FethInterface::QueryMtu() const {
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
-  TETHERKIT_RETURN_IF_ERROR(socket.Call(SIOCGIFMTU, &request, "ioctl(SIOCGIFMTU)"));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
+  TETHERKITNEXT_RETURN_IF_ERROR(socket.Call(SIOCGIFMTU, &request, "ioctl(SIOCGIFMTU)"));
   return static_cast<std::uint32_t>(request.ifr_mtu);
 }
 
@@ -357,8 +357,8 @@ Status FethInterface::SetMacAddress(const MacAddress& mac) {
   if (!Valid()) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetSetMacInvalidObject)));
   }
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
 
   // feth_ioctl 直接把 ifr_addr 转给 ifnet_set_lladdr(ifp, sa_data, sa_len)，
   // 只看 sa_len 与 sa_data，不校验 sa_family。
@@ -374,7 +374,7 @@ Status FethInterface::SetMacAddress(const MacAddress& mac) {
     return std::unexpected(std::move(error).WithContext(
         Tr(Msg::kNetSetMacFailed, name_, FormatMac(mac).data())));
   }
-  TETHERKIT_INFO_TR(Msg::kNetMacSet, name_, FormatMac(mac).data());
+  TETHERKITNEXT_INFO_TR(Msg::kNetMacSet, name_, FormatMac(mac).data());
   return Ok();
 }
 
@@ -412,11 +412,11 @@ Status FethInterface::SetUp(bool up) {
   if (!Valid()) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetSetUpInvalidObject)));
   }
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
 
   // 先读回当前 flags 再改，避免把别的标志位清掉。
-  TETHERKIT_RETURN_IF_ERROR(socket.Call(SIOCGIFFLAGS, &request, "ioctl(SIOCGIFFLAGS)"));
+  TETHERKITNEXT_RETURN_IF_ERROR(socket.Call(SIOCGIFFLAGS, &request, "ioctl(SIOCGIFFLAGS)"));
 
   // ifr_flags 是 short，而 IFF_* 在 64 位下可能超出 short 范围，
   // 因此按 macOS 的惯例用 uint16 掩码运算。
@@ -440,9 +440,9 @@ Status FethInterface::SetUp(bool up) {
 }
 
 Result<bool> FethInterface::IsUp() const {
-  TETHERKIT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
-  TETHERKIT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
-  TETHERKIT_RETURN_IF_ERROR(socket.Call(SIOCGIFFLAGS, &request, "ioctl(SIOCGIFFLAGS)"));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
+  TETHERKITNEXT_RETURN_IF_ERROR(socket.Call(SIOCGIFFLAGS, &request, "ioctl(SIOCGIFFLAGS)"));
   return (static_cast<std::uint16_t>(request.ifr_flags) & static_cast<std::uint16_t>(IFF_UP)) != 0;
 }
 
@@ -456,29 +456,29 @@ Result<FethPair> FethPair::Create(std::uint32_t mtu, const MacAddress* system_ma
   }
 
   // 1. 校验创建期会被快照的 sysctl —— **必须在创建之前**。
-  TETHERKIT_RETURN_IF_ERROR(VerifyFethSysctls());
+  TETHERKITNEXT_RETURN_IF_ERROR(VerifyFethSysctls());
 
-  TETHERKIT_ASSIGN_OR_RETURN(const std::uint32_t max_mtu, QueryFethMaxMtu());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const std::uint32_t max_mtu, QueryFethMaxMtu());
   if (mtu > max_mtu) {
     return std::unexpected(Error::Generic(Tr(Msg::kNetMtuExceedsFethLimit, mtu, max_mtu)));
   }
 
   // 2. 创建两张接口。
-  TETHERKIT_ASSIGN_OR_RETURN(FethInterface system_side, FethInterface::Create());
-  TETHERKIT_ASSIGN_OR_RETURN(FethInterface driver_side, FethInterface::Create());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(FethInterface system_side, FethInterface::Create());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(FethInterface driver_side, FethInterface::Create());
 
   // 3. 配对 —— 在 UP 之前做，这样链路从一开始就是 up 的。
-  TETHERKIT_RETURN_IF_ERROR(driver_side.PeerWith(system_side));
+  TETHERKITNEXT_RETURN_IF_ERROR(driver_side.PeerWith(system_side));
 
   // 4. 两侧 MTU 必须一致，否则一侧能发的帧另一侧收不下。
-  TETHERKIT_RETURN_IF_ERROR(system_side.SetMtu(mtu));
-  TETHERKIT_RETURN_IF_ERROR(driver_side.SetMtu(mtu));
+  TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetMtu(mtu));
+  TETHERKITNEXT_RETURN_IF_ERROR(driver_side.SetMtu(mtu));
 
   // 5. 设系统侧 MAC —— **必须在 UP 之前**。
   //    驱动侧刻意保留内核分配的地址：两侧 MAC 必须不同，否则 IPv6 链路本地
   //    地址相同会触发 DAD 冲突。
   if (system_mac != nullptr) {
-    TETHERKIT_RETURN_IF_ERROR(system_side.SetMacAddress(*system_mac));
+    TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetMacAddress(*system_mac));
 
     const auto driver_mac = driver_side.QueryMacAddress();
     if (driver_mac && *driver_mac == *system_mac) {
@@ -489,11 +489,11 @@ Result<FethPair> FethPair::Create(std::uint32_t mtu, const MacAddress* system_ma
 
   // 6. 两侧都置 UP。
   //    bpfwrite 里有硬检查：接口不是 IFF_UP 就返回 ENETDOWN。
-  TETHERKIT_RETURN_IF_ERROR(driver_side.SetUp(true));
-  TETHERKIT_RETURN_IF_ERROR(system_side.SetUp(true));
+  TETHERKITNEXT_RETURN_IF_ERROR(driver_side.SetUp(true));
+  TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetUp(true));
 
-  TETHERKIT_INFO_TR(Msg::kNetFethPairReady, system_side.Name(), driver_side.Name(), mtu);
+  TETHERKITNEXT_INFO_TR(Msg::kNetFethPairReady, system_side.Name(), driver_side.Name(), mtu);
   return FethPair{std::move(system_side), std::move(driver_side)};
 }
 
-}  // namespace tetherkit::net
+}  // namespace tetherkitnext::net

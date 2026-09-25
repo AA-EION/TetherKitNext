@@ -1,6 +1,6 @@
 # GUI 与提权可行性验证
 
-本文记录一次探索性验证的结论：**能不能在 TetherKit 之上做一个原生 Swift 图形界面，
+本文记录一次探索性验证的结论：**能不能在 TetherKitNext 之上做一个原生 Swift 图形界面，
 并让它以合适的方式取得配置网络所需的 root 权限。**
 
 结论是能，但过程中排除掉了三条看起来更"正统"的路线。**被排除的路线和排除理由，
@@ -87,7 +87,7 @@ scoped 路由的情况下照样报 "No network route to host"，日志里是
 `SCNetworkReachability`/`nw_path` 找不到服务。换成注册服务后 VPN 一次就连上。
 
 代价是服务会持久化（跨进程、跨重启），所以必须自己负责回收：网卡销毁时删、
-启动兜底时按 TetherKit 标记全扫一遍（`src/capi/managed_network_service.cc`）。
+启动兜底时按 TetherKitNext 标记全扫一遍（`src/capi/managed_network_service.cc`）。
 
 要让 `SCNetworkInterfaceCopyAll()` 也看见 feth 才需要写 IOKit driver ——
 而那一步并不需要。
@@ -134,12 +134,12 @@ IPMonitor 完全采纳（DNS 生效、默认路由装上）。见 §6.3。
 ## 4. 最终方案
 
 ```
-TetherKit.app (uid 501，不需要 root)
+TetherKitNext.app (uid 501，不需要 root)
   │ ① 直接调 C API 做免 root 的事：环境预检、USB 枚举
   │ ② AuthorizationCopyRights → 弹指纹/密码 → AuthorizationRef
   │ ③ AuthorizationMakeExternalForm → 32 字节凭据
   │
-  ├── XPC（com.tetherkit.helper，.privileged）──►  tetherkit-helper (uid 0)
+  ├── XPC（com.tetherkitnext.helper，.privileged）──►  tetherkitnext-helper (uid 0)
   │                                                  │ ④ CreateFromExternalForm 还原
   │                                                  │ ⑤ CopyRights 复核
   │                                                  │    （**不带** interactionAllowed）
@@ -315,7 +315,7 @@ Reason: ... have different Team IDs
 Hardened Runtime 下 macOS 拒绝加载 Team ID 与主程序不一致的库。Homebrew 的 libusb
 是 ad-hoc 签名（无 Team ID），而 App 用开发者证书签（有 Team ID）。
 
-**任何签名分发的 TetherKit.app 都必须内嵌 libusb** 并用同一身份重签。
+**任何签名分发的 TetherKitNext.app 都必须内嵌 libusb** 并用同一身份重签。
 另一条路是加 `com.apple.security.cs.disable-library-validation` 豁免，但那等于把
 整个进程的库校验关掉，不划算。
 
@@ -328,14 +328,14 @@ arm64 要求可执行文件有有效签名，改字节会让签名失效，然�
 
 ### `install` 会把软链拆成独立文件
 
-`libtetherkit.dylib` 和 `libtetherkit.0.dylib` 是指向 `.0.1.1.dylib` 的软链。
+`libtetherkitnext.dylib` 和 `libtetherkitnext.0.dylib` 是指向 `.0.1.1.dylib` 的软链。
 `install` 不保留软链，会各拷一份**独立的真实文件**。后续 `install_name_tool`
 只改到其中一份，而按 `@rpath` 加载的恰好是没改到的那份 —— **修了个不被使用的副本，
 问题却还在，且毫无征兆**。用 `cp -a`。
 
 ### 依赖要对着正确的对象查
 
-`libusb` 是 `libtetherkit.dylib` 的依赖，不是 helper 可执行文件的。对着 helper 查
+`libusb` 是 `libtetherkitnext.dylib` 的依赖，不是 helper 可执行文件的。对着 helper 查
 `otool -L` 得到空结果，整段处理被静默跳过 —— 装完看起来一切正常，实际仍依赖 Homebrew。
 
 ### UTF-8 locale 下 `$VAR` 紧跟全角标点会炸
@@ -431,7 +431,7 @@ sudo ipconfig set feth9 NONE && sudo ifconfig feth9 destroy
 #    没跑过服务的接口一律不在里面，插着线的真网卡也不在。
 #    不要拿它的缺席当作「IPConfiguration 不认这个接口」的证据 —— 我踩过。
 
-# 真实链路下的完整验证（需要接着设备、tetherkit 在跑）
+# 真实链路下的完整验证（需要接着设备、tetherkitnext 在跑）
 sudo ipconfig set feth0 DHCP
 ipconfig getifaddr feth0                     # 租约
 scutil --dns | grep -A3 feth0                # scoped DNS（在后段，别用 head 截断）

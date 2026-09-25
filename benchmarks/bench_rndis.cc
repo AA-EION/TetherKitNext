@@ -12,10 +12,10 @@
 #include <vector>
 
 #include "harness.h"
-#include "tetherkit/rndis/packet_codec.h"
-#include "tetherkit/rndis/protocol.h"
+#include "tetherkitnext/rndis/packet_codec.h"
+#include "tetherkitnext/rndis/protocol.h"
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 namespace {
 
 constexpr std::uint32_t kFullFrameBytes = 1514;
@@ -204,4 +204,4 @@ void RegisterRndisBenchmarks(Runner& runner) {
              [](std::uint64_t n) { return BenchRoundTrip(n, kSmallFrameBytes, 10); });
 }
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

@@ -18,10 +18,10 @@
 #include <mutex>
 #include <vector>
 
-#include "tetherkit/common/frame_ring.h"
-#include "tetherkit/usb/data_channel.h"
+#include "tetherkitnext/common/frame_ring.h"
+#include "tetherkitnext/usb/data_channel.h"
 
-namespace tetherkit::testing {
+namespace tetherkitnext::testing {
 
 /// 模拟设备行为的数据通道。
 class MockDataChannel final : public usb::DataChannel {
@@ -207,4 +207,4 @@ class MockDataChannel final : public usb::DataChannel {
   std::atomic<std::uint64_t> async_send_errors_{0};
 };
 
-}  // namespace tetherkit::testing
+}  // namespace tetherkitnext::testing

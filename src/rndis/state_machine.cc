@@ -1,15 +1,15 @@
-#include "tetherkit/rndis/state_machine.h"
+#include "tetherkitnext/rndis/state_machine.h"
 
 #include <algorithm>
 #include <chrono>
 #include <format>
 #include <thread>
 
-#include "tetherkit/common/byte_order.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/common/byte_order.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
 
-namespace tetherkit::rndis {
+namespace tetherkitnext::rndis {
 namespace {
 
 /// QUERY 定长 OID 时给的占位缓冲大小。
@@ -78,7 +78,7 @@ void StateMachine::TransitionTo(State next) {
   }
   const State previous = state_;
   state_ = next;
-  TETHERKIT_INFO_TR(Msg::kRndisStateTransition, StateName(previous), StateName(next));
+  TETHERKITNEXT_INFO_TR(Msg::kRndisStateTransition, StateName(previous), StateName(next));
   observer_->OnStateChanged(previous, next);
 }
 
@@ -88,7 +88,7 @@ void StateMachine::TransitionTo(State next) {
 
 Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
                                    std::span<const std::byte>& out_response) {
-  TETHERKIT_ASSIGN_OR_RETURN(const std::span<const std::byte> message,
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const std::span<const std::byte> message,
                              channel_->ReceiveMessage());
 
   if (message.empty()) {
@@ -97,9 +97,9 @@ Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
   }
   MarkDeviceActivity();
 
-  TETHERKIT_ASSIGN_OR_RETURN(const MessageHeader header, DecodeMessageHeader(message));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const MessageHeader header, DecodeMessageHeader(message));
   const std::string_view name = MessageTypeName(header.message_type);
-  TETHERKIT_DEBUG_TR(Msg::kRndisControlMessageReceived,
+  TETHERKITNEXT_DEBUG_TR(Msg::kRndisControlMessageReceived,
                      name.empty() ? Text(Msg::kRndisUnknownMessage) : name, header.message_type,
                      header.message_length);
 
@@ -110,7 +110,7 @@ Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
   }
   if (header.message_type == ToRaw(MessageType::kKeepAlive)) {
     // 设备发起的保活。**必须回复**，否则设备可能判定主机已死而断开。
-    TETHERKIT_RETURN_IF_ERROR(HandleDeviceKeepAlive(message));
+    TETHERKITNEXT_RETURN_IF_ERROR(HandleDeviceKeepAlive(message));
     return false;
   }
 
@@ -128,14 +128,14 @@ Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
 
   // 不是我们等的，也不是已知的推送消息。可能是上一次超时请求的迟到响应 ——
   // 丢弃并继续（不能当致命错误，否则一次超时就会把链路判死）。
-  TETHERKIT_WARN_TR(Msg::kRndisDiscardUnexpectedMessage,
+  TETHERKITNEXT_WARN_TR(Msg::kRndisDiscardUnexpectedMessage,
                     name.empty() ? Text(Msg::kRndisUnknown) : name, header.message_type);
   return false;
 }
 
 Result<StateMachine::Exchange> StateMachine::Transact(std::span<const std::byte> request,
                                                       MessageType expected_reply) {
-  TETHERKIT_RETURN_IF_ERROR(channel_->SendMessage(request));
+  TETHERKITNEXT_RETURN_IF_ERROR(channel_->SendMessage(request));
 
   // 先等中断端点的 RESPONSE_AVAILABLE 通知，再去取响应。
   //
@@ -152,12 +152,12 @@ Result<StateMachine::Exchange> StateMachine::Transact(std::span<const std::byte>
   const NotificationResult notification =
       channel_->WaitForNotification(notification_timeout);
   if (notification == NotificationResult::kResponseAvailable) {
-    TETHERKIT_TRACE_TR(Msg::kRndisNotificationReceived);
+    TETHERKITNEXT_TRACE_TR(Msg::kRndisNotificationReceived);
   }
 
   std::span<const std::byte> response;
   for (std::uint32_t attempt = 0; attempt < config_.response_poll_attempts; ++attempt) {
-    TETHERKIT_ASSIGN_OR_RETURN(const bool matched, PumpOnce(expected_reply, response));
+    TETHERKITNEXT_ASSIGN_OR_RETURN(const bool matched, PumpOnce(expected_reply, response));
     if (matched) {
       return Exchange{.response = response};
     }
@@ -181,7 +181,7 @@ void StateMachine::HandleIndicateStatus(std::span<const std::byte> message) {
   const auto indication = DecodeIndicateStatus(message);
   if (!indication) {
     // 解析失败不该让链路死掉 —— 这是个纯通报消息。
-    TETHERKIT_WARN_TR(Msg::kRndisIndicateStatusParseFailed, indication.error().ToString());
+    TETHERKITNEXT_WARN_TR(Msg::kRndisIndicateStatusParseFailed, indication.error().ToString());
     return;
   }
 
@@ -189,12 +189,12 @@ void StateMachine::HandleIndicateStatus(std::span<const std::byte> message) {
   if (indication->has_diagnostic_info) {
     // 设备用 Rndis_Diagnostic_Info 告诉我们「你发过来的消息第 N 字节不合法」，
     // 对排查我们自己的编码 bug 极有价值，所以单独打出来。
-    TETHERKIT_WARN_TR(Msg::kRndisDeviceIndicatedWithDiagnostics,
+    TETHERKITNEXT_WARN_TR(Msg::kRndisDeviceIndicatedWithDiagnostics,
                       status_name.empty() ? Text(Msg::kRndisUnknownStatus) : status_name,
                       indication->status, indication->diagnostic_status,
                       indication->diagnostic_error_offset);
   } else {
-    TETHERKIT_INFO_TR(Msg::kRndisDeviceIndicated,
+    TETHERKITNEXT_INFO_TR(Msg::kRndisDeviceIndicated,
                       status_name.empty() ? Text(Msg::kRndisUnknownStatus) : status_name,
                       indication->status);
   }
@@ -229,9 +229,9 @@ Status StateMachine::HandleDeviceKeepAlive(std::span<const std::byte> message) {
     return std::unexpected(Error::Generic(Tr(Msg::kRndisKeepAliveMsgTooShort)));
   }
   const std::uint32_t request_id = LoadLe32(message.data() + kKeepAliveRequestIdOffset);
-  TETHERKIT_DEBUG_TR(Msg::kRndisDeviceKeepAlive, request_id);
+  TETHERKITNEXT_DEBUG_TR(Msg::kRndisDeviceKeepAlive, request_id);
 
-  TETHERKIT_ASSIGN_OR_RETURN(
+  TETHERKITNEXT_ASSIGN_OR_RETURN(
       const std::uint32_t written,
       EncodeKeepAliveComplete(request_id, ToRaw(StatusCode::kSuccess), request_buffer_));
   return channel_->SendMessage(std::span<const std::byte>{request_buffer_.data(), written});
@@ -244,7 +244,7 @@ Status StateMachine::HandleDeviceKeepAlive(std::span<const std::byte> message) {
 Result<std::span<const std::byte>> StateMachine::QueryOid(Oid oid, std::uint32_t expected_bytes,
                                                           bool fatal) {
   const std::string_view name = OidName(ToRaw(oid));
-  TETHERKIT_ASSIGN_OR_RETURN(
+  TETHERKITNEXT_ASSIGN_OR_RETURN(
       const std::uint32_t written,
       Encode(QueryRequest{.request_id = NextRequestId(),
                           .oid = oid,
@@ -255,21 +255,21 @@ Result<std::span<const std::byte>> StateMachine::QueryOid(Oid oid, std::uint32_t
                            MessageType::kQueryComplete);
   if (!exchange) {
     if (!fatal) {
-      TETHERKIT_DEBUG_TR(Msg::kRndisOptionalOidQueryFailed, name, exchange.error().ToString());
+      TETHERKITNEXT_DEBUG_TR(Msg::kRndisOptionalOidQueryFailed, name, exchange.error().ToString());
       return std::span<const std::byte>{};
     }
     return std::unexpected(
         std::move(exchange).error().WithContext(Tr(Msg::kRndisOidQueryFailed, name)));
   }
 
-  TETHERKIT_ASSIGN_OR_RETURN(const QueryComplete complete,
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const QueryComplete complete,
                              DecodeQueryComplete(exchange->response));
 
   if (complete.status != ToRaw(StatusCode::kSuccess)) {
     const std::string_view status_name = StatusName(complete.status);
     if (!fatal) {
       // 可选 OID 返回 NOT_SUPPORTED 是完全正常的（例如 OID_GEN_PHYSICAL_MEDIUM）。
-      TETHERKIT_DEBUG_TR(Msg::kRndisOptionalOidUnsupported, name,
+      TETHERKITNEXT_DEBUG_TR(Msg::kRndisOptionalOidUnsupported, name,
                          status_name.empty() ? Text(Msg::kRndisUnknownStatus) : status_name);
       return std::span<const std::byte>{};
     }
@@ -283,16 +283,16 @@ Result<std::span<const std::byte>> StateMachine::QueryOid(Oid oid, std::uint32_t
 
 Status StateMachine::SetOidUint32(Oid oid, std::uint32_t value) {
   const std::string_view name = OidName(ToRaw(oid));
-  TETHERKIT_ASSIGN_OR_RETURN(
+  TETHERKITNEXT_ASSIGN_OR_RETURN(
       const std::uint32_t written,
       EncodeSetUint32(NextRequestId(), oid, value, request_buffer_));
 
-  TETHERKIT_ASSIGN_OR_RETURN(
+  TETHERKITNEXT_ASSIGN_OR_RETURN(
       const Exchange exchange,
       Transact(std::span<const std::byte>{request_buffer_.data(), written},
                MessageType::kSetComplete));
 
-  TETHERKIT_ASSIGN_OR_RETURN(const SetComplete complete, DecodeSetComplete(exchange.response));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const SetComplete complete, DecodeSetComplete(exchange.response));
   if (complete.status != ToRaw(StatusCode::kSuccess)) {
     const std::string_view status_name = StatusName(complete.status);
     return std::unexpected(Error::FromRndisStatus(
@@ -300,7 +300,7 @@ Status StateMachine::SetOidUint32(Oid oid, std::uint32_t value) {
         Tr(Msg::kRndisOidSetRejected, name, value,
            status_name.empty() ? Text(Msg::kRndisUnknownStatus) : status_name)));
   }
-  TETHERKIT_DEBUG_TR(Msg::kRndisOidSet, name, value);
+  TETHERKITNEXT_DEBUG_TR(Msg::kRndisOidSet, name, value);
   return Ok();
 }
 
@@ -321,12 +321,12 @@ Status StateMachine::CollectDeviceInfo() {
   // ---- 永久 MAC：**致命** ----
   // 这是主机侧 feth 要采用的地址，拿不到就没法正确搭建网卡。
   {
-    TETHERKIT_ASSIGN_OR_RETURN(
+    TETHERKITNEXT_ASSIGN_OR_RETURN(
         const std::span<const std::byte> payload,
         QueryOid(Oid::kEthernetPermanentAddress, kFixedOidPlaceholderBytes, /*fatal=*/true));
-    TETHERKIT_ASSIGN_OR_RETURN(info_.permanent_address, ParseMac(payload));
+    TETHERKITNEXT_ASSIGN_OR_RETURN(info_.permanent_address, ParseMac(payload));
     info_.has_permanent_address = true;
-    TETHERKIT_INFO_TR(Msg::kRndisPermanentMac, FormatMac(info_.permanent_address).data());
+    TETHERKITNEXT_INFO_TR(Msg::kRndisPermanentMac, FormatMac(info_.permanent_address).data());
   }
 
   // ---- 当前 MAC：不致命（多数设备与永久 MAC 相同）----
@@ -351,7 +351,7 @@ Status StateMachine::CollectDeviceInfo() {
       info_.maximum_frame_size = *value;
       // 设备说它最大只收 N 字节净荷，而我们协商出的 MTU 更大 —— 听设备的。
       if (*value != 0 && *value < parameters_.mtu) {
-        TETHERKIT_WARN_TR(Msg::kRndisMtuLoweredToDeviceFrameSize, *value, parameters_.mtu);
+        TETHERKITNEXT_WARN_TR(Msg::kRndisMtuLoweredToDeviceFrameSize, *value, parameters_.mtu);
         parameters_.mtu = *value;
       }
     }
@@ -390,7 +390,7 @@ Status StateMachine::CollectDeviceInfo() {
     info_.vendor_description = ToPrintableString(*payload);
   }
 
-  TETHERKIT_INFO_TR(Msg::kRndisDeviceInfo, FormatMac(info_.permanent_address).data(),
+  TETHERKITNEXT_INFO_TR(Msg::kRndisDeviceInfo, FormatMac(info_.permanent_address).data(),
                     info_.LinkSpeedMbps(), info_.maximum_frame_size,
                     static_cast<std::uint32_t>(info_.physical_medium), info_.vendor_id,
                     info_.vendor_description);
@@ -407,7 +407,7 @@ Status StateMachine::Start() {
 
   // ---- 第 1 步：INITIALIZE ----
   {
-    TETHERKIT_ASSIGN_OR_RETURN(
+    TETHERKITNEXT_ASSIGN_OR_RETURN(
         const std::uint32_t written,
         Encode(InitializeRequest{.request_id = NextRequestId(),
                                  .max_transfer_size = config_.host_max_transfer_size},
@@ -438,12 +438,12 @@ Status StateMachine::Start() {
     // 设备汇报的聚合包数只是它的**宣称**，调用方可以不信任它（见配置项注释）。
     if (config_.max_tx_packets_per_message != 0 &&
         parameters_.max_packets_per_message > config_.max_tx_packets_per_message) {
-      TETHERKIT_INFO_TR(Msg::kRndisMaxPacketsClamped, parameters_.max_packets_per_message,
+      TETHERKITNEXT_INFO_TR(Msg::kRndisMaxPacketsClamped, parameters_.max_packets_per_message,
                         config_.max_tx_packets_per_message);
       parameters_.max_packets_per_message = config_.max_tx_packets_per_message;
     }
 
-    TETHERKIT_INFO_TR(Msg::kRndisNegotiated, complete->major_version, complete->minor_version,
+    TETHERKITNEXT_INFO_TR(Msg::kRndisNegotiated, complete->major_version, complete->minor_version,
                       parameters_.mtu, parameters_.device_max_transfer_size,
                       parameters_.max_packets_per_message, parameters_.tx_alignment_bytes);
   }
@@ -543,13 +543,13 @@ Status StateMachine::Poll() {
     return Ok();
   }
 
-  TETHERKIT_ASSIGN_OR_RETURN(const std::uint32_t written,
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const std::uint32_t written,
                              EncodeKeepAlive(NextRequestId(), request_buffer_));
   auto exchange = Transact(std::span<const std::byte>{request_buffer_.data(), written},
                             MessageType::kKeepAliveComplete);
   if (!exchange) {
     ++consecutive_keepalive_failures_;
-    TETHERKIT_WARN_TR(Msg::kRndisKeepAliveFailed, consecutive_keepalive_failures_,
+    TETHERKITNEXT_WARN_TR(Msg::kRndisKeepAliveFailed, consecutive_keepalive_failures_,
                       config_.keepalive_failure_threshold, exchange.error().ToString());
     if (consecutive_keepalive_failures_ >= config_.keepalive_failure_threshold) {
       Error fatal = std::move(exchange).error().WithContext(
@@ -569,13 +569,13 @@ Status StateMachine::Poll() {
   if (complete->status != ToRaw(StatusCode::kSuccess)) {
     // 设备明确回了失败状态。这通常意味着设备想让我们复位。
     const std::string_view name = StatusName(complete->status);
-    TETHERKIT_WARN_TR(Msg::kRndisKeepAliveRejected,
+    TETHERKITNEXT_WARN_TR(Msg::kRndisKeepAliveRejected,
                       name.empty() ? Text(Msg::kRndisUnknownStatus) : name);
     return Reset();
   }
 
   consecutive_keepalive_failures_ = 0;
-  TETHERKIT_TRACE_TR(Msg::kRndisKeepAliveOk);
+  TETHERKITNEXT_TRACE_TR(Msg::kRndisKeepAliveOk);
   return Ok();
 }
 
@@ -584,17 +584,17 @@ Status StateMachine::Poll() {
 // =============================================================================
 
 Status StateMachine::Reset() {
-  TETHERKIT_INFO_TR(Msg::kRndisResetStarted);
+  TETHERKITNEXT_INFO_TR(Msg::kRndisResetStarted);
 
   // RESET_MSG **没有 RequestId**（offset 8 是 Reserved），因此无法用 ID 配对，
   // 同一时刻只能有一个 RESET 在飞。
-  TETHERKIT_ASSIGN_OR_RETURN(const std::uint32_t written, EncodeReset(request_buffer_));
-  TETHERKIT_ASSIGN_OR_RETURN(
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const std::uint32_t written, EncodeReset(request_buffer_));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(
       const Exchange exchange,
       Transact(std::span<const std::byte>{request_buffer_.data(), written},
                MessageType::kResetComplete));
 
-  TETHERKIT_ASSIGN_OR_RETURN(const ResetComplete complete,
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const ResetComplete complete,
                              DecodeResetComplete(exchange.response));
 
   if (complete.status != ToRaw(StatusCode::kSuccess)) {
@@ -604,7 +604,7 @@ Status StateMachine::Reset() {
                             name.empty() ? Text(Msg::kRndisUnknownStatus) : name)));
   }
 
-  TETHERKIT_INFO_TR(Msg::kRndisResetDone, Text(complete.addressing_reset
+  TETHERKITNEXT_INFO_TR(Msg::kRndisResetDone, Text(complete.addressing_reset
                                                     ? Msg::kRndisAddressingLost
                                                     : Msg::kRndisAddressingKept));
   observer_->OnDeviceReset(complete.addressing_reset);
@@ -617,9 +617,9 @@ Status StateMachine::Reset() {
     //   如果将来加了 SET OID_802_3_MULTICAST_LIST，这里也要一并重放。）
     const std::uint32_t filter =
         active_packet_filter_ != 0 ? active_packet_filter_ : config_.packet_filter;
-    TETHERKIT_RETURN_IF_ERROR(SetOidUint32(Oid::kGenCurrentPacketFilter, filter));
+    TETHERKITNEXT_RETURN_IF_ERROR(SetOidUint32(Oid::kGenCurrentPacketFilter, filter));
     active_packet_filter_ = filter;
-    TETHERKIT_INFO_TR(Msg::kRndisPacketFilterReplayed, filter);
+    TETHERKITNEXT_INFO_TR(Msg::kRndisPacketFilterReplayed, filter);
   }
 
   consecutive_keepalive_failures_ = 0;
@@ -635,17 +635,17 @@ void StateMachine::SendHalt() noexcept {
   // HALT_MSG 设备**不会回复**，发完即可认为进入 uninitialized。
   const auto written = EncodeHalt(NextRequestId(), request_buffer_);
   if (!written) {
-    TETHERKIT_WARN_TR(Msg::kRndisEncodeHaltFailed, written.error().ToString());
+    TETHERKITNEXT_WARN_TR(Msg::kRndisEncodeHaltFailed, written.error().ToString());
     return;
   }
   if (const auto status =
           channel_->SendMessage(std::span<const std::byte>{request_buffer_.data(), *written});
       !status) {
     // 停机路径上的失败只记日志 —— 设备可能已经拔掉了，这很正常。
-    TETHERKIT_DEBUG_TR(Msg::kRndisSendHaltFailed, status.error().ToString());
+    TETHERKITNEXT_DEBUG_TR(Msg::kRndisSendHaltFailed, status.error().ToString());
     return;
   }
-  TETHERKIT_DEBUG_TR(Msg::kRndisHaltSent);
+  TETHERKITNEXT_DEBUG_TR(Msg::kRndisHaltSent);
 }
 
 void StateMachine::Stop() {
@@ -659,7 +659,7 @@ void StateMachine::Stop() {
   // 不发的话设备会一直以为主机还在，下次插上时状态不干净。
   if (active_packet_filter_ != 0) {
     if (const auto status = SetOidUint32(Oid::kGenCurrentPacketFilter, 0); !status) {
-      TETHERKIT_DEBUG_TR(Msg::kRndisClearPacketFilterFailed, status.error().ToString());
+      TETHERKITNEXT_DEBUG_TR(Msg::kRndisClearPacketFilterFailed, status.error().ToString());
     } else {
       active_packet_filter_ = 0;
     }
@@ -669,4 +669,4 @@ void StateMachine::Stop() {
   TransitionTo(State::kUninitialized);
 }
 
-}  // namespace tetherkit::rndis
+}  // namespace tetherkitnext::rndis

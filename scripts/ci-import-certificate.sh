@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # CI only: import a Developer ID Application certificate into a throwaway
-# keychain and export TETHERKIT_SIGN_IDENTITY (and the notary API key path) to
+# keychain and export TETHERKITNEXT_SIGN_IDENTITY (and the notary API key path) to
 # the following workflow steps.
 #
 # Inputs (repository secrets, passed as env):
@@ -44,7 +44,7 @@ if [[ -z "${identity}" ]]; then
   exit 1
 fi
 echo "Signing identity: ${identity}"
-echo "TETHERKIT_SIGN_IDENTITY=${identity}" >> "${GITHUB_ENV}"
+echo "TETHERKITNEXT_SIGN_IDENTITY=${identity}" >> "${GITHUB_ENV}"
 
 if [[ -n "${NOTARY_KEY_P8:-}" ]]; then
   printf '%s' "${NOTARY_KEY_P8}" | base64 --decode > "${work}/notary.p8"

@@ -12,7 +12,7 @@
 #include <string_view>
 #include <utility>
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 /// 持有一个 CF 对象的所有权，析构时 CFRelease。
 ///
@@ -74,4 +74,4 @@ class ScopedCFRef {
 ///   由它写的动态存储条目自动清理，不留垃圾。
 [[nodiscard]] SCDynamicStoreRef SharedDynamicStore();
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

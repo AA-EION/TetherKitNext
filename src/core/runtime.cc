@@ -1,4 +1,4 @@
-#include "tetherkit/core/runtime.h"
+#include "tetherkitnext/core/runtime.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,12 +6,12 @@
 #include <string>
 #include <utility>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/common/scheduling.h"
-#include "tetherkit/common/time.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/common/scheduling.h"
+#include "tetherkitnext/common/time.h"
 
-namespace tetherkit::core {
+namespace tetherkitnext::core {
 
 std::string_view RunStateName(RunState state) noexcept {
   switch (state) {
@@ -136,18 +136,18 @@ Status Runtime::RunStartSequence() {
   // ---- 第 1 步：libusb 上下文与事件线程 ----
   //
   // （root 检查已在 Start() 里同步做过。）
-  TETHERKIT_ASSIGN_OR_RETURN(usb_context_, usb::Context::Create());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(usb_context_, usb::Context::Create());
 
   // ---- 第 2 步：发现并打开设备 ----
-  TETHERKIT_ASSIGN_OR_RETURN(const auto candidates,
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto candidates,
                              usb::FindRndisDevices(*usb_context_, config_.device_filter));
   if (candidates.empty()) {
     return std::unexpected(Error::Generic(Tr(Msg::kCoreNoDeviceFound)));
   }
   if (candidates.size() > 1) {
-    TETHERKIT_INFO_TR(Msg::kCoreMultipleDevices, candidates.size());
+    TETHERKITNEXT_INFO_TR(Msg::kCoreMultipleDevices, candidates.size());
   }
-  TETHERKIT_ASSIGN_OR_RETURN(device_, usb::Device::Open(*usb_context_, candidates.front()));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(device_, usb::Device::Open(*usb_context_, candidates.front()));
   RefreshSnapshot();
 
   // ---- 第 3 步：RNDIS 控制通道与状态机 ----
@@ -158,16 +158,16 @@ Status Runtime::RunStartSequence() {
       std::make_unique<usb::UsbControlChannel>(*device_, config_.rndis.control_timeout_millis);
 
   // 中断通知必须走异步传输，否则控制线程会永久卡死 —— 详见
-  // include/tetherkit/usb/device.h 里 UsbControlChannel 的说明。
+  // include/tetherkitnext/usb/device.h 里 UsbControlChannel 的说明。
   // 必须在状态机 Start() **之前**启动，因为初始化握手本身就要等通知。
-  TETHERKIT_RETURN_IF_ERROR(control_channel_->StartNotificationListener());
+  TETHERKITNEXT_RETURN_IF_ERROR(control_channel_->StartNotificationListener());
 
   // 让 RNDIS 协商用上真实的端点最大包长（影响 MaxTransferSize 的推导）。
   rndis::StateMachineConfig rndis_config = config_.rndis;
   rndis_config.requested_mtu = config_.mtu;
   state_machine_ = std::make_unique<rndis::StateMachine>(*control_channel_, *this, rndis_config);
 
-  TETHERKIT_RETURN_IF_ERROR(state_machine_->Start());
+  TETHERKITNEXT_RETURN_IF_ERROR(state_machine_->Start());
 
   // 到这里才拿到了协商结果：设备 MAC、最终 MTU、聚合上限、对齐要求。
   const rndis::NegotiatedParameters& parameters = state_machine_->Parameters();
@@ -184,7 +184,7 @@ Status Runtime::RunStartSequence() {
       std::ranges::copy(info.permanent_address, adopted.begin());
       system_mac = &adopted;
     }
-    TETHERKIT_ASSIGN_OR_RETURN(auto pair, net::FethPair::Create(parameters.mtu, system_mac));
+    TETHERKITNEXT_ASSIGN_OR_RETURN(auto pair, net::FethPair::Create(parameters.mtu, system_mac));
     feth_pair_ = std::make_unique<net::FethPair>(std::move(pair));
   }
   // 网卡一建好就刷进快照：后面任何一步失败时，GUI 也该能看到网卡名，
@@ -200,7 +200,7 @@ Status Runtime::RunStartSequence() {
     // 单帧上限 = MTU + 以太头。注意内核 bpfwrite 的硬上限是 MTU + 18，
     // 所以这里绝不能超过它。
     bpf_config.max_frame_bytes = parameters.mtu + rndis::kEthernetHeaderBytes;
-    TETHERKIT_ASSIGN_OR_RETURN(bpf_link_,
+    TETHERKITNEXT_ASSIGN_OR_RETURN(bpf_link_,
                                net::BpfLink::Open(feth_pair_->DriverSide().Name(), bpf_config));
   }
 
@@ -211,7 +211,7 @@ Status Runtime::RunStartSequence() {
     // 否则设备聚合出来的大传输会溢出/被截断。
     data_config.rx_transfer_bytes =
         std::max(data_config.rx_transfer_bytes, config_.rndis.host_max_transfer_size);
-    TETHERKIT_ASSIGN_OR_RETURN(data_channel_,
+    TETHERKITNEXT_ASSIGN_OR_RETURN(data_channel_,
                                usb::UsbDataChannel::Create(*device_, parameters, data_config));
   }
 
@@ -220,7 +220,7 @@ Status Runtime::RunStartSequence() {
     BridgeConfig bridge_config = config_.bridge;
     bridge_config.max_frame_bytes = parameters.mtu + rndis::kEthernetHeaderBytes;
     bridge_ = std::make_unique<Bridge>(*data_channel_, *bpf_link_, bridge_config);
-    TETHERKIT_RETURN_IF_ERROR(bridge_->Start());
+    TETHERKITNEXT_RETURN_IF_ERROR(bridge_->Start());
   }
 
   RefreshSnapshot();
@@ -255,7 +255,7 @@ void Runtime::RunControlLoop() {
       const BridgeStats current = bridge_->Snapshot();
       const double seconds =
           static_cast<double>(now - last_stats_nanos) / static_cast<double>(kNanosPerSecond);
-      TETHERKIT_INFO("{}", FormatStatsLine(previous, current, seconds));
+      TETHERKITNEXT_INFO("{}", FormatStatsLine(previous, current, seconds));
       previous = current;
       last_stats_nanos = now;
     }
@@ -283,24 +283,24 @@ void Runtime::RunControlLoop() {
   }
 
   if (fatal_error_.load(std::memory_order_acquire)) {
-    TETHERKIT_ERROR_TR(Msg::kCoreExitingOnFatal);
+    TETHERKITNEXT_ERROR_TR(Msg::kCoreExitingOnFatal);
   }
 }
 
 void Runtime::PrintNextSteps() const {
   const std::string_view name = feth_pair_->SystemSide().Name();
-  TETHERKIT_INFO("");
-  TETHERKIT_INFO_TR(Msg::kCoreInterfaceReady, name);
-  TETHERKIT_INFO_TR(Msg::kCoreNextStepsAssignIp);
-  TETHERKIT_INFO("    sudo ipconfig set {} DHCP", name);
-  TETHERKIT_INFO_TR(Msg::kCoreNextStepsVerify);
-  TETHERKIT_INFO("    ipconfig getifaddr {}", name);
-  TETHERKIT_INFO("    ipconfig getsummary {}", name);
-  TETHERKIT_INFO_TR(Msg::kCoreNextStepsDefaultRoute);
-  TETHERKIT_INFO("    sudo route -n change default $(ipconfig getoption {} router)", name);
-  TETHERKIT_INFO_TR(Msg::kCoreNextStepsTemporaryNote1);
-  TETHERKIT_INFO_TR(Msg::kCoreNextStepsTemporaryNote2);
-  TETHERKIT_INFO("");
+  TETHERKITNEXT_INFO("");
+  TETHERKITNEXT_INFO_TR(Msg::kCoreInterfaceReady, name);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreNextStepsAssignIp);
+  TETHERKITNEXT_INFO("    sudo ipconfig set {} DHCP", name);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreNextStepsVerify);
+  TETHERKITNEXT_INFO("    ipconfig getifaddr {}", name);
+  TETHERKITNEXT_INFO("    ipconfig getsummary {}", name);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreNextStepsDefaultRoute);
+  TETHERKITNEXT_INFO("    sudo route -n change default $(ipconfig getoption {} router)", name);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreNextStepsTemporaryNote1);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreNextStepsTemporaryNote2);
+  TETHERKITNEXT_INFO("");
 }
 
 // =============================================================================
@@ -308,7 +308,7 @@ void Runtime::PrintNextSteps() const {
 // =============================================================================
 
 void Runtime::Teardown() {
-  TETHERKIT_INFO_TR(Msg::kCoreStopping);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreStopping);
 
   // 严格按启动顺序的**逆序**拆除。
   //
@@ -357,7 +357,7 @@ void Runtime::Teardown() {
     snapshot_.link_up = false;
   }
   RefreshSnapshot();
-  TETHERKIT_INFO_TR(Msg::kCoreStopped);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreStopped);
 }
 
 // =============================================================================
@@ -411,7 +411,7 @@ void Runtime::SetRunState(RunState next) {
 
 void Runtime::RecordFatal(const Error& error) {
   const std::string message = error.ToString();
-  TETHERKIT_ERROR("{}", message);
+  TETHERKITNEXT_ERROR("{}", message);
 
   {
     const std::lock_guard<std::mutex> guard(snapshot_mutex_);
@@ -444,7 +444,7 @@ void Runtime::OnStateChanged(rndis::State from, rndis::State to) {
 
 void Runtime::OnNegotiated(const rndis::NegotiatedParameters& parameters,
                            const rndis::DeviceInfo& info) {
-  TETHERKIT_INFO_TR(Msg::kCoreRndisReady, rndis::FormatMac(info.permanent_address).data(),
+  TETHERKITNEXT_INFO_TR(Msg::kCoreRndisReady, rndis::FormatMac(info.permanent_address).data(),
                     parameters.mtu, info.LinkSpeedMbps());
 
   Emit(RuntimeEvent{.kind = RuntimeEvent::Kind::kNegotiated,
@@ -454,7 +454,7 @@ void Runtime::OnNegotiated(const rndis::NegotiatedParameters& parameters,
 }
 
 void Runtime::OnLinkStateChanged(bool connected) {
-  TETHERKIT_INFO_TR(Msg::kCoreLinkState,
+  TETHERKITNEXT_INFO_TR(Msg::kCoreLinkState,
                     Text(connected ? Msg::kCoreLinkConnected : Msg::kCoreLinkDisconnected));
 
   {
@@ -472,7 +472,7 @@ void Runtime::OnLinkStateChanged(bool connected) {
 }
 
 void Runtime::OnDeviceReset(bool addressing_lost) {
-  TETHERKIT_WARN_TR(Msg::kCoreDeviceReset,
+  TETHERKITNEXT_WARN_TR(Msg::kCoreDeviceReset,
                     Text(addressing_lost ? Msg::kCoreAddressingLost : Msg::kCoreAddressingKept));
 
   // 复位期间设备丢弃了所有未完成的数据包。短暂暂停让状态机把包过滤重放完，
@@ -491,4 +491,4 @@ void Runtime::OnFatalError(const Error& error) {
   RecordFatal(std::move(annotated).WithContext(Tr(Msg::kCoreLinkUnrecoverable)));
 }
 
-}  // namespace tetherkit::core
+}  // namespace tetherkitnext::core

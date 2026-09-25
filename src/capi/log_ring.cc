@@ -11,13 +11,13 @@
 #include <string_view>
 
 #include "capi_support.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/logging.h"
 
 namespace {
 
-using tetherkit::capi::CopyText;
-using tetherkit::capi::WallNanos;
+using tetherkitnext::capi::CopyText;
+using tetherkitnext::capi::WallNanos;
 
 /// 环形缓冲容量。
 ///
@@ -88,11 +88,11 @@ LogRing& Ring() noexcept {
   return ring;
 }
 
-/// 安装给 tetherkit::SetLogSink 的回调。
+/// 安装给 tetherkitnext::SetLogSink 的回调。
 ///
 /// 它运行在日志互斥锁内部，因此实现里只允许「拷贝 + 加一把自己的锁」，
 /// 绝不能再打日志（会自等死锁）。
-void SinkTrampoline(tetherkit::LogLevel level, std::string_view thread_name,
+void SinkTrampoline(tetherkitnext::LogLevel level, std::string_view thread_name,
                     std::string_view message, void* /*user*/) noexcept {
   Ring().Push(static_cast<tk_log_level_t>(level), thread_name, message);
 }
@@ -103,12 +103,12 @@ void tk_set_log_level(int32_t level) {
   if (level < TK_LOG_TRACE || level > TK_LOG_OFF) {
     return;
   }
-  tetherkit::SetLogLevel(static_cast<tetherkit::LogLevel>(level));
+  tetherkitnext::SetLogLevel(static_cast<tetherkitnext::LogLevel>(level));
 }
 
 void tk_enable_log_capture(bool enabled) {
   if (enabled) {
-    tetherkit::SetLogSink(&SinkTrampoline, nullptr);
+    tetherkitnext::SetLogSink(&SinkTrampoline, nullptr);
     return;
   }
 
@@ -119,7 +119,7 @@ void tk_enable_log_capture(bool enabled) {
   //
   // 另外，这里刻意不持有 LogRing 的锁去调 SetLogSink —— SetLogSink 要拿日志
   // 互斥锁，而日志汇路径是「日志锁 → LogRing 锁」，反向持锁会构成锁序倒置。
-  tetherkit::SetLogSink(nullptr, nullptr);
+  tetherkitnext::SetLogSink(nullptr, nullptr);
   Ring().Clear();
 }
 
