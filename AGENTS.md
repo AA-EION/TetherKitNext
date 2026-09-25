@@ -251,6 +251,7 @@ Swift 的 C++ 互操作吞不下，所以 C ABI 这一层不可省。
 | 36 | `feat!: 签名的通用 DMG 分发 + SMAppService 守护进程 + 内置 CLI` | ✅ | 废除 AEWP/setuid 安装器；XPC 双向代码签名校验；libusb 自建通用 dylib；CI 覆盖 Intel |
 | 37 | `feat(gui): Swift 6、Liquid Glass 重设计、仅菜单栏模式修复` | ✅ | 侧边栏导航；设置页；菜单栏定宽速率（issue #1）；程序坞图标改由 NSWindow 通知驱动 |
 | 38 | `feat(gui): 连接后自动应用上网方式（默认 DHCP）` | ✅ | 复用连接时的授权令牌，不再弹第二次框；已有地址 / 选「不配置」/ 静态表单不完整时跳过；设置页可关 |
+| 39 | `build(release)` 预发布路径 + `docs: README 重写` | ✅ | 带后缀的标签（v0.2.0-beta.1）可不签名发布为 prerelease、只传 DMG；release.yml 支持 workflow_dispatch 传 tag（本环境推不了标签，由 gh release create --target 建标签）。README 中英双语重写为面向普通用户，去掉 Homebrew |
 
 ### 当前状态（TetherKitNext，2026-09-25）
 

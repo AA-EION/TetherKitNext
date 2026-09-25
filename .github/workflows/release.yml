@@ -20,13 +20,25 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual run from the Actions tab (or the API): builds the selected branch
+  # and creates the tag on that exact commit when publishing. Useful when tags
+  # cannot be pushed directly.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create and publish, e.g. v0.2.0-beta.1"
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build and publish ${{ github.ref_name }}
+    name: Build and publish ${{ inputs.tag || github.ref_name }}
     runs-on: macos-26
     timeout-minutes: 90
     steps:
@@ -35,7 +47,8 @@ jobs:
       - name: Classify tag; version must match CMakeLists VERSION
         id: tag
         run: |
-          tag_ver="${GITHUB_REF_NAME#v}"
+          case "$RELEASE_TAG" in v[0-9]*) ;; *) echo "::error::tag must look like v1.2.3[-suffix]"; exit 1 ;; esac
+          tag_ver="${RELEASE_TAG#v}"
           base_ver="${tag_ver%%-*}"
           cmake_ver=$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)
           echo "tag=${tag_ver} base=${base_ver} CMakeLists.txt=${cmake_ver}"
@@ -135,7 +148,13 @@ jobs:
           else
             assets+=(dist/tetherkit-cli-*.tar.gz)
           fi
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "TetherKit ${GITHUB_REF_NAME}" \
-            --notes-file notes.md --generate-notes --verify-tag \
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Creates the tag on the commit that was just built and tested.
+            flags+=(--target "$GITHUB_SHA")
+          else
+            flags+=(--verify-tag)
+          fi
+          gh release create "$RELEASE_TAG" \
+            --title "TetherKit $RELEASE_TAG" \
+            --notes-file notes.md --generate-notes \
             "${flags[@]}" "${assets[@]}"
