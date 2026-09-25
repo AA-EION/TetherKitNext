@@ -192,38 +192,40 @@ gui/
 「配网络」「断开」都不再打扰用户。过期后 helper 的复核会失败并把应答的第二个
 参数置为 `true`，App 据此丢弃缓存、重新弹一次框、把这次操作重试一遍。
 
-### 4.5 关于 Touch ID：这条路走不通（已验证）
+### 4.5 Touch ID（1.1.0 起）
 
-**结论：`AuthorizationCopyRights` 弹出的系统授权框不支持指纹，只能输密码。**
-这是 API 层面的限制，不是实现问题。别再花时间试了。
+**事实（上游已验证，仍然成立）：`AuthorizationCopyRights` 弹出的系统授权框
+不支持指纹，只能输密码。** SDK 里 Authorization Services 与 LocalAuthentication
+之间没有桥（`AuthorizationTags.h` 的环境项没有 LAContext；`AuthorizationPlugin.h`
+的 `GetLAContext` 是 SecurityAgent 插件用的智能卡 PIN）。换权利名没用。
 
-验证过程（本机 Touch ID 硬件存在、`bioutil -r` 显示已录入并启用）：
+上游当时放弃 `LAContext` 的理由是：它的结果**无法变成 helper 能复核的凭据**，
+而 helper 又接受任何本机进程的连接 —— 用它就等于任何进程都能绕过认证。
+**这个前提在 TetherKitNext 已经不成立**：Developer ID 构建的 XPC 两端互相钉死
+代码签名（`CodeSigning.swift`），helper 只接受同一 Team ID 签名的
+`com.tetherkitnext.app`。于是：
 
-1. 写了个最小的探针 App 请求 `system.privilege.admin`，读取 SecurityAgent
-   窗口的文本，得到的是 **「输入密码允许此操作。」** —— 界面上没有任何生物识别
-   入口。
-2. 对比系统自己的 `system.preferences` 规则，`class` / `group` /
-   `authenticate-user` 完全相同，只有 `shared` 与 `timeout` 不同 ——
-   而那两个字段只影响凭据缓存，不影响认证方式。所以换个权利名没有用。
-3. 在 SDK 里找 LocalAuthentication 与 Authorization Services 之间的桥：
-   `AuthorizationTags.h` 的环境项只有 username / password / shared / prompt /
-   icon，**没有 LAContext**。唯一出现 `GetLAContext` 的地方是
-   `AuthorizationPlugin.h` —— 那是给**编写 SecurityAgent 插件**用的回调，
-   而且注释写明它返回的是智能卡 PIN（`LACredentialCTKPIN`），不是 Touch ID。
+- App 用 `LAContext.evaluatePolicy(.deviceOwnerAuthentication)` 确认用户在场
+  （Touch ID / Apple Watch / 登录密码回退），然后特权调用**不带授权数据**
+  （空 `Data`）。见 `TetherKitNextApp/UserPresence.swift`。
+- helper 对空授权只在两个条件同时成立时放行（`HelperService.authorize`）：
+  连接已被钉到本团队签名的 App（`CodeSigning.clientRequirement != nil`），且
+  调用者 `effectiveUserIdentifier` 属于本地 `admin` 组 —— 与
+  `system.privilege.admin` 接受的人群相同，**策略没有放宽，只换了证明方式**。
+- 否则按授权问题拒绝，App 退回管理员密码框，本次运行内不再尝试 Touch ID。
+- ad-hoc / 开发构建没有 Team ID 可钉，`UserPresence.isAvailable == false`，
+  完全走原来的密码框路径。
+- 一次确认管 5 分钟（`UserPresence.gracePeriod`），连接后自动配网络不会再问。
 
-`LAContext.evaluatePolicy` 确实能弹指纹，但它产出的结果**无法转换成 helper
-可以复核的凭据** —— 换成它就等于放弃了整个信任模型。真要做，只剩「自己写一个
-SecurityAgent 插件装进 /Library/Security/SecurityAgentPlugins」这条路，
-代价与风险都和这个项目完全不成比例。
-
-可行的替代是**减少弹框频率**，也就是上面的令牌缓存。若还嫌频繁，可以在
-`install-helper.sh` 里用 `security authorizationdb write` 装一条自己的权利，
-把 `timeout` 调长、`shared` 设为 true —— 但那仍然是密码框，只是问得更少。
+⚠️ `evaluatePolicy` 的回调在 LocalAuthentication 自己的队列上执行，闭包必须
+显式标 `@Sendable`：Swift 6 会从外层 `@MainActor` 推断隔离，回调在非主线程
+一跑就断言崩溃。
 
 ### 4.6 XPC 接口修订号
 
 `HelperConstants.protocolRevision` 每次改动 `TetherKitNextHelperProtocol` 都要加一。
-当前是 **3**（1 初版；2 特权方法应答加上「是否授权失败」；3 新增 `setLanguage`）。
+当前是 **5**（1 初版；2 特权方法应答加上「是否授权失败」；3 新增 `setLanguage`；
+4 SMAppService daemon + `setCommandLineToolInstalled`；5 空授权 = App 已用 Touch ID 确认，见 4.5）。
 helper 把它编进 `helperVersion` 的应答，App 一连上就比对。
 
 **为什么不新增一个专门的方法来报版本**：新增方法本身就是一次协议变更，旧

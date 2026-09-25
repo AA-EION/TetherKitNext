@@ -167,3 +167,43 @@ enum CommandLineToolLink {
         _ = chown(path, 0, 0)
     }
 }
+
+/// Membership of the local `admin` group, the population
+/// `system.privilege.admin` authenticates.
+enum AdminGroup {
+    static func contains(uid: uid_t) -> Bool {
+        guard let adminGroup = adminGroupID() else { return false }
+
+        // pw_name points into `buffer`, so the buffer must outlive every use
+        // of it; an explicit allocation makes that lifetime obvious.
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        var entry = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        guard getpwuid_r(uid, &entry, buffer, bufferSize, &result) == 0,
+              result != nil, let name = entry.pw_name else {
+            return false
+        }
+
+        // getgrouplist fills at most `count` entries and returns -1 when the
+        // list was longer; the entries it did fill are still valid.
+        let capacity: Int32 = 1024
+        var count = capacity
+        var groups = [Int32](repeating: -1, count: Int(capacity))
+        _ = getgrouplist(name, Int32(bitPattern: entry.pw_gid), &groups, &count)
+        return groups.prefix(Int(max(0, min(count, capacity)))).contains(adminGroup)
+    }
+
+    private static func adminGroupID() -> Int32? {
+        let bufferSize = 4096
+        let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        var group = Darwin.group()
+        var result: UnsafeMutablePointer<Darwin.group>?
+        guard getgrnam_r("admin", &group, buffer, bufferSize, &result) == 0, result != nil else {
+            return nil
+        }
+        return Int32(bitPattern: group.gr_gid)
+    }
+}

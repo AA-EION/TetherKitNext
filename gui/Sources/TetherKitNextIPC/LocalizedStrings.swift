@@ -183,6 +183,9 @@ public enum L10nKey: String, CaseIterable, Sendable {
     // MARK: - 应用模型（AppModel.swift）
 
     case authPromptSession
+    case presenceReasonSession
+    case presenceReasonCommandLineTool
+    case helperPresenceNotAccepted
     case interfaceNotReadyYet
 
     // MARK: - 主界面（ContentView.swift）
@@ -622,6 +625,18 @@ extension L10nKey {
 
         // MARK: 应用模型
 
+        // Shown by macOS as "TetherKitNext is trying to <reason>." (English)
+        // / "“TetherKitNext”正在尝试<reason>。" (Chinese): a verb phrase, no
+        // final punctuation.
+        case .presenceReasonSession:
+            return ("连接手机并配置网络",
+                    "connect your phone and set up the network")
+        case .presenceReasonCommandLineTool:
+            return ("安装或移除 tetherkitnext-cli 命令",
+                    "add or remove the tetherkitnext-cli command")
+        case .helperPresenceNotAccepted:
+            return ("此操作需要管理员授权。",
+                    "This action needs administrator authorization.")
         case .authPromptSession:
             return ("TetherKitNext 需要管理员权限来创建虚拟网卡、打开数据链路并配置 IP 地址。",
                     "TetherKitNext needs administrator privileges to create the virtual interface, "

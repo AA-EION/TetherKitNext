@@ -73,47 +73,99 @@ else
   log "Notarization credentials not set; skipping notarization"
 fi
 
-# dmgbuild lays out the Finder window (background, icon positions, no
-# toolbar) by writing .DS_Store itself, which works on headless CI. It is
-# installed into a private virtualenv, pinned, on first use.
-DMGBUILD_VERSION="1.6.5"
-find_dmgbuild() {
-  if command -v dmgbuild >/dev/null 2>&1; then
-    command -v dmgbuild
-    return 0
-  fi
-  local venv="${TMPDIR:-/tmp}/tetherkitnext-dmgbuild-${DMGBUILD_VERSION}"
-  if [[ ! -x "${venv}/bin/dmgbuild" ]]; then
-    python3 -m venv "${venv}" >&2 \
-      && "${venv}/bin/pip" install --quiet --disable-pip-version-check \
-           "dmgbuild==${DMGBUILD_VERSION}" >&2 \
-      || return 1
-  fi
-  echo "${venv}/bin/dmgbuild"
-}
+# ★ Install window layout ★
+#
+# Finder itself lays the window out (background, icon positions, window size,
+# no toolbar) through AppleScript on a temporary read-write image, the way
+# create-dmg and most hand-made DMGs do it. The .DS_Store is then written by
+# the same Finder that will read it.
+#
+# We used dmgbuild, which writes .DS_Store directly, before: its background
+# picture does not show on macOS 15 or 26 (CI screenshots: layout applied,
+# background blank), while the Finder-written one does. The dmg-look CI job
+# screenshots every build so a regression is visible.
+#
+# Needs a logged-in GUI session (Finder); GitHub's macOS runners have one.
+# The first local run asks once to let Terminal control Finder. Without
+# Finder (e.g. over plain SSH) the DMG is still built, with a default window.
+VOLNAME="TetherKitNext ${VERSION}"
+BG_DIR="${REPO_ROOT}/scripts/dmg"
 
 log "Creating ${DMG}"
 rm -f "${DMG}"
 work="$(mktemp -d)"
-trap 'rm -rf "${work}"' EXIT
-if [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" != "1" ]] && dmgbuild_bin="$(find_dmgbuild)"; then
-  # One TIFF holding the 1x and 2x backgrounds, so Retina screens get the
-  # sharp one.
-  tiffutil -cathidpicheck "${REPO_ROOT}/scripts/dmg/background.png" \
-    "${REPO_ROOT}/scripts/dmg/background@2x.png" -out "${work}/background.tiff" >/dev/null
-  "${dmgbuild_bin}" -s "${REPO_ROOT}/scripts/dmg/settings.py" \
-    -D app="${APP}" \
-    -D background="${work}/background.tiff" \
-    -D icon="${APP}/Contents/Resources/AppIcon.icns" \
-    "TetherKitNext ${VERSION}" "${DMG}"
+mnt=""
+cleanup() {
+  [[ -n "${mnt}" && -d "${mnt}" ]] && hdiutil detach -force "${mnt}" >/dev/null 2>&1 || true
+  rm -rf "${work}"
+}
+trap cleanup EXIT
+
+stage="${work}/stage"
+mkdir -p "${stage}/.background"
+ditto "${APP}" "${stage}/TetherKitNext.app"
+ln -s /Applications "${stage}/Applications"
+# One TIFF holding the 1x and 2x pictures, so Retina screens get the sharp one.
+tiffutil -cathidpicheck "${BG_DIR}/background.png" "${BG_DIR}/background@2x.png" \
+  -out "${stage}/.background/background.tiff" >/dev/null
+cp "${APP}/Contents/Resources/AppIcon.icns" "${stage}/.VolumeIcon.icns"
+
+if hdiutil info | grep -q "/Volumes/${VOLNAME}\$"; then
+  die "a volume named '${VOLNAME}' is already mounted; eject it first"
+fi
+rw="${work}/rw.dmg"
+hdiutil create -quiet -srcfolder "${stage}" -volname "${VOLNAME}" -fs HFS+ \
+  -format UDRW -size 200m "${rw}"
+mnt="$(hdiutil attach -readwrite -noverify -noautoopen "${rw}" \
+  | awk -F'\t' '/\/Volumes\// {print $NF}')"
+[[ "${mnt}" == "/Volumes/${VOLNAME}" ]] || die "unexpected mount point: ${mnt}"
+
+# Custom volume icon: the file alone is not enough, the volume root needs the
+# "has custom icon" Finder flag (kHasCustomIcon, 0x0400 in the Finder flags at
+# byte 8 of FinderInfo). Written directly because SetFile is no longer on the
+# PATH of current Xcode installs.
+xattr -wx com.apple.FinderInfo \
+  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
+
+# Centres match the wells drawn in scripts/dmg/background.svg (660 × 400).
+if [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" != "1" ]] && osascript <<APPLESCRIPT
+tell application "Finder"
+  tell disk "${VOLNAME}"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set bounds of container window to {200, 140, 860, 540}
+    set opts to icon view options of container window
+    set arrangement of opts to not arranged
+    set icon size of opts to 128
+    set text size of opts to 13
+    set background picture of opts to file ".background:background.tiff"
+    set position of item "TetherKitNext.app" of container window to {170, 190}
+    set position of item "Applications" of container window to {490, 190}
+    update without registering applications
+    delay 2
+    close
+  end tell
+end tell
+APPLESCRIPT
+then
+  log "Install window laid out by Finder"
 else
   [[ "${TETHERKITNEXT_DMG_PLAIN:-0}" == "1" ]] \
-    || echo "::warning::dmgbuild unavailable; building a plain disk image without the install layout"
-  ditto "${APP}" "${work}/TetherKitNext.app"
-  ln -s /Applications "${work}/Applications"
-  hdiutil create -quiet -volname "TetherKitNext ${VERSION}" -srcfolder "${work}" \
-    -fs HFS+ -format UDZO -imagekey zlib-level=9 "${DMG}"
+    || echo "::warning::Finder layout failed (no GUI session or no Automation permission); building a DMG with a default window"
 fi
+
+# Let Finder finish writing .DS_Store, then drop what macOS added on mount.
+sync
+sleep 2
+rm -rf "${mnt}/.fseventsd" "${mnt}/.Trashes"
+# Finder may rewrite the root's FinderInfo while laying out; set the flag again.
+xattr -wx com.apple.FinderInfo \
+  "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
+hdiutil detach -quiet "${mnt}" || { sleep 3; hdiutil detach -quiet -force "${mnt}"; }
+mnt=""
+hdiutil convert -quiet "${rw}" -format UDZO -imagekey zlib-level=9 -o "${DMG}"
 
 if [[ -n "${SIGN_IDENTITY}" ]]; then
   codesign --force --sign "${SIGN_IDENTITY}" --timestamp "${DMG}"
