@@ -108,7 +108,6 @@ ln -s /Applications "${stage}/Applications"
 # One TIFF holding the 1x and 2x pictures, so Retina screens get the sharp one.
 tiffutil -cathidpicheck "${BG_DIR}/background.png" "${BG_DIR}/background@2x.png" \
   -out "${stage}/.background/background.tiff" >/dev/null
-cp "${APP}/Contents/Resources/AppIcon.icns" "${stage}/.VolumeIcon.icns"
 
 if hdiutil info | grep -q "/Volumes/${VOLNAME}\$"; then
   die "a volume named '${VOLNAME}' is already mounted; eject it first"
@@ -120,10 +119,13 @@ mnt="$(hdiutil attach -readwrite -noverify -noautoopen "${rw}" \
   | awk -F'\t' '/\/Volumes\// {print $NF}')"
 [[ "${mnt}" == "/Volumes/${VOLNAME}" ]] || die "unexpected mount point: ${mnt}"
 
-# Custom volume icon: the file alone is not enough, the volume root needs the
+# Custom volume icon. Copied onto the mounted volume rather than staged:
+# `hdiutil create -srcfolder` leaves .VolumeIcon.icns out of the image (the
+# built image had no icon file at all). The file alone is not enough; the volume root also needs the
 # "has custom icon" Finder flag (kHasCustomIcon, 0x0400 in the Finder flags at
 # byte 8 of FinderInfo). Written directly because SetFile is no longer on the
 # PATH of current Xcode installs.
+cp "${APP}/Contents/Resources/AppIcon.icns" "${mnt}/.VolumeIcon.icns"
 xattr -wx com.apple.FinderInfo \
   "0000000000000000040000000000000000000000000000000000000000000000" "${mnt}"
 

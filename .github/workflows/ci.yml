@@ -198,6 +198,8 @@ jobs:
             mnt="$(hdiutil attach -readonly -noautoopen "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
             echo "== $name: $mnt"
             ls -la "$mnt"
+            # Custom volume icon needs both the file and kHasCustomIcon (04 at byte 8).
+            xattr -px com.apple.FinderInfo "$mnt" 2>/dev/null || echo "no FinderInfo on volume root"
             open "$mnt"
             sleep 8
             osascript -e 'tell application "Finder" to get {name, bounds, current view} of front window' || true
