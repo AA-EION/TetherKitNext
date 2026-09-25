@@ -12,11 +12,11 @@
 
 #include "capi_support.h"
 #include "process_runner.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/logging.h"
 
-using tetherkit::capi::CopyText;
-using tetherkit::capi::IsValidFethName;
+using tetherkitnext::capi::CopyText;
+using tetherkitnext::capi::IsValidFethName;
 
 TEST_SUITE("capi.support") {
 
@@ -79,9 +79,9 @@ TEST_CASE("IsValidFethName 只接受 feth+数字") {
 
 namespace {
 
-using tetherkit::capi::DeviceIdentity;
-using tetherkit::capi::ReconcileDeviceStrings;
-using tetherkit::capi::RememberedDeviceStrings;
+using tetherkitnext::capi::DeviceIdentity;
+using tetherkitnext::capi::ReconcileDeviceStrings;
+using tetherkitnext::capi::RememberedDeviceStrings;
 
 /// 造一条已填好身份与字符串的枚举结果。字符串传空串表示「这次没读到」。
 tk_device_info_t DeviceInfo(const DeviceIdentity& identity, const char* manufacturer,
@@ -245,8 +245,8 @@ TEST_CASE("重复枚举不会反复初始化 libusb") {
   // 起停一条事件线程与一条 IOKit runloop 线程，日志里还会被「libusb 已初始化」
   // 刷满 —— 这个问题真实发生过，这条用例把修复钉住。
   tk_enable_log_capture(true);
-  const tetherkit::LogLevel saved_level = tetherkit::GetLogLevel();
-  tetherkit::SetLogLevel(tetherkit::LogLevel::kInfo);
+  const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
+  tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
 
   std::size_t count = 0;
   std::array<tk_log_record_t, 64> records{};
@@ -273,7 +273,7 @@ TEST_CASE("重复枚举不会反复初始化 libusb") {
   }
   CHECK(initialization_lines == 0);
 
-  tetherkit::SetLogLevel(saved_level);
+  tetherkitnext::SetLogLevel(saved_level);
   tk_enable_log_capture(false);
 }
 
@@ -283,7 +283,7 @@ TEST_SUITE("capi.log_ring") {
 
 TEST_CASE("日志捕获关闭时不产生记录") {
   tk_enable_log_capture(false);
-  TETHERKIT_ERROR("这条不该被捕获");
+  TETHERKITNEXT_ERROR("这条不该被捕获");
 
   std::array<tk_log_record_t, 4> records{};
   std::uint64_t dropped = 0;
@@ -292,11 +292,11 @@ TEST_CASE("日志捕获关闭时不产生记录") {
 
 TEST_CASE("开启捕获后能按序取回日志") {
   tk_enable_log_capture(true);
-  const tetherkit::LogLevel saved_level = tetherkit::GetLogLevel();
-  tetherkit::SetLogLevel(tetherkit::LogLevel::kInfo);
+  const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
+  tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
 
-  TETHERKIT_INFO("第一条");
-  TETHERKIT_WARN("第二条");
+  TETHERKITNEXT_INFO("第一条");
+  TETHERKITNEXT_WARN("第二条");
 
   std::array<tk_log_record_t, 8> records{};
   std::uint64_t dropped = 0;
@@ -314,20 +314,20 @@ TEST_CASE("开启捕获后能按序取回日志") {
     CHECK(tk_drain_logs(records.data(), records.size(), &dropped) == 0);
   }
 
-  tetherkit::SetLogLevel(saved_level);
+  tetherkitnext::SetLogLevel(saved_level);
   tk_enable_log_capture(false);
 }
 
 TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
   tk_enable_log_capture(true);
-  const tetherkit::LogLevel saved_level = tetherkit::GetLogLevel();
-  tetherkit::SetLogLevel(tetherkit::LogLevel::kInfo);
+  const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
+  tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
 
   // 容量是 256（见 log_ring.cc），多打 10 条把最旧的挤掉。
   constexpr int kOverflow = 10;
   constexpr int kTotal = 256 + kOverflow;
   for (int i = 0; i < kTotal; ++i) {
-    TETHERKIT_INFO("第 {} 条", i);
+    TETHERKITNEXT_INFO("第 {} 条", i);
   }
 
   std::array<tk_log_record_t, 512> records{};
@@ -346,7 +346,7 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
     CHECK(again == 0);
   }
 
-  tetherkit::SetLogLevel(saved_level);
+  tetherkitnext::SetLogLevel(saved_level);
   tk_enable_log_capture(false);
 }
 
@@ -428,7 +428,7 @@ TEST_CASE("会话接口对空指针一律安全") {
 TEST_SUITE("capi.process") {
 
 TEST_CASE("RunTool 收集子进程输出并带回退出码") {
-  const auto result = tetherkit::capi::RunTool("/bin/echo", {"你好", "世界"});
+  const auto result = tetherkitnext::capi::RunTool("/bin/echo", {"你好", "世界"});
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 0);
   CHECK(result->Succeeded());
@@ -438,7 +438,7 @@ TEST_CASE("RunTool 收集子进程输出并带回退出码") {
 TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
   // sh -c 'echo boom >&2; exit 3'：验证 stderr 也被收进来、退出码原样带回。
   const auto result =
-      tetherkit::capi::RunTool("/bin/sh", {"-c", "echo boom >&2; exit 3"});
+      tetherkitnext::capi::RunTool("/bin/sh", {"-c", "echo boom >&2; exit 3"});
   REQUIRE(result.has_value());
   CHECK_FALSE(result->Succeeded());
   CHECK(result->exit_code == 3);
@@ -448,7 +448,7 @@ TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
 TEST_CASE("RunTool 读得下超过管道缓冲的大输出（不死锁）") {
   // 管道缓冲是 64 KiB。必须先读空再 waitpid，否则子进程写满就阻塞、
   // 我们等在 waitpid 上，双方僵住。这条用例就是钉住那个顺序的。
-  const auto result = tetherkit::capi::RunTool(
+  const auto result = tetherkitnext::capi::RunTool(
       "/bin/sh", {"-c", "for i in $(seq 1 20000); do echo 0123456789; done"});
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 0);
@@ -456,7 +456,7 @@ TEST_CASE("RunTool 读得下超过管道缓冲的大输出（不死锁）") {
 }
 
 TEST_CASE("RunTool 对不存在的可执行文件返回错误而非崩溃") {
-  const auto result = tetherkit::capi::RunTool("/nonexistent/tetherkit-test", {});
+  const auto result = tetherkitnext::capi::RunTool("/nonexistent/tetherkitnext-test", {});
   CHECK_FALSE(result.has_value());
 }
 

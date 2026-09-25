@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build a universal (arm64 + x86_64) libusb dylib from a pinned, hash-verified
-# release tarball, so TetherKit.app ships its own copy instead of depending on
+# release tarball, so TetherKitNext.app ships its own copy instead of depending on
 # Homebrew (which no longer supports Intel Macs, upstream issue #2).
 #
 #   ./scripts/build-libusb.sh [PREFIX]        # default PREFIX: build/libusb-universal
@@ -22,8 +22,8 @@ set -euo pipefail
 LIBUSB_VERSION="1.0.30"
 LIBUSB_SHA256="fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf"
 LIBUSB_URL="https://github.com/libusb/libusb/releases/download/v${LIBUSB_VERSION}/libusb-${LIBUSB_VERSION}.tar.bz2"
-# Must match TETHERKIT_MIN_MACOS_VERSION in CMakeLists.txt.
-MIN_MACOS="${TETHERKIT_MIN_MACOS:-13.3}"
+# Must match TETHERKITNEXT_MIN_MACOS_VERSION in CMakeLists.txt.
+MIN_MACOS="${TETHERKITNEXT_MIN_MACOS:-13.3}"
 ARCHS=(arm64 x86_64)
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

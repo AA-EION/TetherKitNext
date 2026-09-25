@@ -1,12 +1,12 @@
-#include "tetherkit/usb/context.h"
+#include "tetherkitnext/usb/context.h"
 
 #include <format>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/common/scheduling.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/common/scheduling.h"
 
-namespace tetherkit::usb {
+namespace tetherkitnext::usb {
 namespace {
 
 /// 事件循环单次 handle_events 的阻塞上限。
@@ -29,7 +29,7 @@ Result<std::unique_ptr<Context>> Context::Create() {
     return std::unexpected(Error::FromLibUsb(rc, Tr(Msg::kUsbInitFailed)));
   }
 
-  TETHERKIT_INFO_TR(Msg::kUsbInitialized, VersionString(),
+  TETHERKITNEXT_INFO_TR(Msg::kUsbInitialized, VersionString(),
                     Text(SupportsHotplug() ? Msg::kUsbHotplugSupported
                                            : Msg::kUsbHotplugUnsupported));
 
@@ -54,7 +54,7 @@ Context::~Context() {
     ::libusb_exit(context_);
     context_ = nullptr;
   }
-  TETHERKIT_DEBUG_TR(Msg::kUsbContextReleased);
+  TETHERKITNEXT_DEBUG_TR(Msg::kUsbContextReleased);
 }
 
 std::string Context::VersionString() {
@@ -79,7 +79,7 @@ void Context::RequestStop() noexcept {
 
 void Context::RunEventLoop() noexcept {
   ConfigureCurrentThread("usb-event", ThreadRole::kDataPath);
-  TETHERKIT_DEBUG_TR(Msg::kUsbEventThreadStarted);
+  TETHERKITNEXT_DEBUG_TR(Msg::kUsbEventThreadStarted);
 
   ::timeval timeout{};
   timeout.tv_sec = kEventLoopTimeoutSeconds;
@@ -96,15 +96,15 @@ void Context::RunEventLoop() noexcept {
     }
     if (rc == LIBUSB_ERROR_NO_DEVICE) {
       // 设备拔了。不是事件循环的错，交给上层的重连逻辑处理，这里继续跑。
-      TETHERKIT_DEBUG_TR(Msg::kUsbEventLoopNoDevice);
+      TETHERKITNEXT_DEBUG_TR(Msg::kUsbEventLoopNoDevice);
       continue;
     }
-    TETHERKIT_ERROR_TR(Msg::kUsbHandleEventsFailed, ::libusb_error_name(rc), rc);
+    TETHERKITNEXT_ERROR_TR(Msg::kUsbHandleEventsFailed, ::libusb_error_name(rc), rc);
     break;
   }
 
   running_.store(false, std::memory_order_release);
-  TETHERKIT_DEBUG_TR(Msg::kUsbEventThreadExited);
+  TETHERKITNEXT_DEBUG_TR(Msg::kUsbEventThreadExited);
 }
 
-}  // namespace tetherkit::usb
+}  // namespace tetherkitnext::usb

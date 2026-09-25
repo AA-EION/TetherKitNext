@@ -4,7 +4,7 @@
 // 覆盖真实的多线程搬运、批处理、背压、暂停与优雅停机。
 //
 // 这些用例在 ThreadSanitizer 下跑才有完整意义：
-//   cmake -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R core
+//   cmake -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R core
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -17,14 +17,14 @@
 #include "language_guard.h"
 
 #include "mock_data_channel.h"
-#include "tetherkit/core/bridge.h"
-#include "tetherkit/net/loopback_link.h"
+#include "tetherkitnext/core/bridge.h"
+#include "tetherkitnext/net/loopback_link.h"
 
-using namespace tetherkit;        // NOLINT(google-build-using-namespace)
-using namespace tetherkit::core;  // NOLINT(google-build-using-namespace)
-using tetherkit::net::LoopbackConfig;
-using tetherkit::net::LoopbackLink;
-using tetherkit::testing::MockDataChannel;
+using namespace tetherkitnext;        // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext::core;  // NOLINT(google-build-using-namespace)
+using tetherkitnext::net::LoopbackConfig;
+using tetherkitnext::net::LoopbackLink;
+using tetherkitnext::testing::MockDataChannel;
 
 namespace {
 
@@ -479,7 +479,7 @@ TEST_CASE("USB 提交失败被记为 I/O 错误，桥接层继续运行") {
 
 TEST_CASE("统计行渲染出速率与丢包") {
   // 统计行是面向用户的文案，下面按中文断言，先把语言钉死。
-  const tetherkit::testing::ScopedLanguage guard{tetherkit::Language::kChinese};
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   Bridge bridge(channel, link, TestConfig());

@@ -34,8 +34,8 @@ that include device serial numbers, status) and `setLanguage` were open to any
 local user. The authorization-only model was also a deliberate workaround for
 source builds, which can't be code-signed consistently.
 *Fix:* team-signed builds now call `setCodeSigningRequirement` on both sides.
-The daemon only accepts `com.tetherkit.app` signed by the same Team ID, and
-the app only talks to `com.tetherkit.helperd` signed by the same Team ID. The
+The daemon only accepts `com.tetherkitnext.app` signed by the same Team ID, and
+the app only talks to `com.tetherkitnext.helperd` signed by the same Team ID. The
 check runs against the peer's audit token, so PID reuse can't spoof it. The
 Team ID is read at runtime from the binary's own signature
 (`CodeSigning.swift`). The per-call admin authorization check is kept as a
@@ -65,7 +65,7 @@ wakeups, and idle CPU dropped to about 0.03%. Regression tests were added.
 ### Medium
 
 **M1. Orphan cleanup could destroy another process's live interfaces.**
-At startup, the registry at `/var/run/tetherkit-interfaces` was treated as all
+At startup, the registry at `/var/run/tetherkitnext-interfaces` was treated as all
 orphans. A second daemon instance (for example the legacy daemon plus the new
 one during an upgrade) would tear down a running session's `feth` pair and
 remove its network service.
@@ -75,7 +75,7 @@ exists.
 
 **M2. Upstream PR #4 hard-linked a private SystemConfiguration symbol.** A
 macOS release that drops `_SCNetworkInterfaceCreateWithBSDName` would stop
-dyld from loading `libtetherkit` at all, taking down both the app and the
+dyld from loading `libtetherkitnext` at all, taking down both the app and the
 daemon.
 *Fix:* the symbol is resolved with `dlsym`. If it is missing, DHCP falls back
 to the transient `ipconfig set` service.
@@ -98,7 +98,7 @@ response could open `file://` or custom-scheme URLs.
 
 **L2. The CI ABI gate could never pass.** It searched the log for `创建了 feth`,
 a string that disappeared when log messages were localized. It now pins
-`TETHERKIT_LANG=en` and matches the current message.
+`TETHERKITNEXT_LANG=en` and matches the current message.
 
 ## Areas reviewed with no issue found
 

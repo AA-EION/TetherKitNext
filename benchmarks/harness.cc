@@ -8,10 +8,10 @@
 #include <cstring>
 #include <string>
 
-#include "tetherkit/common/cache.h"
-#include "tetherkit/version.h"
+#include "tetherkitnext/common/cache.h"
+#include "tetherkitnext/version.h"
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 namespace {
 
 /// 读取字符串型 sysctl；失败返回 "unknown"。
@@ -116,4 +116,4 @@ void PrintMarkdownReport(const std::vector<Result>& results, std::string_view ti
   std::printf("> 后台干扰或被调度到了效率核，此时的绝对数值仅供参考。\n\n");
 }
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

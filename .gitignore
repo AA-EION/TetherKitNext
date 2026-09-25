@@ -43,7 +43,7 @@ _deps/
 
 # ---- GUI 打包产物 ----
 #
-# dist/ 由 gui/Scripts/build-gui.sh 生成（TetherKit.app + helper），
+# dist/ 由 gui/Scripts/build-gui.sh 生成（TetherKitNext.app + helper），
 # 是纯派生物，不进版本库。
 dist/
 

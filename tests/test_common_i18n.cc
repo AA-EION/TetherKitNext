@@ -18,13 +18,13 @@
 #include <vector>
 
 #include "doctest.h"
-#include "tetherkit/common/error.h"
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/error.h"
+#include "tetherkitnext/common/i18n.h"
 
 namespace {
 
-using tetherkit::Language;
-using tetherkit::Msg;
+using tetherkitnext::Language;
+using tetherkitnext::Msg;
 
 constexpr std::size_t kMessageCount = static_cast<std::size_t>(Msg::kMessageCount);
 
@@ -119,7 +119,7 @@ struct ParsedFormat {
 /// 给报错用的可读标签。文案表里没存标识名（X-macro 只展开出文字），所以用
 /// 序号 + 英文原文的开头，足够定位到 messages.def 的哪一行。
 [[nodiscard]] std::string Label(std::size_t index) {
-  const std::string_view english = tetherkit::TextIn(Language::kEnglish, static_cast<Msg>(index));
+  const std::string_view english = tetherkitnext::TextIn(Language::kEnglish, static_cast<Msg>(index));
   return std::format("message #{} (\"{}\")", index, english.substr(0, 48));
 }
 
@@ -128,55 +128,55 @@ struct ParsedFormat {
 TEST_SUITE("common.i18n") {
 
 TEST_CASE("语言切换与查表") {
-  const Language original = tetherkit::GetLanguage();
+  const Language original = tetherkitnext::GetLanguage();
 
-  tetherkit::SetLanguage(Language::kChinese);
-  CHECK(tetherkit::GetLanguage() == Language::kChinese);
-  CHECK(tetherkit::Text(Msg::kCoreRunStateRunning) == "运行中");
+  tetherkitnext::SetLanguage(Language::kChinese);
+  CHECK(tetherkitnext::GetLanguage() == Language::kChinese);
+  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) == "运行中");
 
-  tetherkit::SetLanguage(Language::kEnglish);
-  CHECK(tetherkit::GetLanguage() == Language::kEnglish);
-  CHECK(tetherkit::Text(Msg::kCoreRunStateRunning) == "running");
+  tetherkitnext::SetLanguage(Language::kEnglish);
+  CHECK(tetherkitnext::GetLanguage() == Language::kEnglish);
+  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) == "running");
 
-  tetherkit::SetLanguage(original);
+  tetherkitnext::SetLanguage(original);
 }
 
 TEST_CASE("Tr 按当前语言渲染并替换参数") {
-  const Language original = tetherkit::GetLanguage();
+  const Language original = tetherkitnext::GetLanguage();
 
-  tetherkit::SetLanguage(Language::kChinese);
-  const std::string chinese = tetherkit::Tr(Msg::kNetBpfBindFailed, "feth1");
+  tetherkitnext::SetLanguage(Language::kChinese);
+  const std::string chinese = tetherkitnext::Tr(Msg::kNetBpfBindFailed, "feth1");
   CHECK(chinese.find("feth1") != std::string::npos);
 
-  tetherkit::SetLanguage(Language::kEnglish);
-  const std::string english = tetherkit::Tr(Msg::kNetBpfBindFailed, "feth1");
+  tetherkitnext::SetLanguage(Language::kEnglish);
+  const std::string english = tetherkitnext::Tr(Msg::kNetBpfBindFailed, "feth1");
   CHECK(english.find("feth1") != std::string::npos);
   CHECK(english != chinese);
 
-  tetherkit::SetLanguage(original);
+  tetherkitnext::SetLanguage(original);
 }
 
 TEST_CASE("每条文案两种语言都非空") {
   for (std::size_t i = 0; i < kMessageCount; ++i) {
     const auto id = static_cast<Msg>(i);
     CAPTURE(i);
-    CHECK_FALSE(tetherkit::TextIn(Language::kChinese, id).empty());
-    CHECK_FALSE(tetherkit::TextIn(Language::kEnglish, id).empty());
+    CHECK_FALSE(tetherkitnext::TextIn(Language::kChinese, id).empty());
+    CHECK_FALSE(tetherkitnext::TextIn(Language::kEnglish, id).empty());
   }
 }
 
 TEST_CASE("越界的 Msg 返回空串而不是崩溃") {
   const auto out_of_range = static_cast<Msg>(kMessageCount);
-  CHECK(tetherkit::Text(out_of_range).empty());
-  CHECK(tetherkit::TextIn(Language::kChinese, out_of_range).empty());
+  CHECK(tetherkitnext::Text(out_of_range).empty());
+  CHECK(tetherkitnext::TextIn(Language::kChinese, out_of_range).empty());
 }
 
 // 本 suite 的核心：编译器不再检查的那件事，在这里逐条检查。
 TEST_CASE("两种语言的占位符下标与类型一致") {
   for (std::size_t i = 0; i < kMessageCount; ++i) {
     const auto id = static_cast<Msg>(i);
-    const ParsedFormat chinese = ParseFormat(tetherkit::TextIn(Language::kChinese, id));
-    const ParsedFormat english = ParseFormat(tetherkit::TextIn(Language::kEnglish, id));
+    const ParsedFormat chinese = ParseFormat(tetherkitnext::TextIn(Language::kChinese, id));
+    const ParsedFormat english = ParseFormat(tetherkitnext::TextIn(Language::kEnglish, id));
 
     CAPTURE(Label(i));
     CHECK_FALSE(chinese.malformed);
@@ -207,59 +207,59 @@ TEST_CASE("两种语言的占位符下标与类型一致") {
 TEST_CASE("ParseLanguage 认得常见写法") {
   Language language = Language::kEnglish;
 
-  CHECK(tetherkit::ParseLanguage("zh", &language));
+  CHECK(tetherkitnext::ParseLanguage("zh", &language));
   CHECK(language == Language::kChinese);
-  CHECK(tetherkit::ParseLanguage("zh-Hans", &language));
+  CHECK(tetherkitnext::ParseLanguage("zh-Hans", &language));
   CHECK(language == Language::kChinese);
-  CHECK(tetherkit::ParseLanguage("zh_CN.UTF-8", &language));
+  CHECK(tetherkitnext::ParseLanguage("zh_CN.UTF-8", &language));
   CHECK(language == Language::kChinese);
-  CHECK(tetherkit::ParseLanguage("Chinese", &language));
+  CHECK(tetherkitnext::ParseLanguage("Chinese", &language));
   CHECK(language == Language::kChinese);
 
-  CHECK(tetherkit::ParseLanguage("en", &language));
+  CHECK(tetherkitnext::ParseLanguage("en", &language));
   CHECK(language == Language::kEnglish);
-  CHECK(tetherkit::ParseLanguage("EN_US", &language));
+  CHECK(tetherkitnext::ParseLanguage("EN_US", &language));
   CHECK(language == Language::kEnglish);
-  CHECK(tetherkit::ParseLanguage("english", &language));
+  CHECK(tetherkitnext::ParseLanguage("english", &language));
   CHECK(language == Language::kEnglish);
 
   // auto 走环境推断，只要求它成功并给出两种语言之一。
-  CHECK(tetherkit::ParseLanguage("auto", &language));
+  CHECK(tetherkitnext::ParseLanguage("auto", &language));
 
-  CHECK_FALSE(tetherkit::ParseLanguage("klingon", &language));
-  CHECK_FALSE(tetherkit::ParseLanguage("", &language));
-  CHECK_FALSE(tetherkit::ParseLanguage("zh", nullptr));
+  CHECK_FALSE(tetherkitnext::ParseLanguage("klingon", &language));
+  CHECK_FALSE(tetherkitnext::ParseLanguage("", &language));
+  CHECK_FALSE(tetherkitnext::ParseLanguage("zh", nullptr));
 }
 
 TEST_CASE("区域设置串只按 zh 前缀判定") {
-  CHECK(tetherkit::LanguageFromLocaleString("zh_CN.UTF-8") == Language::kChinese);
-  CHECK(tetherkit::LanguageFromLocaleString("ZH-hant") == Language::kChinese);
-  CHECK(tetherkit::LanguageFromLocaleString("en_US.UTF-8") == Language::kEnglish);
-  CHECK(tetherkit::LanguageFromLocaleString("C") == Language::kEnglish);
-  CHECK(tetherkit::LanguageFromLocaleString("") == Language::kEnglish);
+  CHECK(tetherkitnext::LanguageFromLocaleString("zh_CN.UTF-8") == Language::kChinese);
+  CHECK(tetherkitnext::LanguageFromLocaleString("ZH-hant") == Language::kChinese);
+  CHECK(tetherkitnext::LanguageFromLocaleString("en_US.UTF-8") == Language::kEnglish);
+  CHECK(tetherkitnext::LanguageFromLocaleString("C") == Language::kEnglish);
+  CHECK(tetherkitnext::LanguageFromLocaleString("") == Language::kEnglish);
   // 「不以 zh 开头」就是英文，哪怕串里别处有 zh。
-  CHECK(tetherkit::LanguageFromLocaleString("en_zh") == Language::kEnglish);
+  CHECK(tetherkitnext::LanguageFromLocaleString("en_zh") == Language::kEnglish);
 }
 
 TEST_CASE("语言标签") {
-  CHECK(tetherkit::LanguageTag(Language::kChinese) == "zh");
-  CHECK(tetherkit::LanguageTag(Language::kEnglish) == "en");
+  CHECK(tetherkitnext::LanguageTag(Language::kChinese) == "zh");
+  CHECK(tetherkitnext::LanguageTag(Language::kEnglish) == "en");
 }
 
 TEST_CASE("错误上下文的分隔符随语言变化") {
-  const Language original = tetherkit::GetLanguage();
+  const Language original = tetherkitnext::GetLanguage();
 
   // Context() 返回的是 view，必须先把 Error 落到具名变量上再取，
   // 否则临时对象在语句末尾析构，view 当场悬垂。
-  tetherkit::SetLanguage(Language::kChinese);
-  const tetherkit::Error chinese = tetherkit::Error::Generic("inner").WithContext("outer");
+  tetherkitnext::SetLanguage(Language::kChinese);
+  const tetherkitnext::Error chinese = tetherkitnext::Error::Generic("inner").WithContext("outer");
   CHECK(chinese.Context().starts_with("outer："));
 
-  tetherkit::SetLanguage(Language::kEnglish);
-  const tetherkit::Error english = tetherkit::Error::Generic("inner").WithContext("outer");
+  tetherkitnext::SetLanguage(Language::kEnglish);
+  const tetherkitnext::Error english = tetherkitnext::Error::Generic("inner").WithContext("outer");
   CHECK(english.Context().starts_with("outer: "));
 
-  tetherkit::SetLanguage(original);
+  tetherkitnext::SetLanguage(original);
 }
 
 }  // TEST_SUITE

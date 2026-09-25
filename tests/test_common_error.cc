@@ -4,15 +4,15 @@
 
 #include <doctest.h>
 
-#include "tetherkit/common/error.h"
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/common/error.h"
+#include "tetherkitnext/common/logging.h"
 
-using tetherkit::Error;
-using tetherkit::ErrorDomain;
-using tetherkit::LogLevel;
-using tetherkit::Ok;
-using tetherkit::Result;
-using tetherkit::Status;
+using tetherkitnext::Error;
+using tetherkitnext::ErrorDomain;
+using tetherkitnext::LogLevel;
+using tetherkitnext::Ok;
+using tetherkitnext::Result;
+using tetherkitnext::Status;
 
 namespace {
 
@@ -24,10 +24,10 @@ Status SucceedingStep() {
   return Ok();
 }
 
-/// 演示 TETHERKIT_RETURN_IF_ERROR 的传播链。
+/// 演示 TETHERKITNEXT_RETURN_IF_ERROR 的传播链。
 Status PipelineWithFailure() {
-  TETHERKIT_RETURN_IF_ERROR(SucceedingStep());
-  TETHERKIT_RETURN_IF_ERROR(FailingStep());
+  TETHERKITNEXT_RETURN_IF_ERROR(SucceedingStep());
+  TETHERKITNEXT_RETURN_IF_ERROR(FailingStep());
   return Ok();
 }
 
@@ -39,7 +39,7 @@ Result<int> ProducingStep(bool succeed) {
 }
 
 Result<int> ConsumingPipeline(bool succeed) {
-  TETHERKIT_ASSIGN_OR_RETURN(const int value, ProducingStep(succeed));
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const int value, ProducingStep(succeed));
   return value * 2;
 }
 
@@ -112,24 +112,24 @@ TEST_CASE("ASSIGN_OR_RETURN 成功时取值、失败时传播") {
 }
 
 TEST_CASE("日志级别设置与判断") {
-  const LogLevel original = tetherkit::GetLogLevel();
+  const LogLevel original = tetherkitnext::GetLogLevel();
 
-  tetherkit::SetLogLevel(LogLevel::kWarn);
-  CHECK(tetherkit::GetLogLevel() == LogLevel::kWarn);
-  CHECK_FALSE(tetherkit::detail::IsLogLevelEnabled(LogLevel::kInfo));
-  CHECK(tetherkit::detail::IsLogLevelEnabled(LogLevel::kWarn));
-  CHECK(tetherkit::detail::IsLogLevelEnabled(LogLevel::kError));
+  tetherkitnext::SetLogLevel(LogLevel::kWarn);
+  CHECK(tetherkitnext::GetLogLevel() == LogLevel::kWarn);
+  CHECK_FALSE(tetherkitnext::detail::IsLogLevelEnabled(LogLevel::kInfo));
+  CHECK(tetherkitnext::detail::IsLogLevelEnabled(LogLevel::kWarn));
+  CHECK(tetherkitnext::detail::IsLogLevelEnabled(LogLevel::kError));
 
-  tetherkit::SetLogLevel(LogLevel::kOff);
-  CHECK_FALSE(tetherkit::detail::IsLogLevelEnabled(LogLevel::kError));
+  tetherkitnext::SetLogLevel(LogLevel::kOff);
+  CHECK_FALSE(tetherkitnext::detail::IsLogLevelEnabled(LogLevel::kError));
 
-  tetherkit::SetLogLevel(original);
+  tetherkitnext::SetLogLevel(original);
 }
 
 TEST_CASE("从 __FILE__ 截出文件名") {
-  CHECK(tetherkit::detail::BaseName("/a/b/c/bpf_link.cc") == "bpf_link.cc");
-  CHECK(tetherkit::detail::BaseName("bpf_link.cc") == "bpf_link.cc");
-  CHECK(tetherkit::detail::BaseName("") == "");
+  CHECK(tetherkitnext::detail::BaseName("/a/b/c/bpf_link.cc") == "bpf_link.cc");
+  CHECK(tetherkitnext::detail::BaseName("bpf_link.cc") == "bpf_link.cc");
+  CHECK(tetherkitnext::detail::BaseName("") == "");
 }
 
 }  // TEST_SUITE("common.error")

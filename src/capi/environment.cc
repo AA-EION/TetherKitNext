@@ -1,7 +1,7 @@
 // 免 root 的三件事：版本、环境预检、设备枚举。
 //
 // GUI 本体（uid 501）只调这一组；需要 root 的会话与网卡配置全部交给
-// tetherkit-helper。这个划分是 docs/GUI-SPIKE.md 的核心结论之一。
+// tetherkitnext-helper。这个划分是 docs/GUI-SPIKE.md 的核心结论之一。
 #include <libusb.h>
 
 #include <algorithm>
@@ -16,18 +16,18 @@
 #include <vector>
 
 #include "capi_support.h"
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/net/feth_device.h"
-#include "tetherkit/usb/context.h"
-#include "tetherkit/usb/device.h"
-#include "tetherkit/version.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/net/feth_device.h"
+#include "tetherkitnext/usb/context.h"
+#include "tetherkitnext/usb/device.h"
+#include "tetherkitnext/version.h"
 
 namespace {
 
-using tetherkit::capi::ClearError;
-using tetherkit::capi::CopyText;
-using tetherkit::capi::FillError;
+using tetherkitnext::capi::ClearError;
+using tetherkitnext::capi::CopyText;
+using tetherkitnext::capi::FillError;
 
 /// 读一个 USB 字符串描述符到定长缓冲。索引为 0 表示设备没提供该字符串。
 ///
@@ -53,7 +53,7 @@ void ReadStringDescriptor(::libusb_device_handle* handle, std::uint8_t index, ch
 /// 尽力而为地补上厂商名 / 产品名 / 序列号。
 ///
 /// 为什么是「尽力而为」：读字符串描述符必须先 libusb_open，而设备可能已被本机
-/// 另一个进程（比如正在跑的 tetherkit-helper）独占，darwin 后端会返回
+/// 另一个进程（比如正在跑的 tetherkitnext-helper）独占，darwin 后端会返回
 /// LIBUSB_ERROR_ACCESS。那不是错误，只是拿不到名字 —— 此时由字符串记忆回填
 /// 上次读到的值（见 tk_list_devices 末尾），连记忆都没有才回落到 VID:PID。
 /// 绝不能因此让整个枚举失败。
@@ -105,13 +105,13 @@ void TryReadStrings(::libusb_context* context, tk_device_info_t& info) noexcept 
 /// 自己管，混进来只会让停机顺序变复杂。libusb 支持同进程多上下文。
 ///
 /// 初始化失败时返回 nullptr 并填错误，且**不缓存失败**，下次调用会重试。
-tetherkit::usb::Context* SharedEnumerationContext(tk_error_t* out_error) {
+tetherkitnext::usb::Context* SharedEnumerationContext(tk_error_t* out_error) {
   static std::mutex mutex;
-  static std::unique_ptr<tetherkit::usb::Context> context;
+  static std::unique_ptr<tetherkitnext::usb::Context> context;
 
   const std::lock_guard<std::mutex> guard(mutex);
   if (context == nullptr) {
-    auto created = tetherkit::usb::Context::Create();
+    auto created = tetherkitnext::usb::Context::Create();
     if (!created) {
       FillError(out_error, created.error());
       return nullptr;
@@ -127,7 +127,7 @@ tetherkit::usb::Context* SharedEnumerationContext(tk_error_t* out_error) {
 /// 就能拿到回填的名字；纯逻辑见 ReconcileDeviceStrings 的说明。
 struct StringMemory {
   std::mutex mutex;
-  std::vector<tetherkit::capi::RememberedDeviceStrings> entries;
+  std::vector<tetherkitnext::capi::RememberedDeviceStrings> entries;
 };
 
 StringMemory& SharedStringMemory() {
@@ -135,7 +135,7 @@ StringMemory& SharedStringMemory() {
   return memory;
 }
 
-void FillDeviceInfo(const tetherkit::usb::DeviceCandidate& candidate,
+void FillDeviceInfo(const tetherkitnext::usb::DeviceCandidate& candidate,
                     tk_device_info_t& info) noexcept {
   info = tk_device_info_t{};
   info.vendor_id = candidate.vendor_id;
@@ -156,36 +156,36 @@ void FillDeviceInfo(const tetherkit::usb::DeviceCandidate& candidate,
 namespace {
 
 /// tk_language_t → C++ 侧的 Language。越界返回 nullopt，让调用方忽略这次设置。
-[[nodiscard]] std::optional<tetherkit::Language> ToLanguage(std::int32_t value) noexcept {
+[[nodiscard]] std::optional<tetherkitnext::Language> ToLanguage(std::int32_t value) noexcept {
   switch (value) {
     case TK_LANGUAGE_ENGLISH:
-      return tetherkit::Language::kEnglish;
+      return tetherkitnext::Language::kEnglish;
     case TK_LANGUAGE_CHINESE:
-      return tetherkit::Language::kChinese;
+      return tetherkitnext::Language::kChinese;
     default:
       return std::nullopt;
   }
 }
 
-[[nodiscard]] std::int32_t FromLanguage(tetherkit::Language language) noexcept {
-  return language == tetherkit::Language::kChinese ? TK_LANGUAGE_CHINESE : TK_LANGUAGE_ENGLISH;
+[[nodiscard]] std::int32_t FromLanguage(tetherkitnext::Language language) noexcept {
+  return language == tetherkitnext::Language::kChinese ? TK_LANGUAGE_CHINESE : TK_LANGUAGE_ENGLISH;
 }
 
 }  // namespace
 
 void tk_set_language(int32_t language) {
-  if (const std::optional<tetherkit::Language> parsed = ToLanguage(language);
+  if (const std::optional<tetherkitnext::Language> parsed = ToLanguage(language);
       parsed.has_value()) {
-    tetherkit::SetLanguage(*parsed);
+    tetherkitnext::SetLanguage(*parsed);
   }
 }
 
 int32_t tk_get_language(void) {
-  return FromLanguage(tetherkit::GetLanguage());
+  return FromLanguage(tetherkitnext::GetLanguage());
 }
 
 int32_t tk_detect_system_language(void) {
-  return FromLanguage(tetherkit::DetectLanguageFromEnvironment());
+  return FromLanguage(tetherkitnext::DetectLanguageFromEnvironment());
 }
 
 void tk_version(tk_version_info_t* out_version) {
@@ -193,13 +193,13 @@ void tk_version(tk_version_info_t* out_version) {
     return;
   }
   *out_version = tk_version_info_t{};
-  const tetherkit::Version version = tetherkit::GetVersion();
+  const tetherkitnext::Version version = tetherkitnext::GetVersion();
   out_version->major = version.major;
   out_version->minor = version.minor;
   out_version->patch = version.patch;
-  CopyText(out_version->text, tetherkit::GetVersionString());
-  CopyText(out_version->build, tetherkit::GetBuildDescription());
-  CopyText(out_version->libusb, tetherkit::usb::Context::VersionString());
+  CopyText(out_version->text, tetherkitnext::GetVersionString());
+  CopyText(out_version->build, tetherkitnext::GetBuildDescription());
+  CopyText(out_version->libusb, tetherkitnext::usb::Context::VersionString());
 }
 
 tk_result_t tk_check_environment(tk_environment_t* out_environment) {
@@ -208,19 +208,19 @@ tk_result_t tk_check_environment(tk_environment_t* out_environment) {
   }
   *out_environment = tk_environment_t{};
 
-  out_environment->is_root = tetherkit::net::IsRunningAsRoot();
+  out_environment->is_root = tetherkitnext::net::IsRunningAsRoot();
 
   // 这批 sysctl 是 feth 的**创建期快照**，创建后再改无效，所以必须提前查。
   // 不合格时把原因原样交给 GUI 展示 —— 用户看到具体是哪个开关被打开了，
   // 才知道该改什么。
-  if (const auto status = tetherkit::net::VerifyFethSysctls(); status) {
+  if (const auto status = tetherkitnext::net::VerifyFethSysctls(); status) {
     out_environment->sysctls_ok = true;
   } else {
     out_environment->sysctls_ok = false;
     CopyText(out_environment->sysctl_detail, status.error().ToString());
   }
 
-  if (const auto max_mtu = tetherkit::net::QueryFethMaxMtu(); max_mtu) {
+  if (const auto max_mtu = tetherkitnext::net::QueryFethMaxMtu(); max_mtu) {
     out_environment->feth_max_mtu = *max_mtu;
   }
 
@@ -236,12 +236,12 @@ tk_result_t tk_list_devices(tk_device_info_t* out_devices, size_t capacity, size
   ClearError(out_error);
   *out_count = 0;
 
-  tetherkit::usb::Context* context = SharedEnumerationContext(out_error);
+  tetherkitnext::usb::Context* context = SharedEnumerationContext(out_error);
   if (context == nullptr) {
     return TK_ERR_FAILED;
   }
 
-  auto candidates = tetherkit::usb::FindRndisDevices(*context, {});
+  auto candidates = tetherkitnext::usb::FindRndisDevices(*context, {});
   if (!candidates) {
     FillError(out_error, candidates.error());
     return TK_ERR_FAILED;
@@ -264,9 +264,9 @@ tk_result_t tk_list_devices(tk_device_info_t* out_devices, size_t capacity, size
   // 名字才不会从界面上消失。present 用完整候选集而非 writable 前缀：
   // 容量不够时后面那些设备仍然在场，它们的记忆不能被当作「已拔掉」清除。
   {
-    std::vector<tetherkit::capi::DeviceIdentity> present;
+    std::vector<tetherkitnext::capi::DeviceIdentity> present;
     present.reserve(candidates->size());
-    for (const tetherkit::usb::DeviceCandidate& candidate : *candidates) {
+    for (const tetherkitnext::usb::DeviceCandidate& candidate : *candidates) {
       present.push_back({.bus_number = candidate.bus_number,
                          .device_address = candidate.device_address,
                          .vendor_id = candidate.vendor_id,
@@ -274,7 +274,7 @@ tk_result_t tk_list_devices(tk_device_info_t* out_devices, size_t capacity, size
     }
     StringMemory& memory = SharedStringMemory();
     const std::lock_guard<std::mutex> guard(memory.mutex);
-    tetherkit::capi::ReconcileDeviceStrings(memory.entries, present, {out_devices, writable});
+    tetherkitnext::capi::ReconcileDeviceStrings(memory.entries, present, {out_devices, writable});
   }
   return TK_OK;
 }

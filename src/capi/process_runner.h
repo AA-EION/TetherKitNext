@@ -17,9 +17,9 @@
 #include <string_view>
 #include <vector>
 
-#include "tetherkit/common/error.h"
+#include "tetherkitnext/common/error.h"
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 struct ProcessResult {
   int exit_code = 0;
@@ -47,4 +47,4 @@ struct ProcessResult {
 [[nodiscard]] Result<ProcessResult> RunTool(std::string_view executable,
                                             const std::vector<std::string>& arguments);
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

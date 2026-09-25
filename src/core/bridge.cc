@@ -1,15 +1,15 @@
-#include "tetherkit/core/bridge.h"
+#include "tetherkitnext/core/bridge.h"
 
 #include <algorithm>
 #include <chrono>
 #include <format>
 #include <thread>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/common/scheduling.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/common/scheduling.h"
 
-namespace tetherkit::core {
+namespace tetherkitnext::core {
 namespace {
 
 /// TX 背压时单次等待空闲传输槽位的上限（毫秒）。
@@ -56,13 +56,13 @@ Status Bridge::Start() {
   // 先让数据通道开始接收 —— 它会把帧推进 rx_ring_。
   // 顺序上必须在启动注入线程**之前**还是之后都可以（队列是有界的，满了会丢弃
   // 并计数），但先开接收能让链路一就绪就开始收，少丢几帧。
-  TETHERKIT_RETURN_IF_ERROR(data_channel_->StartReceiving(*rx_ring_, counters_.rx));
+  TETHERKITNEXT_RETURN_IF_ERROR(data_channel_->StartReceiving(*rx_ring_, counters_.rx));
 
   running_.store(true, std::memory_order_release);
   receive_injector_ = std::thread([this] { RunReceiveInjector(); });
   transmit_extractor_ = std::thread([this] { RunTransmitExtractor(); });
 
-  TETHERKIT_INFO_TR(Msg::kCoreDataPathStarted, rx_ring_->Capacity(),
+  TETHERKITNEXT_INFO_TR(Msg::kCoreDataPathStarted, rx_ring_->Capacity(),
                     rx_ring_->StorageBytes() / 1024, config_.rx_write_batch,
                     config_.tx_submit_batch,
                     Text(link_->SupportsBatchWrite() ? Msg::kCoreBatchWriteAvailable
@@ -105,7 +105,7 @@ void Bridge::Stop() {
 
   data_channel_->Shutdown();
 
-  TETHERKIT_INFO_TR(Msg::kCoreDataPathStopped);
+  TETHERKITNEXT_INFO_TR(Msg::kCoreDataPathStopped);
 }
 
 // =============================================================================
@@ -136,7 +136,7 @@ void Bridge::SetPaused(bool paused) noexcept {
 
 void Bridge::RunReceiveInjector() noexcept {
   ConfigureCurrentThread("rx-inject", ThreadRole::kDataPath);
-  TETHERKIT_DEBUG_TR(Msg::kCoreRxInjectorStarted);
+  TETHERKITNEXT_DEBUG_TR(Msg::kCoreRxInjectorStarted);
 
   std::uint32_t idle_spins = 0;
 
@@ -193,7 +193,7 @@ void Bridge::RunReceiveInjector() noexcept {
       const auto result = link_->WriteFrames(rx_batch_);
       if (!result) {
         counters_.rx.AddIoError();
-        TETHERKIT_WARN_TR(Msg::kCoreLinkWriteFailed, rx_batch_.size(),
+        TETHERKITNEXT_WARN_TR(Msg::kCoreLinkWriteFailed, rx_batch_.size(),
                           result.error().ToString());
         // 写失败不退出线程 —— 可能只是接口暂时 down。批量会话照常释放槽位
         // （帧已经没法送出去了，留着只会堵住队列）。
@@ -213,7 +213,7 @@ void Bridge::RunReceiveInjector() noexcept {
     }  // 批量会话析构 → 一次 PublishRead(n)
   }
 
-  TETHERKIT_DEBUG_TR(Msg::kCoreRxInjectorExited);
+  TETHERKITNEXT_DEBUG_TR(Msg::kCoreRxInjectorExited);
 }
 
 // =============================================================================
@@ -222,7 +222,7 @@ void Bridge::RunReceiveInjector() noexcept {
 
 void Bridge::RunTransmitExtractor() noexcept {
   ConfigureCurrentThread("tx-extract", ThreadRole::kDataPath);
-  TETHERKIT_DEBUG_TR(Msg::kCoreTxExtractorStarted);
+  TETHERKITNEXT_DEBUG_TR(Msg::kCoreTxExtractorStarted);
 
   while (!stop_requested_.load(std::memory_order_acquire)) {
     // 阻塞读。BPF 在 BIOCIMMEDIATE=1 下会自动把期间累积的包整批交付，
@@ -230,7 +230,7 @@ void Bridge::RunTransmitExtractor() noexcept {
     const auto batch = link_->ReadFrames();
     if (!batch) {
       counters_.tx.AddIoError();
-      TETHERKIT_WARN_TR(Msg::kCoreLinkReadFailed, batch.error().ToString());
+      TETHERKITNEXT_WARN_TR(Msg::kCoreLinkReadFailed, batch.error().ToString());
       // 读失败可能是接口被拆了。稍等再试，避免忙循环刷日志。
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
@@ -270,7 +270,7 @@ void Bridge::RunTransmitExtractor() noexcept {
         // 放弃的剩余帧必须计入丢弃 —— 曾经这里只 +1 个 io_error 就 break，
         // 剩余帧不进任何计数器，统计上凭空消失。
         counters_.tx.AddDroppedFull(batch->frames.size() - offset);
-        TETHERKIT_WARN_TR(Msg::kCoreUsbSubmitFailed, chunk, sent.error().ToString());
+        TETHERKITNEXT_WARN_TR(Msg::kCoreUsbSubmitFailed, chunk, sent.error().ToString());
         break;
       }
 
@@ -307,7 +307,7 @@ void Bridge::RunTransmitExtractor() noexcept {
     }
   }
 
-  TETHERKIT_DEBUG_TR(Msg::kCoreTxExtractorExited);
+  TETHERKITNEXT_DEBUG_TR(Msg::kCoreTxExtractorExited);
 }
 
 // =============================================================================
@@ -315,13 +315,13 @@ void Bridge::RunTransmitExtractor() noexcept {
 // =============================================================================
 
 BridgeStats Bridge::Snapshot() const {
-  DirectionSnapshot tx = tetherkit::Snapshot(counters_.tx);
+  DirectionSnapshot tx = tetherkitnext::Snapshot(counters_.tx);
   // 合并数据通道在异步完成回调里累计的错误 —— 那部分由 libusb 事件线程递增，
   // 刻意与桥接层的计数器分开以维持「每个计数器只有一个写者」的不变式。
   tx.io_errors += data_channel_->AsyncSendErrors();
 
   return BridgeStats{
-      .rx = tetherkit::Snapshot(counters_.rx),
+      .rx = tetherkitnext::Snapshot(counters_.rx),
       .tx = tx,
       .rx_queue_depth = rx_ring_->SizeSnapshot(),
       .link_kernel_drops = link_kernel_drops_.load(std::memory_order_relaxed),
@@ -344,4 +344,4 @@ std::string FormatStatsLine(const BridgeStats& previous, const BridgeStats& curr
       current.tx_backpressure_events - previous.tx_backpressure_events);
 }
 
-}  // namespace tetherkit::core
+}  // namespace tetherkitnext::core

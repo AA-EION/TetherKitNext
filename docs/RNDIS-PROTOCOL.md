@@ -1,7 +1,7 @@
 # RNDIS 协议参考
 
 本文是实现 RNDIS **主机侧**时需要的全部线格式细节。所有数值都与
-[`include/tetherkit/rndis/protocol.h`](../include/tetherkit/rndis/protocol.h)
+[`include/tetherkitnext/rndis/protocol.h`](../include/tetherkitnext/rndis/protocol.h)
 一致（那里是代码中的唯一来源），并与 Linux 内核实现交叉验证过：
 `drivers/net/usb/rndis_host.c`、`include/linux/usb/rndis_host.h`、
 `drivers/usb/gadget/function/rndis.c`。

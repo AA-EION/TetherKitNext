@@ -33,10 +33,10 @@
 #include <unistd.h>
 
 #include "harness.h"
-#include "tetherkit/net/bpf_link.h"
-#include "tetherkit/net/feth_device.h"
+#include "tetherkitnext/net/bpf_link.h"
+#include "tetherkitnext/net/feth_device.h"
 
-namespace tetherkit::bench {
+namespace tetherkitnext::bench {
 namespace {
 
 constexpr std::uint32_t kFullFrameBytes = 1514;
@@ -339,4 +339,4 @@ void ShutdownNetBenchmarks() noexcept {
   g_fixture = nullptr;
 }
 
-}  // namespace tetherkit::bench
+}  // namespace tetherkitnext::bench

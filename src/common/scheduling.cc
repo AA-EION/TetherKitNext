@@ -1,10 +1,10 @@
-#include "tetherkit/common/scheduling.h"
+#include "tetherkitnext/common/scheduling.h"
 
 #include <pthread/qos.h>
 
-#include "tetherkit/common/logging.h"
+#include "tetherkitnext/common/logging.h"
 
-namespace tetherkit {
+namespace tetherkitnext {
 
 unsigned int QosClassFor(ThreadRole role) noexcept {
   switch (role) {
@@ -26,8 +26,8 @@ void ConfigureCurrentThread(std::string_view name, ThreadRole role) noexcept {
   const int rc = ::pthread_set_qos_class_self_np(qos, 0);
   if (rc != 0) {
     // QoS 设置失败不影响功能，只影响性能，因此只告警不返回错误。
-    TETHERKIT_WARN_TR(Msg::kCommonThreadQosFailed, static_cast<int>(qos), rc);
+    TETHERKITNEXT_WARN_TR(Msg::kCommonThreadQosFailed, static_cast<int>(qos), rc);
   }
 }
 
-}  // namespace tetherkit
+}  // namespace tetherkitnext

@@ -1,18 +1,18 @@
 // SpscRing / SpscCursor 的单元测试。
 //
 // 多线程用例在 ThreadSanitizer 构建下才有完整意义：
-//   cmake -B build-tsan -DTETHERKIT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R spsc
+//   cmake -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R spsc
 #include <atomic>
 #include <cstdint>
 #include <thread>
 
 #include <doctest.h>
 
-#include "tetherkit/common/cache.h"
-#include "tetherkit/common/spsc_ring.h"
+#include "tetherkitnext/common/cache.h"
+#include "tetherkitnext/common/spsc_ring.h"
 
-using tetherkit::kCacheLineSize;
-using tetherkit::SpscRing;
+using tetherkitnext::kCacheLineSize;
+using tetherkitnext::SpscRing;
 
 namespace {
 
@@ -87,7 +87,7 @@ TEST_CASE("索引游标各字段落在不同缓存行") {
   const auto base = reinterpret_cast<std::uintptr_t>(&cursor);
   // SpscCursor 的四个索引各自 alignas(kCacheLineSize)，
   // 因此整个对象至少要占 4 条缓存行（外加只读字段那一条）。
-  CHECK(sizeof(tetherkit::SpscCursor) >= 4 * kCacheLineSize);
+  CHECK(sizeof(tetherkitnext::SpscCursor) >= 4 * kCacheLineSize);
   CHECK(base % kCacheLineSize == 0);
 }
 

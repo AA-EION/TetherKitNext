@@ -1,1 +1,0 @@
-../../../../include/tetherkit/capi/tetherkit_c.h

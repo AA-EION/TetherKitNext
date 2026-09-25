@@ -1,4 +1,4 @@
-# TetherKit 代码格式配置
+# TetherKitNext 代码格式配置
 # 以 Google 风格为基线，放宽行宽到 100 列以容纳协议常量表与长类型名。
 ---
 Language: Cpp
@@ -11,7 +11,7 @@ TabWidth: 2
 UseTab: Never
 AccessModifierOffset: -1
 
-# 指针/引用贴类型：TetherKit 统一写 `Foo* p` 而非 `Foo *p`
+# 指针/引用贴类型：TetherKitNext 统一写 `Foo* p` 而非 `Foo *p`
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReferenceAlignment: Left
@@ -33,7 +33,7 @@ PackConstructorInitializers: NextLine
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 IncludeCategories:
-  - Regex: '^"tetherkit/'
+  - Regex: '^"tetherkitnext/'
     Priority: 1
   - Regex: '^<(doctest|libusb)'
     Priority: 2

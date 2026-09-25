@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
 #
-# Assemble TetherKit.app: GUI, command-line tool and privileged daemon in one
+# Assemble TetherKitNext.app: GUI, command-line tool and privileged daemon in one
 # signed bundle.
 #
 # Usage:
 #   ./gui/Scripts/build-gui.sh                 # uses build/ (C++ build dir)
-#   TETHERKIT_BUILD_DIR=/path ./gui/Scripts/build-gui.sh
+#   TETHERKITNEXT_BUILD_DIR=/path ./gui/Scripts/build-gui.sh
 #   ./gui/Scripts/build-gui.sh --debug         # debug Swift build
 #
 # Signing (environment):
-#   TETHERKIT_SIGN_IDENTITY   codesign identity, e.g.
+#   TETHERKITNEXT_SIGN_IDENTITY   codesign identity, e.g.
 #                             "Developer ID Application: Jane Doe (ABCDE12345)".
 #                             Unset → ad-hoc signature (local development only:
 #                             no hardened runtime, XPC falls back to the
 #                             authorization-only check, SMAppService may refuse).
 #
 # Architectures: the Swift targets are built for every architecture that
-# libtetherkit.dylib contains and merged with lipo, so a C++ build configured
+# libtetherkitnext.dylib contains and merged with lipo, so a C++ build configured
 # with -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" yields a universal app.
 #
-# Output: dist/TetherKit.app
+# Output: dist/TetherKitNext.app
 #
-#   Contents/MacOS/TetherKit            GUI
-#   Contents/MacOS/tetherkit-cli        command-line tool (linked into
+#   Contents/MacOS/TetherKitNext            GUI
+#   Contents/MacOS/tetherkitnext-cli        command-line tool (linked into
 #                                       /usr/local/bin from the app on request)
-#   Contents/MacOS/tetherkit-helper     root daemon (SMAppService BundleProgram)
-#   Contents/Frameworks/                libtetherkit + libusb (@rpath)
-#   Contents/Library/LaunchDaemons/     com.tetherkit.helperd.plist
-#   Contents/Resources/Licenses/        TetherKit (MIT) and libusb (LGPL-2.1)
+#   Contents/MacOS/tetherkitnext-helper     root daemon (SMAppService BundleProgram)
+#   Contents/Frameworks/                libtetherkitnext + libusb (@rpath)
+#   Contents/Library/LaunchDaemons/     com.tetherkitnext.helperd.plist
+#   Contents/Resources/Licenses/        TetherKitNext (MIT) and libusb (LGPL-2.1)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 GUI_DIR="${REPO_ROOT}/gui"
-BUILD_DIR="${TETHERKIT_BUILD_DIR:-${REPO_ROOT}/build}"
+BUILD_DIR="${TETHERKITNEXT_BUILD_DIR:-${REPO_ROOT}/build}"
 DIST_DIR="${REPO_ROOT}/dist"
-SIGN_IDENTITY="${TETHERKIT_SIGN_IDENTITY:-}"
+SIGN_IDENTITY="${TETHERKITNEXT_SIGN_IDENTITY:-}"
 
 SWIFT_CONFIGURATION="release"
 SWIFT_BUILD_FLAGS=()
@@ -55,25 +55,25 @@ command -v swift >/dev/null || die "swift not found; install Xcode"
 
 LIB_DIR="${BUILD_DIR}/lib"
 BIN_DIR="${BUILD_DIR}/bin"
-LIBTETHERKIT="$(cd "${LIB_DIR}" 2>/dev/null && ls libtetherkit.*.*.*.dylib 2>/dev/null | head -1 || true)"
-[[ -n "${LIBTETHERKIT}" ]] || die "libtetherkit not found in ${LIB_DIR}; build the C++ part first:
+LIBTETHERKITNEXT="$(cd "${LIB_DIR}" 2>/dev/null && ls libtetherkitnext.*.*.*.dylib 2>/dev/null | head -1 || true)"
+[[ -n "${LIBTETHERKITNEXT}" ]] || die "libtetherkitnext not found in ${LIB_DIR}; build the C++ part first:
     cmake -S . -B build && cmake --build build -j"
-[[ -x "${BIN_DIR}/tetherkit-cli" ]] || die "${BIN_DIR}/tetherkit-cli not found; build the C++ part first"
+[[ -x "${BIN_DIR}/tetherkitnext-cli" ]] || die "${BIN_DIR}/tetherkitnext-cli not found; build the C++ part first"
 
 VERSION="$(sed -n 's/^  VERSION \([0-9.]*\)$/\1/p' "${REPO_ROOT}/CMakeLists.txt" | head -1)"
 [[ -n "${VERSION}" ]] || die "cannot parse VERSION from CMakeLists.txt"
 # CFBundleVersion must increase monotonically for macOS to prefer the newer
 # copy; CI passes the run number, local builds use the marketing version.
-BUILD_NUMBER="${TETHERKIT_BUILD_NUMBER:-${VERSION}}"
+BUILD_NUMBER="${TETHERKITNEXT_BUILD_NUMBER:-${VERSION}}"
 
-read -r -a ARCHS <<< "$(lipo -archs "${LIB_DIR}/${LIBTETHERKIT}")"
-log "TetherKit ${VERSION} (${BUILD_NUMBER}) · Swift ${SWIFT_CONFIGURATION} · ${ARCHS[*]}"
+read -r -a ARCHS <<< "$(lipo -archs "${LIB_DIR}/${LIBTETHERKITNEXT}")"
+log "TetherKitNext ${VERSION} (${BUILD_NUMBER}) · Swift ${SWIFT_CONFIGURATION} · ${ARCHS[*]}"
 
 # ------------------------------------------------------------------------------
 # Swift: one build per architecture, merged with lipo.
 # ------------------------------------------------------------------------------
 swift_build() {
-  TETHERKIT_LIB_DIR="${LIB_DIR}" swift build \
+  TETHERKITNEXT_LIB_DIR="${LIB_DIR}" swift build \
     --package-path "${GUI_DIR}" \
     --configuration "${SWIFT_CONFIGURATION}" \
     --arch "$1" \
@@ -86,14 +86,14 @@ for arch in "${ARCHS[@]}"; do
   log "Compiling Swift targets for ${arch}"
   swift_build "${arch}"
   bin_path="$(swift_build "${arch}" --show-bin-path)"
-  APP_SLICES+=("${bin_path}/TetherKitApp")
-  HELPER_SLICES+=("${bin_path}/tetherkit-helper")
+  APP_SLICES+=("${bin_path}/TetherKitNextApp")
+  HELPER_SLICES+=("${bin_path}/tetherkitnext-helper")
 done
 
 # ------------------------------------------------------------------------------
 # Bundle layout
 # ------------------------------------------------------------------------------
-APP_DIR="${DIST_DIR}/TetherKit.app"
+APP_DIR="${DIST_DIR}/TetherKitNext.app"
 CONTENTS="${APP_DIR}/Contents"
 log "Assembling ${APP_DIR}"
 
@@ -101,36 +101,37 @@ rm -rf "${APP_DIR}" "${DIST_DIR}/helper"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Frameworks" "${CONTENTS}/Resources/Licenses" \
          "${CONTENTS}/Library/LaunchDaemons"
 
-lipo -create "${APP_SLICES[@]}" -output "${CONTENTS}/MacOS/TetherKit"
-lipo -create "${HELPER_SLICES[@]}" -output "${CONTENTS}/MacOS/tetherkit-helper"
-cp "${BIN_DIR}/tetherkit-cli" "${CONTENTS}/MacOS/tetherkit-cli"
+lipo -create "${APP_SLICES[@]}" -output "${CONTENTS}/MacOS/TetherKitNext"
+lipo -create "${HELPER_SLICES[@]}" -output "${CONTENTS}/MacOS/tetherkitnext-helper"
+cp "${BIN_DIR}/tetherkitnext-cli" "${CONTENTS}/MacOS/tetherkitnext-cli"
 
-sed -e "s/__TETHERKIT_VERSION__/${VERSION}/g" -e "s/__TETHERKIT_BUILD__/${BUILD_NUMBER}/g" \
+sed -e "s/__TETHERKITNEXT_VERSION__/${VERSION}/g" -e "s/__TETHERKITNEXT_BUILD__/${BUILD_NUMBER}/g" \
   "${GUI_DIR}/Resources/App-Info.plist" > "${CONTENTS}/Info.plist"
 plutil -lint "${CONTENTS}/Info.plist" >/dev/null
 cp "${GUI_DIR}/Resources/AppIcon.icns" "${CONTENTS}/Resources/"
-cp "${GUI_DIR}/Resources/com.tetherkit.helperd.plist" "${CONTENTS}/Library/LaunchDaemons/"
-plutil -lint "${CONTENTS}/Library/LaunchDaemons/com.tetherkit.helperd.plist" >/dev/null
-cp "${REPO_ROOT}/LICENSE" "${CONTENTS}/Resources/Licenses/TetherKit-LICENSE.txt"
+cp "${GUI_DIR}/Resources/com.tetherkitnext.helperd.plist" "${CONTENTS}/Library/LaunchDaemons/"
+plutil -lint "${CONTENTS}/Library/LaunchDaemons/com.tetherkitnext.helperd.plist" >/dev/null
+cp "${REPO_ROOT}/LICENSE" "${CONTENTS}/Resources/Licenses/TetherKitNext-LICENSE.txt"
+cp "${REPO_ROOT}/NOTICE.md" "${CONTENTS}/Resources/Licenses/NOTICE.md"
 
-# libtetherkit: a single real file named after its install name
-# (@rpath/libtetherkit.<soversion>.dylib). Copying the versioned symlinks too
+# libtetherkitnext: a single real file named after its install name
+# (@rpath/libtetherkitnext.<soversion>.dylib). Copying the versioned symlinks too
 # would make codesign seal the same code twice under different names.
-install_name="$(otool -D "${LIB_DIR}/${LIBTETHERKIT}" | tail -1)"
-tetherkit_dylib="$(basename "${install_name}")"
-cp -L "${LIB_DIR}/${LIBTETHERKIT}" "${CONTENTS}/Frameworks/${tetherkit_dylib}"
-chmod u+w "${CONTENTS}/Frameworks/${tetherkit_dylib}"
+install_name="$(otool -D "${LIB_DIR}/${LIBTETHERKITNEXT}" | tail -1)"
+tetherkitnext_dylib="$(basename "${install_name}")"
+cp -L "${LIB_DIR}/${LIBTETHERKITNEXT}" "${CONTENTS}/Frameworks/${tetherkitnext_dylib}"
+chmod u+w "${CONTENTS}/Frameworks/${tetherkitnext_dylib}"
 
 # ------------------------------------------------------------------------------
-# libusb: embed whatever libtetherkit links and make every reference @rpath.
+# libusb: embed whatever libtetherkitnext links and make every reference @rpath.
 #
 # Release builds link the universal libusb from scripts/build-libusb.sh, which
 # is already @rpath-named. A developer build linked against Homebrew's copy has
 # an absolute path; it is embedded and rewritten so the bundle still works on
 # another Mac (for the architectures that copy contains).
 # ------------------------------------------------------------------------------
-libusb_ref="$(otool -L "${CONTENTS}/Frameworks/${tetherkit_dylib}" | awk '/libusb-1\.0/ {print $1; exit}')"
-[[ -n "${libusb_ref}" ]] || die "libtetherkit does not link libusb?"
+libusb_ref="$(otool -L "${CONTENTS}/Frameworks/${tetherkitnext_dylib}" | awk '/libusb-1\.0/ {print $1; exit}')"
+[[ -n "${libusb_ref}" ]] || die "libtetherkitnext does not link libusb?"
 libusb_name="$(basename "${libusb_ref}")"
 if [[ "${libusb_ref}" == @rpath/* ]]; then
   libusb_source="$(find "${LibUSB_ROOT:-${BUILD_DIR}/libusb-universal}/lib" -name "${libusb_name}" 2>/dev/null | head -1)"
@@ -170,32 +171,32 @@ fix_links() {
     install_name_tool -add_rpath "${rpath}" "${binary}"
   fi
 }
-fix_links "${CONTENTS}/Frameworks/${tetherkit_dylib}" "@loader_path"
-fix_links "${CONTENTS}/MacOS/TetherKit" "@executable_path/../Frameworks"
-fix_links "${CONTENTS}/MacOS/tetherkit-helper" "@executable_path/../Frameworks"
-fix_links "${CONTENTS}/MacOS/tetherkit-cli" "@executable_path/../Frameworks"
+fix_links "${CONTENTS}/Frameworks/${tetherkitnext_dylib}" "@loader_path"
+fix_links "${CONTENTS}/MacOS/TetherKitNext" "@executable_path/../Frameworks"
+fix_links "${CONTENTS}/MacOS/tetherkitnext-helper" "@executable_path/../Frameworks"
+fix_links "${CONTENTS}/MacOS/tetherkitnext-cli" "@executable_path/../Frameworks"
 
 # ------------------------------------------------------------------------------
 # Signing — inside out: libraries, then helper executables, then the bundle.
 #
 # Each executable gets an explicit identifier: the XPC code-signing
-# requirements (TetherKitIPC/CodeSigning.swift) pin com.tetherkit.app for the
-# client and com.tetherkit.helperd for the daemon.
+# requirements (TetherKitNextIPC/CodeSigning.swift) pin com.tetherkitnext.app for the
+# client and com.tetherkitnext.helperd for the daemon.
 # ------------------------------------------------------------------------------
 if [[ -n "${SIGN_IDENTITY}" ]]; then
   log "Signing with ${SIGN_IDENTITY} (hardened runtime)"
   SIGN_FLAGS=(--force --sign "${SIGN_IDENTITY}" --timestamp --options runtime)
 else
-  log "Ad-hoc signing (set TETHERKIT_SIGN_IDENTITY for a distributable build)"
+  log "Ad-hoc signing (set TETHERKITNEXT_SIGN_IDENTITY for a distributable build)"
   SIGN_FLAGS=(--force --sign - --timestamp=none)
 fi
 sign() { codesign "${SIGN_FLAGS[@]}" "$@" >/dev/null; }
 
 sign "${CONTENTS}/Frameworks/${libusb_name}"
-sign "${CONTENTS}/Frameworks/${tetherkit_dylib}"
-sign --identifier com.tetherkit.cli "${CONTENTS}/MacOS/tetherkit-cli"
-sign --identifier com.tetherkit.helperd "${CONTENTS}/MacOS/tetherkit-helper"
-sign --identifier com.tetherkit.app "${APP_DIR}"
+sign "${CONTENTS}/Frameworks/${tetherkitnext_dylib}"
+sign --identifier com.tetherkitnext.cli "${CONTENTS}/MacOS/tetherkitnext-cli"
+sign --identifier com.tetherkitnext.helperd "${CONTENTS}/MacOS/tetherkitnext-helper"
+sign --identifier com.tetherkitnext.app "${APP_DIR}"
 
 # ------------------------------------------------------------------------------
 # Self-check: things that are cheap to verify here and expensive to discover on
@@ -228,8 +229,8 @@ echo "  ✓ every Mach-O is ${ARCHS[*]} and links only bundled or system librari
 # The CLI is used through a symlink in /usr/local/bin; @executable_path must
 # resolve through it.
 probe_dir="$(mktemp -d)"
-ln -s "${CONTENTS}/MacOS/tetherkit-cli" "${probe_dir}/tetherkit-cli"
-"${probe_dir}/tetherkit-cli" --version >/dev/null || die "CLI does not run through a symlink"
+ln -s "${CONTENTS}/MacOS/tetherkitnext-cli" "${probe_dir}/tetherkitnext-cli"
+"${probe_dir}/tetherkitnext-cli" --version >/dev/null || die "CLI does not run through a symlink"
 rm -rf "${probe_dir}"
 echo "  ✓ CLI runs through a symlink"
 

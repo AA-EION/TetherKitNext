@@ -1,7 +1,7 @@
 // C ABI 实现层的内部工具。**不对外安装**，只在 src/capi 内部使用。
 //
 // 这里集中处理「C++ 世界 ↔ C 世界」的三件重复劳动：把 std::string_view 拷进
-// 定长缓冲、把 tetherkit::Error 翻译成 tk_error_t、取墙上时间。
+// 定长缓冲、把 tetherkitnext::Error 翻译成 tk_error_t、取墙上时间。
 #pragma once
 
 #include <cstddef>
@@ -11,10 +11,10 @@
 #include <string_view>
 #include <vector>
 
-#include "tetherkit/capi/tetherkit_c.h"
-#include "tetherkit/common/error.h"
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/error.h"
 
-namespace tetherkit::capi {
+namespace tetherkitnext::capi {
 
 /// 把文本拷进定长缓冲并保证 NUL 结尾，超长时截断。
 ///
@@ -148,4 +148,4 @@ void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
 /// 那组接口（版本、枚举、预检）保持零副作用。
 void InstallInterfaceRegistry();
 
-}  // namespace tetherkit::capi
+}  // namespace tetherkitnext::capi

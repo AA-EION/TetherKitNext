@@ -5,7 +5,7 @@
 # 汇总表写进 docs/BENCHMARKS.md，省掉一层解析。
 
 add_executable(
-  tetherkit_bench
+  tetherkitnext_bench
   bench_main.cc
   bench_common.cc
   bench_net.cc
@@ -13,5 +13,5 @@ add_executable(
   harness.cc)
 
 # tk_core PUBLIC 链接了其余全部模块（基准要用到 rndis 编解码与 net loopback）。
-target_link_libraries(tetherkit_bench PRIVATE tetherkit_base tk_version tk_core)
-target_include_directories(tetherkit_bench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(tetherkitnext_bench PRIVATE tetherkitnext_base tk_version tk_core)
+target_include_directories(tetherkitnext_bench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

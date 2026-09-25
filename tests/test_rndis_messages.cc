@@ -16,12 +16,12 @@
 
 #include <doctest.h>
 
-#include "tetherkit/common/byte_order.h"
-#include "tetherkit/rndis/messages.h"
-#include "tetherkit/rndis/protocol.h"
+#include "tetherkitnext/common/byte_order.h"
+#include "tetherkitnext/rndis/messages.h"
+#include "tetherkitnext/rndis/protocol.h"
 
-using namespace tetherkit;        // NOLINT(google-build-using-namespace)
-using namespace tetherkit::rndis;  // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext;        // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext::rndis;  // NOLINT(google-build-using-namespace)
 
 namespace {
 

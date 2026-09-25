@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <!-- DMG window background. Rendered to background.png / background@2x.png by
+       scripts/dmg/render-background.py. Icon positions (centres) are set in
+       scripts/dmg/settings.py: app at (170, 190), Applications at (490, 190). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8FAFD"/>
+      <stop offset="1" stop-color="#E9EEF5"/>
+    </linearGradient>
+    <linearGradient id="arrow" gradientUnits="userSpaceOnUse" x1="272" y1="0" x2="384" y2="0">
+      <stop offset="0" stop-color="#3DDC84"/>
+      <stop offset="1" stop-color="#22B8C8"/>
+    </linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+
+  <text x="330" y="52" text-anchor="middle" font-family="Inter" font-weight="600"
+        font-size="22" fill="#141B2D">Install TetherKitNext</text>
+  <text x="330" y="78" text-anchor="middle" font-family="Inter" font-size="14"
+        fill="#5B6577">Drag the app onto the Applications folder</text>
+
+  <!-- soft wells behind the two icons -->
+  <circle cx="170" cy="190" r="94" fill="#FFFFFF" fill-opacity="0.7"/>
+  <circle cx="490" cy="190" r="94" fill="#FFFFFF" fill-opacity="0.7"/>
+
+  <!-- arrow from the app to Applications -->
+  <path d="M 274 190 L 366 190" fill="none" stroke="url(#arrow)"
+        stroke-width="7" stroke-linecap="round" stroke-dasharray="1 15"/>
+  <path d="M 368 176 L 382 190 L 368 204" fill="none" stroke="url(#arrow)" stroke-width="7"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="330" y="330" text-anchor="middle" font-family="Inter" font-size="13"
+        fill="#5B6577">Then open TetherKitNext from Applications and follow the setup.</text>
+  <text x="330" y="352" text-anchor="middle" font-family="WenQuanYi Zen Hei, PingFang SC"
+        font-size="12" fill="#7A8496">将 TetherKitNext 拖到“应用程序”文件夹，再从“应用程序”中打开。</text>
+</svg>

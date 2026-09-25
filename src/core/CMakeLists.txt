@@ -8,4 +8,4 @@ add_library(
   bridge.cc
   runtime.cc)
 
-target_link_libraries(tk_core PUBLIC tetherkit_base tk_common tk_rndis tk_net tk_usb)
+target_link_libraries(tk_core PUBLIC tetherkitnext_base tk_common tk_rndis tk_net tk_usb)

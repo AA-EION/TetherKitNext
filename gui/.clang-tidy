@@ -1,6 +1,6 @@
 # gui/ 是 Swift 包，不属于 CMake 构建，clang-tidy 不该管这里。
 #
-# 唯一的 C 文件是 CTetherKit/shim.c，它只是 SwiftPM 的形式要求（每个 C target
+# 唯一的 C 文件是 CTetherKitNext/shim.c，它只是 SwiftPM 的形式要求（每个 C target
 # 至少要有一个源文件），套用 C++ 项目的命名与现代化规则毫无意义。
 InheritParentConfig: false
 Checks: '-*'

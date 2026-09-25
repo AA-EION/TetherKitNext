@@ -1,6 +1,6 @@
 # GUI 实现备忘
 
-本文记录 TetherKit 图形界面**已经实现了什么、为什么这么实现、哪些地方碰不得**。
+本文记录 TetherKitNext 图形界面**已经实现了什么、为什么这么实现、哪些地方碰不得**。
 
 配套阅读：[GUI-SPIKE.md](GUI-SPIKE.md) 记录的是动手之前的可行性验证（尤其是被
 排除的三条路线）；本文记录的是落地之后的结构与约束。**改 GUI 相关代码前先读
@@ -12,12 +12,12 @@ The sections below describe upstream's design. These parts have changed:
 
 | Area | Upstream | Now |
 |---|---|---|
-| Daemon install | `AuthorizationExecuteWithPrivileges` (via `dlsym`) runs the helper with `--install`, which does `setuid(0)` and runs `install-helper.sh` to copy files into `/Library/PrivilegedHelperTools` + `/Library/LaunchDaemons` | `SMAppService.daemon(plistName: "com.tetherkit.helperd.plist")`. launchd runs `Contents/MacOS/tetherkit-helper` **in place** from the signed bundle; the user approves it once in Login Items. No files are copied; `InstallerMode.swift` and `install-helper.sh` are gone |
-| Label / Mach service | `com.tetherkit.helper` | `com.tetherkit.helperd` (different, so it never collides with a still-loaded legacy job). The new daemon boots out and deletes the legacy install on first start (`LegacyHelper`) |
+| Daemon install | `AuthorizationExecuteWithPrivileges` (via `dlsym`) runs the helper with `--install`, which does `setuid(0)` and runs `install-helper.sh` to copy files into `/Library/PrivilegedHelperTools` + `/Library/LaunchDaemons` | `SMAppService.daemon(plistName: "com.tetherkitnext.helperd.plist")`. launchd runs `Contents/MacOS/tetherkitnext-helper` **in place** from the signed bundle; the user approves it once in Login Items. No files are copied; `InstallerMode.swift` and `install-helper.sh` are gone |
+| Label / Mach service | `com.tetherkitnext.helper` | `com.tetherkitnext.helperd` (different, so it never collides with a still-loaded legacy job). The new daemon boots out and deletes the legacy install on first start (`LegacyHelper`) |
 | Who may connect | anyone; security relies only on per-call admin authorization | team-signed builds: `setCodeSigningRequirement` on both ends (`CodeSigning.swift`, Team ID read from the running binary). Per-call authorization is kept as a second layer. Ad-hoc builds fall back to the old model |
 | Protocol revision | 3 | 4 (`setCommandLineToolInstalled`) |
-| Bundle layout | `Contents/Library/HelperTools/` payload | `MacOS/{TetherKit,tetherkit-cli,tetherkit-helper}`, `Frameworks/{libtetherkit.0,libusb-1.0.0}.dylib`, `Library/LaunchDaemons/com.tetherkit.helperd.plist`, `Resources/Licenses/` |
-| CLI on PATH | Homebrew formula | daemon-managed symlink `/usr/local/bin/tetherkit-cli` → the CLI in its own bundle (`CommandLineToolLink`) |
+| Bundle layout | `Contents/Library/HelperTools/` payload | `MacOS/{TetherKitNext,tetherkitnext-cli,tetherkitnext-helper}`, `Frameworks/{libtetherkitnext.0,libusb-1.0.0}.dylib`, `Library/LaunchDaemons/com.tetherkitnext.helperd.plist`, `Resources/Licenses/` |
+| CLI on PATH | Homebrew formula | daemon-managed symlink `/usr/local/bin/tetherkitnext-cli` → the CLI in its own bundle (`CommandLineToolLink`) |
 | Architectures | arm64, Homebrew libusb | universal; libusb 1.0.30 built from a hash-pinned tarball (`scripts/build-libusb.sh`) |
 | Swift | tools 5.9, Swift 5 mode | tools 6.2, Swift 6 language mode |
 | Layout | one dashboard under a 700 pt height budget | `NavigationSplitView`: Overview / Device / Network / Activity / Settings; Connect in the toolbar |
@@ -34,7 +34,7 @@ never blocking an XPC queue.
 
 ```
 ┌─────────────────────────────┐         ┌──────────────────────────────┐
-│  TetherKit.app  (uid 501)   │         │  tetherkit-helper  (uid 0)   │
+│  TetherKitNext.app  (uid 501)   │         │  tetherkitnext-helper  (uid 0)   │
 │                             │   XPC   │                              │
 │  · SwiftUI 界面             │ ──────► │  · 持有 RNDIS 会话           │
 │  · 弹系统授权框取凭据       │         │  · 建/销毁 feth、开 BPF      │
@@ -66,7 +66,7 @@ DR 必然对不上。凭据复核对开源工具是更合适的模型：谁编�
 ## 2. 目录结构
 
 ```
-include/tetherkit/capi/tetherkit_c.h   全项目唯一的 extern "C" 边界
+include/tetherkitnext/capi/tetherkitnext_c.h   全项目唯一的 extern "C" 边界
 src/capi/                              C ABI 实现
 ├── capi_support.{h,cc}                定长缓冲拷贝、错误翻译、网卡名校验
 ├── core_foundation_support.{h,cc}     CF / SCDynamicStore 的最小 RAII 封装
@@ -80,12 +80,12 @@ src/capi/                              C ABI 实现
 gui/
 ├── Package.swift                      SwiftPM 工程
 ├── Sources/
-│   ├── CTetherKit/                    C ABI 的模块映射（头是符号链接）
-│   ├── TetherKitIPC/                  App 与 helper 共享：协议、模型、授权、文案表
-│   ├── TetherKitCore/                 C ABI 的 Swift 封装
-│   ├── TetherKitHelper/               特权 helper
-│   └── TetherKitApp/                  SwiftUI 界面
-├── Tests/TetherKitIPCTests/           授权凭据生命周期 + 文案表占位符一致性
+│   ├── CTetherKitNext/                    C ABI 的模块映射（头是符号链接）
+│   ├── TetherKitNextIPC/                  App 与 helper 共享：协议、模型、授权、文案表
+│   ├── TetherKitNextCore/                 C ABI 的 Swift 封装
+│   ├── TetherKitNextHelper/               特权 helper
+│   └── TetherKitNextApp/                  SwiftUI 界面
+├── Tests/TetherKitNextIPCTests/           授权凭据生命周期 + 文案表占位符一致性
 ├── Resources/                         Info.plist、LaunchDaemon plist
 └── Scripts/                           构建 / 安装 / 卸载脚本
 ```
@@ -150,7 +150,7 @@ gui/
   持有，会话一释放值就没了。用临时 store 会出现「写入返回成功、读回来是空」
   这种极难查的现象。
 
-### 4.4 授权复核（`TetherKitIPC/Authorization.swift`）
+### 4.4 授权复核（`TetherKitNextIPC/Authorization.swift`）
 
 三条一旦写错就是漏洞的细节，都写在那个文件的注释里：
 
@@ -177,7 +177,7 @@ gui/
    **不要裸接住 `requestAuthorization()` 的返回值再用** —— ARC 完全可以在最后
    一次读 `externalForm` 之后就把令牌释放掉。
 
-   `gui/Tests/TetherKitIPCTests/AuthorizationTests.swift` 把这个行为钉住了，
+   `gui/Tests/TetherKitNextIPCTests/AuthorizationTests.swift` 把这个行为钉住了，
    两条用例都不弹授权框，可以进 CI。
 
 **令牌必须缓存复用，否则每个操作都要用户重新认证一次。**
@@ -222,7 +222,7 @@ SecurityAgent 插件装进 /Library/Security/SecurityAgentPlugins」这条路，
 
 ### 4.6 XPC 接口修订号
 
-`HelperConstants.protocolRevision` 每次改动 `TetherKitHelperProtocol` 都要加一。
+`HelperConstants.protocolRevision` 每次改动 `TetherKitNextHelperProtocol` 都要加一。
 当前是 **3**（1 初版；2 特权方法应答加上「是否授权失败」；3 新增 `setLanguage`）。
 helper 把它编进 `helperVersion` 的应答，App 一连上就比对。
 
@@ -258,7 +258,7 @@ helper 根本没有它 —— 那就又回到了「对不上还查不出来」�
 
 ### 4.7b 界面语言
 
-文案表编译进二进制，不走 `.lproj`。理由写在 `TetherKitIPC/Localization.swift`
+文案表编译进二进制，不走 `.lproj`。理由写在 `TetherKitNextIPC/Localization.swift`
 顶部，核心是 **helper 是装在 `/Library/PrivilegedHelperTools` 的裸可执行文件**，
 旁边没有、也不该有资源 bundle，而它同样要产生给用户看的文字。
 
@@ -267,7 +267,7 @@ helper 根本没有它 —— 那就又回到了「对不上还查不出来」�
 | 处 | 怎么改 | 不改的后果 |
 |---|---|---|
 | Swift 文案表 | `L10n.apply(_:)` | 界面不变 |
-| libtetherkit | `TetherKitLibrary.setLanguage(_:)` → `tk_set_language` | 日志卡里的库日志还是旧语言 |
+| libtetherkitnext | `TetherKitNextLibrary.setLanguage(_:)` → `tk_set_language` | 日志卡里的库日志还是旧语言 |
 | helper | XPC 的 `setLanguage(_:)` | helper 的提示与它那边的库日志还是旧语言 |
 
 三处都在 `AppModel.applyLanguage` 里一起做，别在别处单独调其中一个。helper
@@ -285,12 +285,12 @@ helper 根本没有它 —— 那就又回到了「对不上还查不出来」�
 
 ### 4.8 打包
 
-- **拷 dylib 必须用 `cp -a`，不能用 `install`。** `libtetherkit.dylib` 与
-  `libtetherkit.0.dylib` 是软链，`install` 会各拷一份独立的真实文件，之后
+- **拷 dylib 必须用 `cp -a`，不能用 `install`。** `libtetherkitnext.dylib` 与
+  `libtetherkitnext.0.dylib` 是软链，`install` 会各拷一份独立的真实文件，之后
   `install_name_tool` 只改到其中一份，而按 `@rpath` 加载的恰好是没改到的那份。
 - **`install_name_tool` 改完字节必须重签。** arm64 要求有效签名，改字节会让原
   签名失效，之后加载被内核直接拒绝（`Killed: 9`），日志里看不出原因。
-- **libusb 是 `libtetherkit.dylib` 的依赖，不是可执行文件的。** 对着可执行文件
+- **libusb 是 `libtetherkitnext.dylib` 的依赖，不是可执行文件的。** 对着可执行文件
   查 `otool -L` 会得到空结果，整段处理被静默跳过 —— 装完看起来正常，实际仍依赖
   Homebrew。
 - **发布产物里必须删掉指向构建目录的 rpath。** 它是绝对路径，在开发机上一定
@@ -345,7 +345,7 @@ helper 缺失或版本不匹配时，界面给一个「安装 / 更新特权组�
   「有新版 x.y.z」，绝不弹窗打断。提示跨启动记忆（defaults），升级完成后
   因版本比较自然熄灭。
 - 隐私：只访问 GitHub 公开 API，失败静默；
-  `defaults write com.tetherkit.app updateCheckDisabled -bool YES` 彻底关闭。
+  `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES` 彻底关闭。
 - `swift run` 的裸可执行文件没有 Info.plist 版本号，检查自动跳过。
 - 发版纪律：检查读的是 GitHub Releases，**每个版本必须打 `vX.Y.Z` tag 并
   发布 Release**，否则查不到。
@@ -367,13 +367,13 @@ helper 缺失或版本不匹配时，界面给一个「安装 / 更新特权组�
 | DHCP / 静态 IP / 撤销 | `tk_net_apply`、`tk_net_clear` |
 | 真实生效状态回读（地址、网关、DNS、主默认路由） | `tk_net_query` |
 | 孤儿 feth 清理 | `tk_cleanup_orphan_interfaces` |
-| 特权 helper + 凭据复核 | `gui/Sources/TetherKitHelper` |
-| App 内一键安装 / 更新 / 卸载特权组件 | `gui/Sources/TetherKitApp/HelperInstaller.swift` |
-| 检查更新（只查不换，每日自动 + 手动菜单） | `gui/Sources/TetherKitApp/UpdateChecker.swift` |
-| Finder 别名自动维护（首次启动建立，聚焦可搜可启动；brew postinstall 有沙箱建不了） | `gui/Sources/TetherKitApp/FinderAlias.swift` |
-| SwiftUI 界面（状态、设备、网络、吞吐、日志） | `gui/Sources/TetherKitApp` |
-| 菜单栏实时速率 + 后台运行（仅菜单栏模式） | `gui/Sources/TetherKitApp/Views/MenuBarPanel.swift` |
-| 中英双语（运行期可切，界面 / 库日志 / helper 提示三处同步） | `gui/Sources/TetherKitIPC/Localization.swift`、`tk_set_language` |
+| 特权 helper + 凭据复核 | `gui/Sources/TetherKitNextHelper` |
+| App 内一键安装 / 更新 / 卸载特权组件 | `gui/Sources/TetherKitNextApp/HelperInstaller.swift` |
+| 检查更新（只查不换，每日自动 + 手动菜单） | `gui/Sources/TetherKitNextApp/UpdateChecker.swift` |
+| Finder 别名自动维护（首次启动建立，聚焦可搜可启动；brew postinstall 有沙箱建不了） | `gui/Sources/TetherKitNextApp/FinderAlias.swift` |
+| SwiftUI 界面（状态、设备、网络、吞吐、日志） | `gui/Sources/TetherKitNextApp` |
+| 菜单栏实时速率 + 后台运行（仅菜单栏模式） | `gui/Sources/TetherKitNextApp/Views/MenuBarPanel.swift` |
+| 中英双语（运行期可切，界面 / 库日志 / helper 提示三处同步） | `gui/Sources/TetherKitNextIPC/Localization.swift`、`tk_set_language` |
 
 ### 未实现 / 已知限制
 
@@ -393,7 +393,7 @@ helper 缺失或版本不匹配时，界面给一个「安装 / 更新特权组�
 ## 6. 构建与安装
 
 ```bash
-# 1. C++ 部分（产出 libtetherkit.dylib）
+# 1. C++ 部分（产出 libtetherkitnext.dylib）
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build -j
 
@@ -402,15 +402,15 @@ cmake --build build --target gui
 
 # 3. 运行。首次会引导安装特权组件：点按钮、输一次管理员密码即可（见 4.9 节）。
 #    终端替代：sudo ./gui/Scripts/install-helper.sh
-open dist/TetherKit.app
+open dist/TetherKitNext.app
 ```
 
 开发时也可以直接用 SwiftPM，不经过打包脚本：
 
 ```bash
-export TETHERKIT_LIB_DIR="$PWD/build/lib"
+export TETHERKITNEXT_LIB_DIR="$PWD/build/lib"
 swift build --package-path gui
-swift test  --package-path gui     # TetherKitIPC 的单元测试
+swift test  --package-path gui     # TetherKitNextIPC 的单元测试
 ```
 
 卸载：仪表盘底部的「卸载特权组件…」按钮（见 4.9 节），或：
@@ -423,10 +423,10 @@ sudo ./gui/Scripts/uninstall-helper.sh
 
 | 现象 | 先看哪里 |
 |---|---|
-| 界面一直显示「需要先安装特权组件」 | `launchctl print system/com.tetherkit.helper` |
-| helper 起不来 | `/var/log/tetherkit-helper.log` |
+| 界面一直显示「需要先安装特权组件」 | `launchctl print system/com.tetherkitnext.helper` |
+| helper 起不来 | `/var/log/tetherkitnext-helper.log` |
 | 连接失败 | 界面里的「运行日志」面板（可一键复制） |
-| 装完还是依赖 Homebrew | `otool -L dist/TetherKit.app/Contents/Frameworks/libtetherkit.0.*.dylib` |
+| 装完还是依赖 Homebrew | `otool -L dist/TetherKitNext.app/Contents/Frameworks/libtetherkitnext.0.*.dylib` |
 | 点「连接」报「无法还原授权凭据（-60005）」 | App 侧提前释放了 AuthorizationRef，见第 4.4 节第 4 条 |
 | 界面显示「特权组件需要更新」 | 改过 XPC 协议但没重装 helper，点「更新特权组件」（或跑安装脚本） |
 | 点「安装特权组件」报「不带安装载荷」 | 跑的是 `swift run` 的裸可执行文件，载荷只在 build-gui.sh 组装的 .app 里；用终端脚本装 |

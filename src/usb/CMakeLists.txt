@@ -9,5 +9,5 @@ add_library(
   device.cc
   data_channel.cc)
 
-target_link_libraries(tk_usb PUBLIC tetherkit_base tk_common tk_rndis)
+target_link_libraries(tk_usb PUBLIC tetherkitnext_base tk_common tk_rndis)
 target_link_libraries(tk_usb PUBLIC LibUSB::LibUSB)

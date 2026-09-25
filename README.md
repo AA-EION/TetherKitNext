@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/icon.png" width="128" alt="TetherKit icon">
+  <img src="docs/assets/icon.png" width="128" alt="TetherKitNext icon">
 </p>
 
-<h1 align="center">TetherKit</h1>
+<h1 align="center">TetherKitNext</h1>
 
 <p align="center">
   <b>Use your Android phone's USB tethering on a Mac.</b><br>
@@ -13,6 +13,10 @@
   <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
+<p align="center">
+  <sub>By <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
+</p>
+
 ---
 
 ## What it does
@@ -20,7 +24,7 @@
 macOS doesn't understand the "USB tethering" mode of Android phones (the protocol is called
 RNDIS). You plug the phone in, turn on USB tethering, and… nothing happens on the Mac.
 
-TetherKit fixes that. It talks to the phone over USB and gives macOS a normal network
+TetherKitNext fixes that. It talks to the phone over USB and gives macOS a normal network
 connection, so your Mac gets online through your phone's mobile data or Wi-Fi.
 
 - **Works on Apple Silicon and Intel** Macs, macOS 14 Sonoma or later.
@@ -33,32 +37,33 @@ connection, so your Mac gets online through your phone's mobile data or Wi-Fi.
 Tested with real phones at about **325 Mbps download / 240–300 Mbps upload** over USB 2.0,
 close to what the cable can carry.
 
-> **TetherKitNext** is a maintained fork of
-> [XiaoMiku01/TetherKit](https://github.com/XiaoMiku01/TetherKit). It adds a signed,
-> installable app for both Apple Silicon and Intel, a redesigned interface, a security review
-> ([docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)) and several fixes. Credit for the
-> original driver goes to the upstream author.
+> **TetherKitNext** is made by [**Issen Software Group**](https://issen.kurokamicorp.com/). It is a fork of
+> [TetherKit](https://github.com/XiaoMiku01/TetherKit) by XiaoMiku01, which wrote the original
+> driver. TetherKitNext adds a signed app you install by dragging it to Applications, support
+> for both Apple Silicon and Intel, a redesigned interface, a security review
+> ([docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)) and several fixes. See
+> [NOTICE.md](NOTICE.md).
 
 ---
 
 ## Install
 
-1. Download the latest **TetherKit .dmg** from the
+1. Download the latest **TetherKitNext .dmg** from the
    [Releases page](https://github.com/AA-EION/TetherKitNext/releases).
-2. Open it and drag **TetherKit** into **Applications**.
-3. Open TetherKit from your Applications folder.
+2. Open it and drag **TetherKitNext** into **Applications**.
+3. Open TetherKitNext from your Applications folder.
 4. Click **Enable Background Component**. macOS will ask you to allow it once, in
    **System Settings › General › Login Items & Extensions**. Flip the switch next to
-   TetherKit and come back. The app continues by itself.
+   TetherKitNext and come back. The app continues by itself.
 
-That's it. Everything TetherKit needs lives inside the app. There's nothing else to download
+That's it. Everything TetherKitNext needs lives inside the app. There's nothing else to download
 or install.
 
 > **Test builds (marked "Pre-release")** aren't signed by Apple yet, so macOS will refuse to
 > open them the first time. After copying the app to Applications, go to
 > **System Settings › Privacy & Security** and click **Open Anyway**. You can also run this
 > in Terminal instead:
-> `xattr -dr com.apple.quarantine /Applications/TetherKit.app`
+> `xattr -dr com.apple.quarantine /Applications/TetherKitNext.app`
 
 ### Updating
 
@@ -67,8 +72,33 @@ still running the old version, **Settings** shows a button to restart it.
 
 ### Uninstalling
 
-In the app, go to **Settings › Background Component › Disable…**, then drag TetherKit to the
+In the app, go to **Settings › Background Component › Disable…**, then drag TetherKitNext to the
 Trash.
+
+### Upgrading from TetherKit 0.2.0 betas
+
+The test builds up to 0.2.0 beta 3 were called **TetherKit**. TetherKitNext 1.0 has a new name
+and identity, so it is installed **next to** the old app instead of replacing it. Remove the old
+one first, so the two don't both try to use your phone:
+
+1. Open the old **TetherKit** app. If it is connected, click **Disconnect**.
+2. Go to **Settings › Background Component › Disable…** and confirm. This stops the old
+   background component and removes the old `tetherkit-cli` command.
+3. Quit TetherKit (menu bar icon › **Quit**) and drag **TetherKit** from Applications to the Trash.
+4. Now install TetherKitNext as described above.
+
+If the old app is already gone or won't open, run this in Terminal instead:
+
+```bash
+sudo launchctl bootout system/com.tetherkit.helperd 2>/dev/null   # stop the old background component
+sudo rm -f /usr/local/bin/tetherkit-cli                             # old command-line link
+defaults delete com.tetherkit.app 2>/dev/null                       # old app settings
+```
+
+Then check **System Settings › General › Login Items & Extensions** and switch off
+**TetherKit** if it is still listed. An old **TetherKit (feth…)** entry in
+**System Settings › Network** is removed automatically when TetherKitNext's background component starts.
+You can also delete it yourself (select it, then **⋯ › Delete Service**).
 
 ---
 
@@ -78,9 +108,9 @@ Trash.
    charge.
 2. On the phone, turn on **USB tethering**. It's usually under *Settings › Network &
    internet › Hotspot & tethering*.
-3. In TetherKit, click **Connect**.
+3. In TetherKitNext, click **Connect**.
 
-TetherKit sets up the connection and gets an address automatically (DHCP), so internet works
+TetherKitNext sets up the connection and gets an address automatically (DHCP), so internet works
 right away. The window shows connection status, live speed and your IP address.
 
 The sidebar has five pages:
@@ -93,17 +123,17 @@ The sidebar has five pages:
 | **Activity** | A live log, useful when something goes wrong |
 | **Settings** | Background component, command-line tool, language, menu bar, start at login, updates |
 
-**Closing the window doesn't disconnect you.** TetherKit moves to the menu bar (the Dock icon
+**Closing the window doesn't disconnect you.** TetherKitNext moves to the menu bar (the Dock icon
 disappears) and keeps the connection up. Click the menu bar icon to see speeds, connect or
 disconnect, or reopen the window. The connection keeps running even if you quit the app.
 
 **VPNs work.** In automatic (DHCP) mode, the connection is registered as a regular macOS
 network service, so VPN apps such as FortiClient can use it.
 
-**Language**: switch between System, English and 中文 at any time from the TetherKit menu, the
+**Language**: switch between System, English and 中文 at any time from the TetherKitNext menu, the
 menu bar panel, or Settings.
 
-**Updates**: TetherKit checks this project's GitHub releases once a day and tells you when
+**Updates**: TetherKitNext checks this project's GitHub releases once a day and tells you when
 there's a new version. You can turn this off in Settings. It never downloads or installs
 anything by itself.
 
@@ -111,12 +141,12 @@ anything by itself.
 
 ## Command-line tool
 
-The app includes `tetherkit-cli`. To use it from any Terminal window, open **Settings ›
+The app includes `tetherkitnext-cli`. To use it from any Terminal window, open **Settings ›
 Command-line tool** and click **Install Command**. This adds it to `/usr/local/bin`.
 
 ```bash
-tetherkit-cli --list          # is my phone detected? (no password needed)
-sudo tetherkit-cli            # start the connection (needs your password)
+tetherkitnext-cli --list          # is my phone detected? (no password needed)
+sudo tetherkitnext-cli            # start the connection (needs your password)
 ```
 
 With the command-line tool you set up the address yourself, from a second Terminal window:
@@ -128,7 +158,7 @@ ipconfig getifaddr feth0      # shows the address you got
 
 Press **Ctrl-C** to disconnect cleanly.
 
-Useful options (`tetherkit-cli --help` shows them all):
+Useful options (`tetherkitnext-cli --help` shows them all):
 
 | Option | What it does |
 |---|---|
@@ -148,7 +178,7 @@ Tip: `sudo` doesn't always pass your language setting through, so use `--lang en
 | Problem | What to try |
 |---|---|
 | **"No device detected"** | Try another cable (many only charge). Make sure USB tethering is turned **on** on the phone. Unlock the phone and accept any "trust this computer" / USB prompt. |
-| **Stuck on "Allow TetherKit in System Settings"** | Open **System Settings › General › Login Items & Extensions** and turn TetherKit on. Make sure the app is in your **Applications** folder, not running from the downloaded disk image. |
+| **Stuck on "Allow TetherKitNext in System Settings"** | Open **System Settings › General › Login Items & Extensions** and turn TetherKitNext on. Make sure the app is in your **Applications** folder, not running from the downloaded disk image. |
 | **Connected, but no internet** | On the phone, check that mobile data or Wi-Fi actually works. On the **Network** page, turn on "route all traffic through this interface" if your Mac is also connected to another network. |
 | **Error about another program using the device** | Something else is holding the phone's USB connection, often an old HoRNDIS install. Remove it and restart. |
 | **Slow speeds** | Use a USB 3 port and a short, good cable. Close other tethering apps. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (in Chinese) for tuning. |
@@ -162,17 +192,17 @@ Tip: `sudo` doesn't always pass your language setting through, so use `--lang en
 No. macOS has no driver for it, so the phone simply doesn't show up as a network connection.
 
 **Do I need to disable SIP or lower security on my Apple Silicon Mac?**
-No. That's only needed for old-style kernel drivers such as HoRNDIS. TetherKit is a normal app
+No. That's only needed for old-style kernel drivers such as HoRNDIS. TetherKitNext is a normal app
 and never loads anything into the macOS kernel.
 
 **I used HoRNDIS before. Why switch?**
 HoRNDIS is a kernel extension. Recent macOS versions block it, and on Apple Silicon it
-requires rebooting into Recovery and lowering your security settings. TetherKit does the same
+requires rebooting into Recovery and lowering your security settings. TetherKitNext does the same
 job without any of that.
 
 **Which devices work?**
 Most Android phones with USB tethering. Also some Linux boards (Raspberry Pi Zero,
-BeagleBone) and older Windows phones. Run `tetherkit-cli --list` to check yours.
+BeagleBone) and older Windows phones. Run `tetherkitnext-cli --list` to check yours.
 
 **Do I need this for an iPhone?**
 No. macOS supports iPhone USB tethering on its own.
@@ -180,7 +210,7 @@ No. macOS supports iPhone USB tethering on its own.
 **Is it safe?**
 The app runs as your normal user account. The small part that needs administrator rights,
 creating the network connection, runs as a separate background component. It only accepts
-requests from the genuine TetherKit app and asks for your password before making changes. The
+requests from the genuine TetherKitNext app and asks for your password before making changes. The
 full review is in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 
 ---
@@ -188,12 +218,12 @@ full review is in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 ## How it works (short version)
 
 ```
- Android phone ──USB──▶ TetherKit ──▶ virtual network card ──▶ macOS network stack
+ Android phone ──USB──▶ TetherKitNext ──▶ virtual network card ──▶ macOS network stack
                         (talks RNDIS     (a built-in macOS
                          over USB)        "feth" interface)
 ```
 
-TetherKit speaks the phone's RNDIS protocol over USB using [libusb](https://libusb.info/). It
+TetherKitNext speaks the phone's RNDIS protocol over USB using [libusb](https://libusb.info/). It
 passes the network traffic to a pair of virtual network interfaces (`feth`) that are built
 into macOS. macOS treats them like any other network card: it gets an address, routes, DNS
 and so on. Everything runs outside the kernel, so the worst a bug can do is make the app quit.
@@ -214,7 +244,7 @@ You need macOS 14 or later, **Xcode 26** and CMake 3.24 or newer.
 ```bash
 # The whole thing: universal app + disk image, with all tests
 ./scripts/build-release.sh
-# → dist/TetherKit.app and dist/TetherKit-<version>.dmg
+# → dist/TetherKitNext.app and dist/TetherKitNext-<version>.dmg
 ```
 
 Just the command-line tool:
@@ -230,7 +260,7 @@ Local builds are signed ad hoc by default. macOS won't enable the background com
 an ad-hoc build, so to try the full app, sign with your own Apple certificate:
 
 ```bash
-export TETHERKIT_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export TETHERKITNEXT_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
 ./scripts/build-release.sh
 ```
 
@@ -258,6 +288,11 @@ Implementation notes and lessons learned are in [AGENTS.md](AGENTS.md) (in Chine
 
 ## License
 
-MIT, see [LICENSE](LICENSE). TetherKit includes [libusb](https://libusb.info/), which is
-licensed under the LGPL-2.1. Its license text ships inside the app, under
-*Settings › About › Show Licenses*.
+MIT, see [LICENSE](LICENSE).
+Copyright © 2026 Issen Software Group. Copyright © 2026 the TetherKit contributors (the
+original [TetherKit](https://github.com/XiaoMiku01/TetherKit), whose MIT notice is kept in
+LICENSE as the license requires).
+
+TetherKitNext includes [libusb](https://libusb.info/), which is licensed under the LGPL-2.1. Its
+license text ships inside the app, under *Settings › About › Show Licenses*. See
+[NOTICE.md](NOTICE.md) for details.

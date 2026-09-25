@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/icon.png" width="128" alt="TetherKit 图标">
+  <img src="docs/assets/icon.png" width="128" alt="TetherKitNext 图标">
 </p>
 
-<h1 align="center">TetherKit</h1>
+<h1 align="center">TetherKitNext</h1>
 
 <p align="center">
   <b>在 Mac 上使用 Android 手机的 USB 网络共享。</b><br>
@@ -13,6 +13,10 @@
   <a href="README.md">English</a> · <b>简体中文</b>
 </p>
 
+<p align="center">
+  <sub>由 <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> 开发 · 基于 XiaoMiku01 的 <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a></sub>
+</p>
+
 ---
 
 ## 它能做什么
@@ -20,7 +24,7 @@
 macOS 不支持 Android 手机的「USB 网络共享」（这种协议叫 RNDIS）。插上手机、打开 USB 网络共享后，
 Mac 上什么也不会发生。
 
-TetherKit 解决的就是这个问题：它通过 USB 与手机通信，给 macOS 提供一条正常的网络连接，
+TetherKitNext 解决的就是这个问题：它通过 USB 与手机通信，给 macOS 提供一条正常的网络连接，
 让 Mac 借用手机的移动数据或 Wi-Fi 上网。
 
 - **Apple Silicon 与 Intel 的 Mac 都能用**，需要 macOS 14 Sonoma 或更高版本
@@ -32,25 +36,26 @@ TetherKit 解决的就是这个问题：它通过 USB 与手机通信，给 macO
 
 真机实测（USB 2.0）：**下载约 325 Mbps / 上传 240–300 Mbps**，接近数据线本身的上限。
 
-> **TetherKitNext** 是 [XiaoMiku01/TetherKit](https://github.com/XiaoMiku01/TetherKit) 的维护分支：
-> 提供 Apple Silicon 与 Intel 通用的签名安装包、重新设计的界面、安全审计
-> （[docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)）以及多项修复。驱动本身归功于上游作者。
+> **TetherKitNext** 由 [**Issen Software Group**](https://issen.kurokamicorp.com/) 开发，是 XiaoMiku01 的
+> [TetherKit](https://github.com/XiaoMiku01/TetherKit) 的分支，驱动本身归功于原作者。
+> TetherKitNext 提供 Apple Silicon 与 Intel 通用的签名安装包、重新设计的界面、安全审计
+> （[docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)）以及多项修复。详见 [NOTICE.md](NOTICE.md)。
 
 ---
 
 ## 安装
 
-1. 从 [Releases 页面](https://github.com/AA-EION/TetherKitNext/releases) 下载最新的 **TetherKit .dmg**。
-2. 打开它，把 **TetherKit** 拖进 **应用程序**。
-3. 从“应用程序”文件夹打开 TetherKit。
+1. 从 [Releases 页面](https://github.com/AA-EION/TetherKitNext/releases) 下载最新的 **TetherKitNext .dmg**。
+2. 打开它，把 **TetherKitNext** 拖进 **应用程序**。
+3. 从“应用程序”文件夹打开 TetherKitNext。
 4. 点击 **启用后台组件**。macOS 会请你在 **系统设置 › 通用 › 登录项与扩展** 里允许一次：
-   打开 TetherKit 旁边的开关后回到 App，它会自动继续。
+   打开 TetherKitNext 旁边的开关后回到 App，它会自动继续。
 
-就这样。TetherKit 需要的一切都在 App 里，不用再下载或安装别的东西。
+就这样。TetherKitNext 需要的一切都在 App 里，不用再下载或安装别的东西。
 
 > **测试版（标记为 “Pre-release”）** 还没有经过 Apple 签名，macOS 第一次会拒绝打开。
 > 把 App 拷到“应用程序”后，打开 **系统设置 › 隐私与安全性**，点 **仍要打开**；
-> 或者在终端里执行：`xattr -dr com.apple.quarantine /Applications/TetherKit.app`
+> 或者在终端里执行：`xattr -dr com.apple.quarantine /Applications/TetherKitNext.app`
 
 ### 更新
 
@@ -58,7 +63,29 @@ TetherKit 解决的就是这个问题：它通过 USB 与手机通信，给 macO
 
 ### 卸载
 
-在 App 里打开 **设置 › 后台组件 › 停用…**，然后把 TetherKit 拖到废纸篓。
+在 App 里打开 **设置 › 后台组件 › 停用…**，然后把 TetherKitNext 拖到废纸篓。
+
+### 从 TetherKit 0.2.0 测试版升级
+
+0.2.0 beta 3 及之前的测试版名叫 **TetherKit**。TetherKitNext 1.0 换了名字和标识，会装在旧 App
+**旁边**而不是覆盖它。请先移除旧版，免得两者同时抢用手机：
+
+1. 打开旧的 **TetherKit**，如果已连接，先点 **断开**。
+2. 打开 **设置 › 后台组件 › 停用…** 并确认。这会停止旧的后台组件，并移除旧的 `tetherkit-cli` 命令。
+3. 退出 TetherKit（菜单栏图标 › **退出**），把“应用程序”里的 **TetherKit** 拖到废纸篓。
+4. 然后按上面的步骤安装 TetherKitNext。
+
+如果旧 App 已经删掉或打不开，可以在终端里执行：
+
+```bash
+sudo launchctl bootout system/com.tetherkit.helperd 2>/dev/null   # 停止旧的后台组件
+sudo rm -f /usr/local/bin/tetherkit-cli                             # 旧的命令行链接
+defaults delete com.tetherkit.app 2>/dev/null                       # 旧 App 的设置
+```
+
+之后看一下 **系统设置 › 通用 › 登录项与扩展**，如果还列着 **TetherKit** 就把它关掉。
+**系统设置 › 网络** 里残留的 **TetherKit (feth…)** 会在 TetherKitNext 的后台组件启动时自动清除，
+也可以手动删除（选中后 **⋯ › 删除服务**）。
 
 ---
 
@@ -66,9 +93,9 @@ TetherKit 解决的就是这个问题：它通过 USB 与手机通信，给 macO
 
 1. 用 USB 线连接手机（必须是**数据线**，很多便宜的线只能充电）。
 2. 在手机上打开 **USB 网络共享**（通常在 *设置 › 网络和互联网 › 热点与网络共享*）。
-3. 在 TetherKit 里点 **连接**。
+3. 在 TetherKitNext 里点 **连接**。
 
-TetherKit 会建立连接并自动获取地址（DHCP），马上就能上网。窗口里会显示连接状态、实时网速和 IP 地址。
+TetherKitNext 会建立连接并自动获取地址（DHCP），马上就能上网。窗口里会显示连接状态、实时网速和 IP 地址。
 
 侧边栏有五个页面：
 
@@ -80,26 +107,26 @@ TetherKit 会建立连接并自动获取地址（DHCP），马上就能上网。
 | **日志** | 实时日志，出问题时很有用 |
 | **设置** | 后台组件、命令行工具、语言、菜单栏、登录时打开、更新 |
 
-**关闭窗口不会断网。** TetherKit 会退到菜单栏（程序坞图标消失），连接保持不断。点菜单栏图标可以
+**关闭窗口不会断网。** TetherKitNext 会退到菜单栏（程序坞图标消失），连接保持不断。点菜单栏图标可以
 查看网速、连接或断开、重新打开窗口。即使退出 App，连接也会继续。
 
 **支持 VPN。** 自动（DHCP）模式下，连接会注册为 macOS 的正规网络服务，FortiClient 等 VPN 都能正常使用。
 
-**语言**：可随时在 TetherKit 菜单、菜单栏面板或设置里切换：跟随系统 / English / 中文。
+**语言**：可随时在 TetherKitNext 菜单、菜单栏面板或设置里切换：跟随系统 / English / 中文。
 
-**更新**：TetherKit 每天检查一次本项目的 GitHub 发布，有新版本时会提示你（可在设置中关闭）。
+**更新**：TetherKitNext 每天检查一次本项目的 GitHub 发布，有新版本时会提示你（可在设置中关闭）。
 它从不自行下载或安装任何东西。
 
 ---
 
 ## 命令行工具
 
-App 自带 `tetherkit-cli`。想在任何终端里使用它，打开 **设置 › 命令行工具**，点 **安装命令**
+App 自带 `tetherkitnext-cli`。想在任何终端里使用它，打开 **设置 › 命令行工具**，点 **安装命令**
 （会添加到 `/usr/local/bin`）。
 
 ```bash
-tetherkit-cli --list          # 能识别到我的手机吗？（不需要密码）
-sudo tetherkit-cli            # 建立连接（需要输入密码）
+tetherkitnext-cli --list          # 能识别到我的手机吗？（不需要密码）
+sudo tetherkitnext-cli            # 建立连接（需要输入密码）
 ```
 
 使用命令行时，地址需要你自己配置（在另一个终端窗口里）：
@@ -111,7 +138,7 @@ ipconfig getifaddr feth0      # 显示获取到的地址
 
 按 **Ctrl-C** 即可干净地断开。
 
-常用选项（`tetherkit-cli --help` 查看全部）：
+常用选项（`tetherkitnext-cli --help` 查看全部）：
 
 | 选项 | 作用 |
 |---|---|
@@ -130,7 +157,7 @@ ipconfig getifaddr feth0      # 显示获取到的地址
 | 问题 | 可以尝试 |
 |---|---|
 | **「未检测到设备」** | 换一根线（很多线只能充电）；确认手机上的 USB 网络共享**已打开**；解锁手机，并允许弹出的「信任此电脑」/ USB 提示 |
-| **卡在「在系统设置中允许 TetherKit」** | 打开 **系统设置 › 通用 › 登录项与扩展**，打开 TetherKit 的开关。确认 App 在**应用程序**文件夹里运行，而不是直接从下载的磁盘映像里运行 |
+| **卡在「在系统设置中允许 TetherKitNext」** | 打开 **系统设置 › 通用 › 登录项与扩展**，打开 TetherKitNext 的开关。确认 App 在**应用程序**文件夹里运行，而不是直接从下载的磁盘映像里运行 |
 | **已连接但上不了网** | 先确认手机本身的移动数据或 Wi-Fi 能用；如果 Mac 同时连着其他网络，在**网络**页打开「所有流量走此网卡」 |
 | **提示设备被其他程序占用** | 有别的程序占着手机的 USB 连接，常见的是旧的 HoRNDIS。卸载后重启 |
 | **速度慢** | 换 USB 3 接口与短而好的线；关闭其他网络共享工具。调优方法见 [docs/PERFORMANCE.md](docs/PERFORMANCE.md) |
@@ -144,22 +171,22 @@ ipconfig getifaddr feth0      # 显示获取到的地址
 不能。macOS 没有这种驱动，手机根本不会显示为一个网络连接。
 
 **需要关闭 SIP，或者在 Apple Silicon Mac 上降低安全性吗？**
-不需要。那是 HoRNDIS 这类旧式内核驱动才需要的。TetherKit 是普通 App，从不往 macOS 内核里加载任何东西。
+不需要。那是 HoRNDIS 这类旧式内核驱动才需要的。TetherKitNext 是普通 App，从不往 macOS 内核里加载任何东西。
 
 **我以前用 HoRNDIS，为什么要换？**
 HoRNDIS 是内核扩展，新版 macOS 会拦截它；在 Apple Silicon 上还需要进恢复模式降低安全设置。
-TetherKit 做同样的事，却完全不需要这些。
+TetherKitNext 做同样的事，却完全不需要这些。
 
 **哪些设备能用？**
 大多数开启了 USB 网络共享的 Android 手机，以及一些 Linux 开发板（树莓派 Zero、BeagleBone）和旧款
-Windows 手机。可以运行 `tetherkit-cli --list` 检查你的设备。
+Windows 手机。可以运行 `tetherkitnext-cli --list` 检查你的设备。
 
 **iPhone 需要这个吗？**
 不需要，macOS 原生支持 iPhone 的 USB 网络共享。
 
 **安全吗？**
 App 以你的普通用户身份运行。需要管理员权限的那一小部分（创建网络连接）在一个独立的后台组件里运行：
-它只接受正版 TetherKit App 的请求，并在做出更改前要求输入密码。完整的安全审计见
+它只接受正版 TetherKitNext App 的请求，并在做出更改前要求输入密码。完整的安全审计见
 [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)。
 
 ---
@@ -167,12 +194,12 @@ App 以你的普通用户身份运行。需要管理员权限的那一小部分�
 ## 工作原理（简版）
 
 ```
- Android 手机 ──USB──▶ TetherKit ──▶ 虚拟网卡 ──▶ macOS 网络栈
+ Android 手机 ──USB──▶ TetherKitNext ──▶ 虚拟网卡 ──▶ macOS 网络栈
                        （通过 USB 说     （macOS 自带的
                         RNDIS 协议）      「feth」接口）
 ```
 
-TetherKit 通过 [libusb](https://libusb.info/) 用 RNDIS 协议与手机通信，再把网络流量交给 macOS
+TetherKitNext 通过 [libusb](https://libusb.info/) 用 RNDIS 协议与手机通信，再把网络流量交给 macOS
 自带的一对虚拟网卡（`feth`）。macOS 把它当成普通网卡：分配地址、路由、DNS 一应俱全。全部代码都运行在
 内核之外，出了 bug 最多是 App 退出，而不会让整台 Mac 崩溃。
 
@@ -190,7 +217,7 @@ TetherKit 通过 [libusb](https://libusb.info/) 用 RNDIS 协议与手机通信�
 ```bash
 # 全部：通用 App + 磁盘映像，并跑完所有测试
 ./scripts/build-release.sh
-# → dist/TetherKit.app 与 dist/TetherKit-<版本>.dmg
+# → dist/TetherKitNext.app 与 dist/TetherKitNext-<版本>.dmg
 ```
 
 只构建命令行工具：
@@ -205,7 +232,7 @@ ctest --test-dir build          # 运行测试
 本地构建默认是 ad-hoc 签名，这种构建 macOS 不会启用后台组件。要完整试用 App，请用你自己的 Apple 证书签名：
 
 ```bash
-export TETHERKIT_SIGN_IDENTITY="Developer ID Application: 你的名字 (TEAMID)"
+export TETHERKITNEXT_SIGN_IDENTITY="Developer ID Application: 你的名字 (TEAMID)"
 ./scripts/build-release.sh
 ```
 
@@ -231,5 +258,9 @@ export TETHERKIT_SIGN_IDENTITY="Developer ID Application: 你的名字 (TEAMID)"
 
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。TetherKit 内置 [libusb](https://libusb.info/)（LGPL-2.1），其许可证文本
-随 App 一起提供（*设置 › 关于 › 查看许可证*）。
+MIT，见 [LICENSE](LICENSE)。
+Copyright © 2026 Issen Software Group；Copyright © 2026 TetherKit contributors（原版
+[TetherKit](https://github.com/XiaoMiku01/TetherKit)，其 MIT 版权声明按许可证要求保留在 LICENSE 中）。
+
+TetherKitNext 内置 [libusb](https://libusb.info/)（LGPL-2.1），其许可证文本随 App 一起提供
+（*设置 › 关于 › 查看许可证*）。详见 [NOTICE.md](NOTICE.md)。

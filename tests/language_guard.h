@@ -10,9 +10,9 @@
 //   `const ScopedLanguage guard{Language::kChinese};`。
 #pragma once
 
-#include "tetherkit/common/i18n.h"
+#include "tetherkitnext/common/i18n.h"
 
-namespace tetherkit::testing {
+namespace tetherkitnext::testing {
 
 /// 作用域内切换语言，析构时还原成进入前的值。
 class ScopedLanguage {
@@ -32,4 +32,4 @@ class ScopedLanguage {
   Language previous_;
 };
 
-}  // namespace tetherkit::testing
+}  // namespace tetherkitnext::testing

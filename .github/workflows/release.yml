@@ -1,9 +1,9 @@
 # Release: push a v* tag to publish a DMG.
 #
-#   Stable:      git tag -a v0.2.0 -m "TetherKit 0.2.0"        && git push origin v0.2.0
-#   Prerelease:  git tag -a v0.2.0-beta.1 -m "TetherKit 0.2.0 beta 1" && git push origin v0.2.0-beta.1
+#   Stable:      git tag -a v1.0.0 -m "TetherKitNext 1.0.0"        && git push origin v1.0.0
+#   Prerelease:  git tag -a v1.0.0-beta.5 -m "TetherKitNext 1.0.0 beta 5" && git push origin v1.0.0-beta.5
 #
-# A tag with a suffix after the version (v0.2.0-beta.1, v0.2.0-rc.1) publishes a
+# A tag with a suffix after the version (v1.0.0-beta.5, v1.0.0-rc.1) publishes a
 # GitHub *prerelease*. Prereleases may be built without signing secrets: the
 # DMG is then ad-hoc signed and not notarized, and only the DMG is uploaded.
 #
@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to create and publish, e.g. v0.2.0-beta.1"
+        description: "Tag to create and publish, e.g. v1.0.0-rc.1"
         required: true
         type: string
 
@@ -92,38 +92,41 @@ jobs:
 
       - name: Build, test, package
         env:
-          TETHERKIT_BUILD_NUMBER: ${{ github.run_number }}
+          TETHERKITNEXT_BUILD_NUMBER: ${{ github.run_number }}
           NOTARY_KEY_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.NOTARY_KEY_ID || '' }}
           NOTARY_ISSUER_ID: ${{ steps.signing.outputs.signed == 'true' && secrets.NOTARY_ISSUER_ID || '' }}
         run: ./scripts/build-release.sh
 
       - name: Swift unit tests
-        run: TETHERKIT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
+        run: TETHERKITNEXT_LIB_DIR="$PWD/build-release/lib" swift test --package-path gui
 
       - name: Release notes
         env:
           SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
-          dmg="$(ls dist/TetherKit-*.dmg)"
+          dmg="$(ls dist/TetherKitNext-*.dmg)"
           {
             if [ "$SIGNED" != true ]; then
               echo '> [!WARNING]'
               echo '> **Test build — not signed with a Developer ID and not notarized.**'
-              echo '> macOS will block it on first open. After copying TetherKit to Applications, either'
+              echo '> macOS will block it on first open. After copying TetherKitNext to Applications, either'
               echo '> open *System Settings › Privacy & Security* and click **Open Anyway**, or run'
-              echo '> `xattr -dr com.apple.quarantine /Applications/TetherKit.app`.'
+              echo '> `xattr -dr com.apple.quarantine /Applications/TetherKitNext.app`.'
               echo '> The background component may refuse to register until the app is signed with a'
-              echo '> real certificate; `sudo /Applications/TetherKit.app/Contents/MacOS/tetherkit-cli`'
+              echo '> real certificate; `sudo /Applications/TetherKitNext.app/Contents/MacOS/tetherkitnext-cli`'
               echo '> works regardless.'
               echo
             fi
             echo '## Install'
             echo
-            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKit** to **Applications**."
-            echo '2. Open TetherKit from Applications and click **Enable Background Component**.'
+            echo "1. Download **$(basename "$dmg")**, open it and drag **TetherKitNext** to **Applications**."
+            echo '2. Open TetherKitNext from Applications and click **Enable Background Component**.'
             echo '   macOS asks you to allow it once in *System Settings › General › Login Items*.'
-            echo '3. Optional: *Settings › Command-line tool › Install Command* puts `tetherkit-cli`'
+            echo '3. Optional: *Settings › Command-line tool › Install Command* puts `tetherkitnext-cli`'
             echo '   on your PATH (`/usr/local/bin`).'
+            echo
+            echo '**Coming from TetherKit 0.2.0 (beta 1–3)?** Remove the old app first:'
+            echo '[upgrade steps](https://github.com/AA-EION/TetherKitNext#upgrading-from-tetherkit-020-betas).'
             echo
             echo 'Universal build: Apple Silicon and Intel, macOS 14+ (the bundled CLI runs on 13.3+).'
             if [ "$SIGNED" = true ]; then
@@ -141,12 +144,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ steps.tag.outputs.prerelease }}
         run: |
-          assets=(dist/TetherKit-*.dmg)
+          assets=(dist/TetherKitNext-*.dmg)
           flags=()
           if [ "$PRERELEASE" = true ]; then
             flags+=(--prerelease)
           else
-            assets+=(dist/tetherkit-cli-*.tar.gz)
+            assets+=(dist/tetherkitnext-cli-*.tar.gz)
           fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             # Creates the tag on the commit that was just built and tested.
@@ -155,6 +158,6 @@ jobs:
             flags+=(--verify-tag)
           fi
           gh release create "$RELEASE_TAG" \
-            --title "TetherKit $RELEASE_TAG" \
+            --title "TetherKitNext $RELEASE_TAG" \
             --notes-file notes.md --generate-notes \
             "${flags[@]}" "${assets[@]}"

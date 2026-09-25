@@ -90,7 +90,7 @@ cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
 
 - **不要开 `-O3`**：热路径以 memcpy 与系统调用为主，`-O3` 的激进循环展开与向量化
   几乎无收益，反而增大代码体积、恶化 I-cache 命中。
-- **`-DTETHERKIT_NATIVE_ARCH=ON` 收益很小**：arm64 baseline 已经生成 LSE 原子
+- **`-DTETHERKITNEXT_NATIVE_ARCH=ON` 收益很小**：arm64 baseline 已经生成 LSE 原子
   指令（`ldadd`），`-mcpu=` 带来的只是调度模型差异，不是指令集解锁。
   且注意 `-mcpu=apple-m5` **会被 Apple clang 21 拒绝**（`native` 解析为 `apple-m4`）。
 - **性能基准必须用未开消毒器的 Release 构建**，否则数字无参考价值。

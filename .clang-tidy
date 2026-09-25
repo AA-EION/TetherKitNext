@@ -1,4 +1,4 @@
-# TetherKit 静态检查配置
+# TetherKitNext 静态检查配置
 #
 # 取舍说明：
 #  * 本项目是与内核 ABI / USB 线格式打交道的底层驱动，必然出现大量 reinterpret_cast、
@@ -48,7 +48,7 @@ Checks: >
   -readability-uppercase-literal-suffix
 
 WarningsAsErrors: ''
-HeaderFilterRegex: 'tetherkit/.*'
+HeaderFilterRegex: 'tetherkitnext/.*'
 FormatStyle: file
 
 CheckOptions:

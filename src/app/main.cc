@@ -1,4 +1,4 @@
-// TetherKit 命令行入口。
+// TetherKitNext 命令行入口。
 //
 // 职责刻意保持很薄：解析参数 → 装配 RuntimeConfig → 交给 core::Runtime →
 // 处理信号。所有实质逻辑都在库里，这样才能被单元测试覆盖。
@@ -15,21 +15,21 @@
 #include <string_view>
 #include <thread>
 
-#include "tetherkit/common/i18n.h"
-#include "tetherkit/common/logging.h"
-#include "tetherkit/core/runtime.h"
-#include "tetherkit/version.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/core/runtime.h"
+#include "tetherkitnext/version.h"
 
 namespace {
 
-using tetherkit::Error;
-using tetherkit::Language;
-using tetherkit::LogLevel;
-using tetherkit::Msg;
-using tetherkit::Result;
-using tetherkit::Status;
-using tetherkit::Text;
-using tetherkit::Tr;
+using tetherkitnext::Error;
+using tetherkitnext::Language;
+using tetherkitnext::LogLevel;
+using tetherkitnext::Msg;
+using tetherkitnext::Result;
+using tetherkitnext::Status;
+using tetherkitnext::Text;
+using tetherkitnext::Tr;
 
 /// 全局停机标志。
 ///
@@ -72,7 +72,7 @@ extern "C" void HandleSignal(int /*signal_number*/) {
   if (::sigaction(SIGPIPE, &ignore, nullptr) != 0) {
     return std::unexpected(Error::FromErrno(0, Tr(Msg::kCliIgnoreSigpipeFailed)));
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 // =============================================================================
@@ -107,8 +107,8 @@ void ApplyLanguageOption(int argc, char** argv) {
     if (std::string_view{argv[i]} != "--lang") {
       continue;
     }
-    if (Language language{}; tetherkit::ParseLanguage(argv[i + 1], &language)) {
-      tetherkit::SetLanguage(language);
+    if (Language language{}; tetherkitnext::ParseLanguage(argv[i + 1], &language)) {
+      tetherkitnext::SetLanguage(language);
     }
     return;
   }
@@ -150,7 +150,7 @@ void ApplyLanguageOption(int argc, char** argv) {
 
 /// 解析结果。
 struct ParsedArguments {
-  tetherkit::core::RuntimeConfig config;
+  tetherkitnext::core::RuntimeConfig config;
   bool show_help = false;
   bool show_version = false;
   bool list_devices = false;
@@ -189,77 +189,77 @@ struct ParsedArguments {
       continue;
     }
     if (argument == "--no-color") {
-      tetherkit::SetLogColorEnabled(false);
+      tetherkitnext::SetLogColorEnabled(false);
       continue;
     }
 
     if (argument == "--vid") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
       parsed.config.device_filter.vendor_id = static_cast<std::uint16_t>(value);
       continue;
     }
     if (argument == "--pid") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
       parsed.config.device_filter.product_id = static_cast<std::uint16_t>(value);
       continue;
     }
     if (argument == "--mtu") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(parsed.config.mtu, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.mtu, ParseUint(text));
       continue;
     }
     if (argument == "--rx-transfers") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(parsed.config.data_channel.rx_transfer_count, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.data_channel.rx_transfer_count, ParseUint(text));
       continue;
     }
     if (argument == "--tx-transfers") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(parsed.config.data_channel.tx_transfer_count, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.data_channel.tx_transfer_count, ParseUint(text));
       continue;
     }
     if (argument == "--rx-transfer-kb") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
       parsed.config.data_channel.rx_transfer_bytes = kilobytes * 1024;
       continue;
     }
     if (argument == "--max-transfer-kb") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
       parsed.config.rndis.host_max_transfer_size = kilobytes * 1024;
       continue;
     }
     if (argument == "--max-tx-packets") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(parsed.config.rndis.max_tx_packets_per_message, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.rndis.max_tx_packets_per_message, ParseUint(text));
       continue;
     }
     if (argument == "--bpf-buffer-kb") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
       parsed.config.bpf.kernel_buffer_bytes = kilobytes * 1024;
       continue;
     }
     if (argument == "--stats") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(parsed.config.stats_interval_millis, ParseUint(text));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.stats_interval_millis, ParseUint(text));
       continue;
     }
     if (argument == "--log") {
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKIT_ASSIGN_OR_RETURN(const auto level, ParseLogLevel(text));
-      tetherkit::SetLogLevel(level);
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto level, ParseLogLevel(text));
+      tetherkitnext::SetLogLevel(level);
       continue;
     }
     if (argument == "--lang") {
       // 值已经由 ApplyLanguageOption 在解析开始前生效了（那样连本轮的报错
       // 都是目标语言）。这里只把它消费掉并复核一次拼写。
-      TETHERKIT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
       Language ignored{};
-      if (!tetherkit::ParseLanguage(text, &ignored)) {
+      if (!tetherkitnext::ParseLanguage(text, &ignored)) {
         return std::unexpected(Error::Generic(Tr(Msg::kCliUnknownLanguage, text)));
       }
       continue;
@@ -271,15 +271,15 @@ struct ParsedArguments {
 }
 
 /// `--list`：列出识别到的 RNDIS 设备。**不需要 root**。
-[[nodiscard]] Status ListDevices(const tetherkit::usb::DeviceFilter& filter) {
-  TETHERKIT_ASSIGN_OR_RETURN(const auto context, tetherkit::usb::Context::Create());
-  TETHERKIT_ASSIGN_OR_RETURN(const auto candidates,
-                             tetherkit::usb::FindRndisDevices(*context, filter));
+[[nodiscard]] Status ListDevices(const tetherkitnext::usb::DeviceFilter& filter) {
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto context, tetherkitnext::usb::Context::Create());
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto candidates,
+                             tetherkitnext::usb::FindRndisDevices(*context, filter));
 
   if (candidates.empty()) {
     PrintText(Msg::kCliNoDevices);
     PrintText(Msg::kCliNoDevicesHint);
-    return tetherkit::Ok();
+    return tetherkitnext::Ok();
   }
 
   PrintText(Msg::kCliDevicesHeader);
@@ -291,7 +291,7 @@ struct ParsedArguments {
            candidate.used_android_quirk ? Text(Msg::kCliDeviceAndroidQuirk) : std::string_view{});
     std::fputs(line.c_str(), stdout);
   }
-  return tetherkit::Ok();
+  return tetherkitnext::Ok();
 }
 
 }  // namespace
@@ -299,7 +299,7 @@ struct ParsedArguments {
 int main(int argc, char** argv) {
   // 语言要在**任何**输出之前定下来。先按环境推断，再让显式的 --lang 覆盖 ——
   // 这样连参数解析自己报的错也是用户要的那种语言。
-  tetherkit::SetLanguage(tetherkit::DetectLanguageFromEnvironment());
+  tetherkitnext::SetLanguage(tetherkitnext::DetectLanguageFromEnvironment());
   ApplyLanguageOption(argc, argv);
 
   auto parsed = ParseArguments(argc, argv);
@@ -314,8 +314,8 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (parsed->show_version) {
-    const std::string line = std::format("{}\n{}\n", tetherkit::GetVersionString(),
-                                         tetherkit::GetBuildDescription());
+    const std::string line = std::format("{}\n{}\n", tetherkitnext::GetVersionString(),
+                                         tetherkitnext::GetBuildDescription());
     std::fputs(line.c_str(), stdout);
     return 0;
   }
@@ -330,20 +330,20 @@ int main(int argc, char** argv) {
   }
 
   if (const auto status = InstallSignalHandlers(); !status) {
-    TETHERKIT_ERROR("{}", status.error().ToString());
+    TETHERKITNEXT_ERROR("{}", status.error().ToString());
     return 1;
   }
 
-  TETHERKIT_INFO("{}", tetherkit::GetVersionString());
+  TETHERKITNEXT_INFO("{}", tetherkitnext::GetVersionString());
 
-  auto runtime = tetherkit::core::Runtime::Create(parsed->config);
+  auto runtime = tetherkitnext::core::Runtime::Create(parsed->config);
   if (!runtime) {
-    TETHERKIT_ERROR("{}", runtime.error().ToString());
+    TETHERKITNEXT_ERROR("{}", runtime.error().ToString());
     return 1;
   }
 
   if (const auto status = (*runtime)->Start(); !status) {
-    TETHERKIT_ERROR_TR(Msg::kCliStartFailed, status.error().ToString());
+    TETHERKITNEXT_ERROR_TR(Msg::kCliStartFailed, status.error().ToString());
     return 1;
   }
 
@@ -354,7 +354,7 @@ int main(int argc, char** argv) {
     while (!g_stop_requested.load(std::memory_order_acquire)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    TETHERKIT_INFO_TR(Msg::kCliStopSignalReceived);
+    TETHERKITNEXT_INFO_TR(Msg::kCliStopSignalReceived);
     (*runtime)->RequestStop();
   });
 

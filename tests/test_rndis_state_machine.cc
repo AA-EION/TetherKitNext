@@ -14,7 +14,7 @@
 #include "language_guard.h"
 
 #include "mock_control_channel.h"
-#include "tetherkit/rndis/state_machine.h"
+#include "tetherkitnext/rndis/state_machine.h"
 
 // 与 test_net_link.cc 里同名助手同理：直接在 REQUIRE_MESSAGE 里写
 // `r ? "" : r.error().ToString()` 编译不过 —— doctest 的 MessageBuilder 会把
@@ -26,22 +26,22 @@ std::string Why(const T& result) {
 }
 }  // namespace
 
-using namespace tetherkit;                   // NOLINT(google-build-using-namespace)
-using namespace tetherkit::rndis;            // NOLINT(google-build-using-namespace)
-using tetherkit::testing::MakeDeviceKeepAlive;
-using tetherkit::testing::MakeIndicateStatus;
-using tetherkit::testing::MakeInitializeComplete;
-using tetherkit::testing::MakeKeepAliveComplete;
-using tetherkit::testing::MakeQueryComplete;
-using tetherkit::testing::MakeQueryCompleteMac;
-using tetherkit::testing::MakeQueryCompleteUint32;
-using tetherkit::testing::MakeResetComplete;
-using tetherkit::testing::MakeSetComplete;
-using tetherkit::testing::MakeWellBehavedDevice;
-using tetherkit::testing::MockControlChannel;
-using tetherkit::testing::OidOf;
-using tetherkit::testing::RecordingObserver;
-using tetherkit::testing::RequestIdOf;
+using namespace tetherkitnext;                   // NOLINT(google-build-using-namespace)
+using namespace tetherkitnext::rndis;            // NOLINT(google-build-using-namespace)
+using tetherkitnext::testing::MakeDeviceKeepAlive;
+using tetherkitnext::testing::MakeIndicateStatus;
+using tetherkitnext::testing::MakeInitializeComplete;
+using tetherkitnext::testing::MakeKeepAliveComplete;
+using tetherkitnext::testing::MakeQueryComplete;
+using tetherkitnext::testing::MakeQueryCompleteMac;
+using tetherkitnext::testing::MakeQueryCompleteUint32;
+using tetherkitnext::testing::MakeResetComplete;
+using tetherkitnext::testing::MakeSetComplete;
+using tetherkitnext::testing::MakeWellBehavedDevice;
+using tetherkitnext::testing::MockControlChannel;
+using tetherkitnext::testing::OidOf;
+using tetherkitnext::testing::RecordingObserver;
+using tetherkitnext::testing::RequestIdOf;
 
 namespace {
 
@@ -327,7 +327,7 @@ TEST_CASE("设备主动发 KEEPALIVE_MSG 时主机必须回 KEEPALIVE_CMPLT") {
 
 TEST_CASE("面向连接设备的消息被明确拒绝") {
   // 下面断言错误消息的中文措辞，先把语言钉死。
-  const tetherkit::testing::ScopedLanguage guard{tetherkit::Language::kChinese};
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     if (LoadLe32(request.data() + kMessageTypeOffset) == ToRaw(MessageType::kInitialize)) {
@@ -380,7 +380,7 @@ TEST_CASE("保活到期时发 KEEPALIVE 并在成功后清零失败计数") {
 
 TEST_CASE("连续保活失败达到阈值后通报致命错误") {
   // 下面断言致命错误里的中文措辞，先把语言钉死。
-  const tetherkit::testing::ScopedLanguage guard{tetherkit::Language::kChinese};
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
   MockControlChannel channel;
   // 设备只回 INITIALIZE / QUERY / SET，对 KEEPALIVE 一律不回 → 每次都超时。
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
