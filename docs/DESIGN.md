@@ -1,17 +1,14 @@
-# TetherKitNext 设计文档
+# TetherKitNext Design Document
 
-本文说明**为什么这样设计**。具体的字段偏移与常量见
-[RNDIS-PROTOCOL.md](RNDIS-PROTOCOL.md)；实测数字见 [BENCHMARKS.md](BENCHMARKS.md)；
-已验证的环境事实与踩过的坑见 [../AGENTS.md](../AGENTS.md)。
+This document explains **why TetherKitNext is designed the way it is**. For exact wire field offsets and constants, see [RNDIS-PROTOCOL.md](RNDIS-PROTOCOL.md); for measured numbers, see [BENCHMARKS.md](BENCHMARKS.md); for verified environment facts and lessons learned, see [../AGENTS.md](../AGENTS.md).
 
 ---
 
-## 1. 问题与方案选择
+## 1. Problem and Approach Selection
 
-macOS 内核**没有** RNDIS 驱动。这不是推测 —— 逐个检查了
-`/System/Library/Extensions` 下所有 CDC 家族 kext 的 `IOKitPersonalities`：
+The macOS kernel has **no** built-in RNDIS driver. This was verified by inspecting the `IOKitPersonalities` of every CDC-family kext under `/System/Library/Extensions`:
 
-| kext personality | 匹配条件 |
+| kext personality | Matching Condition |
 |---|---|
 | `AppleUSBACMControl0` | class 2, subclass 2, protocol **0** |
 | `AppleUSBACMControl1` | class 2, subclass 2, protocol **1** |
@@ -19,346 +16,278 @@ macOS 内核**没有** RNDIS 驱动。这不是推测 —— 逐个检查了
 | `AppleUSBNCMControl` | class 2, subclass **13** |
 | `AppleUSBWCMControl` | class 2, subclass **8** |
 
-RNDIS 的通信类接口是 `{0x02, 0x02, 0xFF}` —— protocol 既不是 0 也不是 1，
-**没有任何 personality 匹配**；Android 常用的 `{0xE0, 0x01, 0x03}` 变体连
-class `0xE0` 的 personality 都不存在。
+An RNDIS communication interface uses `{0x02, 0x02, 0xFF}` — its protocol is neither 0 nor 1, so **no personality matches**. The common Android variant `{0xE0, 0x01, 0x03}` does not even have a personality for class `0xE0`.
 
-于是要在 macOS 上用起 RNDIS 设备，只有四条路：
+To use an RNDIS device on macOS, there are only four possible approaches:
 
-| 方案 | 能否纯用户态 | 门槛 | 语义层级 | 结论 |
+| Approach | Pure User Space? | Requirements | Semantic Layer | Verdict |
 |---|---|---|---|---|
-| kext / NKE | ❌ | Apple 授予的 kext 签名 entitlement 或关 SIP | L2 | Apple Silicon 上实质不可行 |
-| `NEPacketTunnelProvider` | ✔ | 付费开发者账号 + entitlement + App bundle | **L3** | 要自己实现 ARP/ND/DHCP |
-| `utun` | ✔ | root | **L3** | 同上，且要自己拆装以太头 |
-| **`feth` + BPF** | ✔ | root | **L2** | ✅ 本项目选择 |
+| kext / NKE | ❌ | Apple-granted kext signing entitlement or disabling SIP | L2 | Practically unviable on Apple Silicon |
+| `NEPacketTunnelProvider` | ✔ | Paid developer account + entitlement + App bundle | **L3** | Requires re-implementing ARP/ND/DHCP |
+| `utun` | ✔ | root | **L3** | Same as above, plus manual Ethernet header stripping/framing |
+| **`feth` + BPF** | ✔ | root | **L2** | ✅ Selected by TetherKitNext |
 
-选 `feth` + BPF 的决定性理由是**语义层级匹配**：RNDIS 天然是 L2（承载完整以太帧），
-而 `feth` + BPF 是唯一能在纯用户态双向收发**原始以太帧**的路径。这样手机侧的
-DHCP 服务器与 ARP 广播直接对主机 IP 栈生效，我们完全不需要自己实现 ARP 代答、
-邻居发现或 DHCP 客户端 —— 那三样才是 L3 方案真正的复杂度所在。
+The decisive reason for choosing `feth` + BPF is **semantic layer alignment**: RNDIS is natively Layer 2 (carrying full Ethernet frames), and `feth` + BPF is the only pure user-space mechanism on macOS capable of sending and receiving **raw Ethernet frames** bidirectionally. Because of this, the phone's DHCP server and ARP broadcasts work directly with the macOS IP stack, sparing us from implementing ARP proxy, IPv6 Neighbor Discovery, or a custom DHCP client — which are the real sources of complexity in Layer 3 approaches.
 
-代价：需要 root（`feth` 创建与 `/dev/bpf*` 都要），每方向多一次 mbuf 拷贝，
-TX 有「整帧 ≤ MTU + 18」的长度限制。
+Trade-offs: requires root privileges (both for creating `feth` interfaces and opening `/dev/bpf*`), adds one extra mbuf copy per direction, and imposes a TX length cap of `total frame ≤ MTU + 18`.
 
 ---
 
-## 2. 总体架构
+## 2. High-Level Architecture
 
 ```
-        ┌──────────────────────── macOS 内核 ────────────────────────┐
-        │  IP 栈 / 路由 / DHCP 客户端                                 │
-        │       │                                                    │
-        │       ▼                                                    │
-        │  ┌─────────┐   if_fake peer 对   ┌─────────┐               │
-        │  │  feth0  │ ◄─────────────────► │  feth1  │               │
-        │  │(系统侧) │                     │(驱动侧) │               │
-        │  └─────────┘                     └────┬────┘               │
-        │   配 IP/路由                          │ BPF（单个描述符    │
-        │   MAC = 设备汇报的地址                 │  同时收发）        │
-        └───────────────────────────────────────┼────────────────────┘
-                                                │
-        ┌───────────────────────────────────────┼────────────────────┐
-        │  TetherKitNext（用户态）                   ▼                    │
-        │  ┌────────────── core::Bridge（3 个数据路径线程）────────┐  │
-        │  │  RX: bulk IN 回调 → FrameRing → BPF 批量 write        │  │
-        │  │  TX: BPF 批量 read → RNDIS 多包聚合 → bulk OUT        │  │
-        │  └──────────────────────┬───────────────────────────────┘  │
-        │  ┌───────── rndis::StateMachine（控制线程）─────────┐       │
-        │  │  INITIALIZE / QUERY / SET / KEEPALIVE / RESET /  │       │
-        │  │  HALT / INDICATE_STATUS                          │       │
-        │  └──────────────────────┬──────────────────────────┘       │
-        │  ┌───────── usb::Device / DataChannel ─────────────┐       │
-        │  │  控制通道（EP0 类请求）+ 中断 IN 通知             │       │
-        │  │  异步 bulk IN/OUT 传输池                         │       │
-        │  └──────────────────────┬──────────────────────────┘       │
-        └─────────────────────────┼──────────────────────────────────┘
+        ┌──────────────────────── macOS Kernel ────────────────────────┐
+        │  IP Stack / Routing / DHCP Client                            │
+        │       │                                                      │
+        │       ▼                                                      │
+        │  ┌─────────┐    if_fake peer pair    ┌─────────┐             │
+        │  │  feth0  │ ◄─────────────────────► │  feth1  │             │
+        │  │(host)   │                         │(driver) │             │
+        │  └─────────┘                         └────┬────┘             │
+        │   IP / Routes configured                  │ BPF (single fd   │
+        │   MAC = device-reported address           │  for RX and TX)  │
+        └───────────────────────────────────────────┼──────────────────┘
+                                                    │
+        ┌───────────────────────────────────────────┼──────────────────┐
+        │  TetherKitNext (User Space)               ▼                  │
+        │  ┌────────────── core::Bridge (3 data-path threads) ──────┐  │
+        │  │  RX: bulk IN callback → FrameRing → BPF batch write    │  │
+        │  │  TX: BPF batch read → RNDIS multi-packet → bulk OUT    │  │
+        │  └──────────────────────┬─────────────────────────────────┘  │
+        │  ┌───────── rndis::StateMachine (control thread) ───┐        │
+        │  │  INITIALIZE / QUERY / SET / KEEPALIVE / RESET /  │        │
+        │  │  HALT / INDICATE_STATUS                          │        │
+        │  └──────────────────────┬───────────────────────────┘        │
+        │  ┌───────── usb::Device / DataChannel ──────────────┐        │
+        │  │  Control channel (EP0 class reqs) + Interrupt IN │        │
+        │  │  Async bulk IN/OUT transfer pools                │        │
+        │  └──────────────────────┬───────────────────────────┘        │
+        └─────────────────────────┼────────────────────────────────────┘
                                   │ USB
-                             ┌────┴─────┐
-                             │ RNDIS 设备 │
-                             └──────────┘
+                             ┌────┴───────┐
+                             │RNDIS Device│
+                             └────────────┘
 ```
 
-### 模块与依赖方向
+### Modules and Dependency Direction
 
-依赖**严格单向**，禁止反向或循环：
+Dependencies are **strictly unidirectional**; reverse or circular dependencies are forbidden:
 
 ```
-tk_common  ←（无依赖）      错误、日志、字节序、无锁队列、统计、线程 QoS
+tk_common  ← (no deps)        Errors, logging, byte order, lock-free rings, stats, thread QoS
    ↑
-tk_rndis   ← common         RNDIS 线格式 + 状态机（**纯逻辑，不碰 I/O**）
-tk_net     ← common         feth 生命周期 + BPF 链路
-tk_usb     ← common, rndis  libusb 封装（rndis 只用来拿协议常量）
+tk_rndis   ← common           RNDIS wire format + state machine (**pure logic, no I/O**)
+tk_net     ← common           feth lifecycle + BPF link
+tk_usb     ← common, rndis    libusb wrapper (rndis used only for protocol constants)
    ↑
-tk_core    ← 以上全部        数据路径桥接 + 运行时编排
+tk_core    ← all of above     Data-path bridge + runtime orchestration
    ↑
-tetherkitnext  ← core           命令行
+tetherkitnext ← core          CLI executable
 ```
 
-**`tk_rndis` 不碰 I/O 是刻意的约束**，它让整个 RNDIS 实现（包括状态机）能在
-一台既没有 USB 设备也没有 root 的机器上被完整单元测试 —— 而本项目的开发机正是
-这样一台机器。为此 `ControlChannel` 接口放在 `rndis` 层（它描述的是 RNDIS 协议
-语义，不是 USB 语义），由 `tk_usb` 提供实现。
+**Keeping `tk_rndis` free of I/O is a deliberate architectural constraint**: it allows the entire RNDIS implementation (including the state machine) to be thoroughly unit-tested on a machine with neither a USB device nor root privileges. For this reason, the `ControlChannel` interface lives in the `rndis` layer (describing RNDIS protocol semantics rather than USB specifics) and is implemented by `tk_usb`.
 
 ---
 
-## 3. 数据流向语义（最关键、也最容易搞错的一点）
+## 3. Data-Flow Semantics (Crucial and Easy to Get Wrong)
 
-已对照 xnu 的 `feth_output_common()` 源码确认：
+Verified directly against XNU's `feth_output_common()` source code:
 
-| 事件 | 在 feth0 上 | 在 feth1 上 |
+| Event | On `feth0` | On `feth1` |
 |---|---|---|
-| 主机 IP 栈从 feth0 发出一帧 | **OUT** tap | **IN** tap，并作为 input 进入 |
-| 我们向 feth1 的 BPF `write()` 一帧 | 作为 **input** 进入 IP 栈 | **OUT** tap |
+| Host IP stack transmits a frame out of `feth0` | **OUT** tap | **IN** tap, delivered as input |
+| Driver writes a frame to `feth1`'s BPF fd | Delivered as **input** to host IP stack | **OUT** tap |
 
-由此得到两个结论：
+Two key conclusions follow from this:
 
-1. **BPF 只需要挂在 feth1（驱动侧）上，一个描述符同时完成收和发。**
-2. **必须设 `BIOCSSEESENT = 0`**（→ `bd_direction = BPF_D_IN`），它恰好滤掉
-   「我们自己 `write` 进去的帧」（那些在 feth1 上是 OUT 方向）。不设就会形成回环，
-   自己写的帧立刻被自己读回来。
+1. **BPF only needs to attach to `feth1` (the driver side); a single file descriptor handles both RX and TX.**
+2. **`BIOCSSEESENT = 0` must be set** (→ `bd_direction = BPF_D_IN`), which filters out frames that **we wrote into `feth1` ourselves** (since those appear in the OUT direction on `feth1`). Without this setting, every injected frame would immediately loop back and be read again.
 
 ---
 
-## 4. 并发模型
+## 4. Concurrency Model
 
-三个数据路径线程，外加 libusb 自己的 IOKit runloop 线程与状态机的控制线程。
-本机 4 性能核 + 6 效率核，三个热线程 + libusb runloop 刚好占满性能核集群
-且不过订阅。
+There are three data-path threads, plus libusb's internal IOKit runloop thread and the RNDIS state-machine control thread. On a 4-performance-core + 6-efficiency-core Apple Silicon machine, the three hot threads plus the libusb runloop fit neatly onto the performance core cluster without oversubscription.
 
-| 线程 | 职责 | 阻塞点 | QoS |
+| Thread | Responsibility | Blocking Point | QoS |
 |---|---|---|---|
-| `usb-event` | `libusb_handle_events`，跑所有 transfer 回调 | event pipe | USER_INTERACTIVE |
-| `rx-inject` | 从 `FrameRing` 批量取帧 → BPF 批量 `write` | 队列空时自旋后 yield | USER_INTERACTIVE |
-| `tx-extract` | BPF 阻塞 `read` → RNDIS 聚合 → 异步 bulk OUT | BPF `read()` | USER_INTERACTIVE |
-| `rndis-ctl` | 状态机 `Poll()`：保活 + 排空推送 | `sleep` | USER_INITIATED |
+| `usb-event` | `libusb_handle_events`, running all transfer callbacks | event pipe | USER_INTERACTIVE |
+| `rx-inject` | Batch-dequeue from `FrameRing` → BPF batch `write` | Parks on futex doorbell when ring is empty | USER_INTERACTIVE |
+| `tx-extract` | Blocking BPF `read` → RNDIS aggregation → async bulk OUT | BPF `read()` | USER_INTERACTIVE |
+| `rndis-ctl` | State machine `Poll()`: keepalive + draining status notifications | `sleep` | USER_INITIATED |
 
-### 为什么 RX 必须拆成两个线程
+### Why RX Must Be Split Across Two Threads
 
-libusb 的 transfer 回调持有 `ctx->event_waiters_lock`，回调里做阻塞 I/O 会把
-**所有等同步传输的线程**（包括跑控制通道的状态机线程）一起拖住。而 BPF 的
-`write()` 是系统调用（约 700 ns 起）。所以回调只做
-「拆 RNDIS 包 + memcpy 进无锁队列 + 立刻 resubmit」，真正的写出交给注入线程。
+libusb's transfer callbacks hold `ctx->event_waiters_lock`. Performing blocking I/O inside a callback would stall **every thread waiting on synchronous transfers** (including the state-machine control thread). Since BPF `write()` is a system call (~700–2100 ns), the USB callback only unpacks RNDIS packets, `memcpy`s frames into the lock-free `FrameRing`, and immediately resubmits the transfer. Actual BPF writing is offloaded to `rx-inject`.
 
-### 为什么 TX 只需要一个线程
+### Why TX Needs Only One Thread
 
-BPF 的 `read()` 本身就是阻塞且自动聚合的（`BIOCIMMEDIATE=1` 下每来一包就唤醒，
-醒来时一次性交付期间累积的全部包），而 `SendFrames` 是**异步**提交、不阻塞。
-「读一批 → 提交一批」在同一个线程里就是最优形态，多一个线程只会多一次跨核传递。
+BPF `read()` is natively blocking and self-batching (with `BIOCIMMEDIATE=1`, it wakes as soon as the first packet arrives and delivers all packets accumulated in the meantime in one syscall), while `SendFrames` submits bulk OUT transfers **asynchronously** without blocking. Reading a batch and submitting a batch on the same thread is optimal; adding another thread would only introduce an extra cross-core handoff.
 
-### 为什么不用单个 kqueue 事件循环合并三件事
+### Why Not Merge Everything into a Single `kqueue` Event Loop
 
-调研实测：macOS 上一次空的 `kevent()`（timeout={0,0}、无事件）要 **13.4~13.7 µs**,
-比普通系统调用贵 20 倍。25 kpps 下光探测就要吃掉 34% 的单核。
-**kqueue 只能用于真正的阻塞等待，绝不能用于轮询** —— 而我们三条路径各自都已经有
-天然的阻塞点，合并没有收益。
+Benchmarks on macOS show that an empty non-blocking `kevent()` (`timeout={0,0}`, no events) takes **13.4–13.7 µs** — ~20× more expensive than an ordinary syscall. At 25 kpps, polling alone would consume 34% of a core. **`kqueue` should only be used for blocking waits, never for polling** — and since each of our three paths already has its own natural blocking primitive, merging them brings no benefit.
 
-### 为什么控制通道必须独占一个非事件线程
+### Why the Control Channel Must Run on a Dedicated Non-Event Thread
 
-libusb 的同步 API（`libusb_control_transfer` / `libusb_interrupt_transfer`）
-开头就是 `if (usbi_handling_events(ctx)) return LIBUSB_ERROR_BUSY;` ——
-这是个 TLS 判断，从事件线程（含任何 transfer 回调内部）调用必然失败。
-所以状态机不能放进事件循环，必须有自己的线程。`main` 把主线程给了它。
+libusb's synchronous APIs (`libusb_control_transfer` / `libusb_interrupt_transfer`) begin with `if (usbi_handling_events(ctx)) return LIBUSB_ERROR_BUSY;` — a thread-local check that guarantees failure if called from the event thread (including inside any transfer callback). Thus the state machine cannot run inside the USB event loop and requires its own thread.
 
-### 为什么不用 `THREAD_TIME_CONSTRAINT_POLICY`
+### Why `THREAD_TIME_CONSTRAINT_POLICY` Is Not Used
 
-它的语义是「每 period 保证 computation 的 CPU」，适合严格周期性的音频渲染线程。
-我们三个线程都长时间阻塞在 `read()` / `write()` / `handle_events()` 上，
-设 TC 会（a）清掉线程的 QoS class，（b）超支 computation 时被内核降级。
-另外 macOS **没有** CPU 亲和性 API（`thread_affinity_policy` 在 Apple Silicon 上
-基本无效），所以「绑核」不可行，只能调优先级。
+Time-constraint scheduling guarantees `computation` CPU time per `period`, which suits strictly periodic real-time audio threads. Our threads spend most of their time blocked in `read()`, `write()`, or `handle_events()`. Enabling time-constraint policy would (a) strip the thread's QoS class and (b) cause the kernel to demote the thread whenever a burst exceeds `computation`. Furthermore, macOS has **no** CPU affinity API (`thread_affinity_policy` is a no-op on Apple Silicon), so priority/QoS classes are the right mechanism.
 
 ---
 
-## 5. 性能设计
+## 5. Performance Design
 
-完整数字见 [BENCHMARKS.md](BENCHMARKS.md)。核心结论：
+See [BENCHMARKS.md](BENCHMARKS.md) for full measurements. Core principle:
 
-> **优化目标是每帧的系统调用次数，不是 CPU 周期。**
+> **The optimization target is system calls per frame, not CPU cycles.**
 
-每帧的 CPU 成本合计约 70 ns（RNDIS 编码 ~15 + 队列搬运 ~55 + 统计 ~0.5），
-而一次系统调用约 700 ns —— **系统调用是 CPU 的 10 倍**。macOS 上系统调用比
-Linux 贵 3~10 倍，这是整个设计的第一约束。
+Per-frame CPU cost totals ~70 ns (RNDIS codec ~15 ns + ring transfer ~55 ns + stats ~0.5 ns), whereas a syscall costs ~700–2100 ns — **an order of magnitude more than CPU processing**.
 
-由此推出四条措施：
+This leads to four primary optimizations:
 
-| 措施 | 机制 | 效果 |
+| Optimization | Mechanism | Effect |
 |---|---|---|
-| RX 批量写 | `BIOCSBATCHWRITE`（macOS 14+，特性探测，失败回落逐帧） | 一批帧一次系统调用 |
-| TX 多包聚合 | RNDIS 允许一次 bulk OUT 承载多个 `PACKET_MSG` | 一批帧一次 USB 往返 |
-| 让设备也聚合 | `INITIALIZE_MSG` 里把 `MaxTransferSize` 报大（默认 16 KiB） | **RX 吞吐的主要杠杆** |
-| 批量发布队列 | `FrameRing::BatchWrite/BatchRead`，一批只做一次 release store | 1514 字节帧提速 2.4 倍，64 字节 5.0 倍 |
+| RX batch write | `BIOCSBATCHWRITE` (macOS 14+, runtime feature detection, per-frame fallback) | One syscall per batch of frames |
+| TX multi-packet aggregation | RNDIS allows multiple `PACKET_MSG` records in a single bulk OUT transfer | One USB round-trip per batch of frames |
+| Device RX aggregation | Advertise a large `MaxTransferSize` in `INITIALIZE_MSG` (default 16 KiB) | **Primary lever for RX throughput** |
+| Batch-published lock-free ring | `FrameRing::BatchWrite/BatchRead` performs one release store per batch | 2.4× speedup for 1514B frames, 5.0× for 64B frames |
 
-### 为什么只拷贝一次、而不追求零拷贝
+### Why Single-Copy Instead of Zero-Copy
 
-RX 路径每帧一次 memcpy（USB 缓冲 → `FrameRing` 槽位）。追求零拷贝要求把 USB
-传输缓冲交给下游持有，就不能立刻 resubmit，得准备远多于「在飞传输数」的缓冲
-并引入归还机制 —— 而 memcpy 1514 字节只要 25~70 ns，是系统调用的 1/10。
-**为它做零拷贝是错误的优化方向。**
+The RX path performs one `memcpy` per frame (USB transfer buffer → `FrameRing` slot). True zero-copy would require handing ownership of USB transfer buffers downstream, preventing immediate resubmission and requiring a much larger buffer pool plus a return channel — whereas `memcpy` of 1514 bytes takes only 25–70 ns (a fraction of a syscall). **Pursuing zero-copy here would optimize the wrong thing.**
 
-TX 方向的零拷贝更是**根本不可行**：`struct bpf_hdr` 只有 20 字节，而 RNDIS 包头
-需要 44 字节，帧前空间差 24 字节；feth 的 `tx_headroom` 是 32 字节，同样不够。
+On the TX path, zero-copy is **architecturally impossible**: `struct bpf_hdr` is only 20 bytes, whereas an RNDIS packet header requires 44 bytes (leaving a 24-byte headroom deficit), and `feth`'s `tx_headroom` is 32 bytes (still insufficient).
 
-### 缓存行是 128 字节
+### 128-Byte Cache Lines
 
-`sysctl hw.cachelinesize` 报 **128**（不是习惯性的 64）。按 64 对齐的话，
-生产者与消费者的索引仍会落在同一条 128 字节缓存行上，false sharing 依然存在。
+`sysctl hw.cachelinesize` on Apple Silicon reports **128** (not the traditional 64). Aligning to 64 bytes would leave producer and consumer indices on the same 128-byte cache line, causing false sharing.
 
-刻意**不用** `std::hardware_destructive_interference_size`：它在 Apple libc++ 上
-确实存在（在 `<new>` 里），但报的是 **256**，与真实的 128 不符 —— 用它会把所有
-填充翻倍。
+We deliberately avoid `std::hardware_destructive_interference_size`: while Apple libc++ defines it in `<new>`, it reports **256**, which would needlessly double all padding.
 
 ---
 
-## 6. 错误处理
+## 6. Error Handling
 
-| 路径 | 手段 | 理由 |
+| Path | Mechanism | Rationale |
 |---|---|---|
-| 初始化 / 控制 | `std::expected<T, Error>` | 失败绝大多数是「预期内的环境问题」（没插设备、没有 root、接口被占），调用方总要处理，不该靠异常 |
-| **数据热路径** | **返回计数 + 原子计数器** | `Error` 里的 `std::string` 会分配堆内存，25k~80k pps 下不可接受 |
+| Initialization / Control | `std::expected<T, Error>` | Most failures are expected environmental conditions (no device plugged in, non-root, interface busy) that callers must handle explicitly without exceptions |
+| **Data Hot Path** | **Return counts + atomic counters** | `std::string` inside `Error` allocates heap memory, which is unacceptable at 25k–80k pps |
 
-`Error` 携带来源域（errno / libusb / RNDIS_STATUS / 逻辑），`ToString()` 负责把
-「libusb 返回 -3」翻译成「LIBUSB_ERROR_ACCESS(-3)」。`WithContext` 支持叠加外层
-原因形成「外层：内层」的链条 —— 那个分隔符随语言变化（中文全角冒号、英文
-`": "`），所以由 `detail::ContextSeparator()` 提供，不写死在 `error.h` 里。
+`Error` carries an error domain (`errno`, `libusb`, `RNDIS_STATUS`, or logic), and `ToString()` formats domain codes (e.g., translating libusb `-3` into `LIBUSB_ERROR_ACCESS(-3)`). `WithContext` chains outer causes using a localized separator (`detail::ContextSeparator()`).
 
-错误消息本身全部来自文案表（见第 6b 节），不是字面量。
+All user-visible error messages come from the localization table (Section 6b), never raw string literals.
 
-**RNDIS 状态码到名字的映射只存在于 `rndis/protocol.cc` 一处**（单一来源）；
-`tk_common` 不认识 RNDIS，只输出十六进制数值，符号名由 rndis 层拼进上下文串。
-（此前在 `error.cc` 里也放了一份，5 个数值是错的，已删除。）
+**Mapping RNDIS status codes to symbolic names lives exclusively in `rndis/protocol.cc`** (single source of truth); `tk_common` has no knowledge of RNDIS and formats raw hex values, while the `rndis` layer attaches symbolic names to the context string.
 
 ---
 
-## 6b. 文案与多语言
+## 6b. Localization (Chinese / English)
 
-面向用户的文字（错误、日志、帮助、状态名）**一条都不写字面量**，全部集中在
-`include/tetherkitnext/common/messages.def`。该文件是一份 X-macro 清单，被展开三次
-分别生成 `Msg` 枚举、中文表与英文表 —— 三者同源，**结构上不可能出现某种语言
-漏了一条**。
+User-facing text (errors, logs, CLI help, state names) **never uses hardcoded string literals**; all strings live in `include/tetherkitnext/common/messages.def`. This X-macro table expands three times to generate the `Msg` enum, the Chinese string table, and the English string table from a single source — making it **structurally impossible for a message to be missing in one language**.
 
-| 取用方式 | 用途 | 是否分配 |
+| Accessor | Purpose | Allocates? |
 |---|---|---|
-| `Tr(Msg::kFoo, args...)` | 带参数，语义同 `std::format` | 会（返回 `std::string`） |
-| `Text(Msg::kFoo)` | 不带参数，返回 `string_view` | 不会，`noexcept` |
-| `TETHERKITNEXT_INFO_TR(Msg::kFoo, ...)` 等 | 打日志 | 级别没开时不求值 |
+| `Tr(Msg::kFoo, args...)` | Parameterized formatting (`std::format` semantics) | Yes (returns `std::string`) |
+| `Text(Msg::kFoo)` | Unparameterized lookup (`string_view`) | No, `noexcept` |
+| `TETHERKITNEXT_INFO_TR(Msg::kFoo, ...)` etc. | Logging macros | Arguments are not evaluated if the log level is disabled |
 
-**为什么不用 gettext**：要引入 libintl、构建期跑 msgfmt、运行期按路径查目录，
-换来的是「装到别的机器上找不到 `.mo` 于是全变英文」这类运行期故障。两种语言、
-几百条固定文案，编译进二进制的一张表最省事。
+**Why not `gettext`**: `gettext` requires linking `libintl`, running `msgfmt` at build time, and looking up `.mo` files on disk at runtime — introducing runtime failure modes when `.mo` files cannot be found. For two languages and a few hundred static strings, compiling the table directly into the binary is simpler and self-contained.
 
-**代价与对策**：格式串变成运行期查表，`std::format` 的编译期占位符校验就没了
-（`Tr` 内部走 `vformat`）。这道保障由 `tests/test_common_i18n.cc` 补回来 ——
-它遍历整张表，逐条比对两种语言引用的参数下标与表现类型，并检查下标连续、
-未在同一串里混用自动与手工编号。占位符写错会在 `ctest -R common.i18n` 当场红掉，
-而不是等到某条日志在用户机器上渲染成半句话。
+**Trade-off and safeguard**: because format strings are looked up at runtime, `std::format`'s compile-time placeholder check is bypassed (`Tr` uses `vformat` internally). `tests/test_common_i18n.cc` restores this guarantee by iterating over every entry in `messages.def`, verifying that both languages reference identical argument indices and format specifiers, and checking that indices are contiguous without mixing automatic and manual indexing. Any placeholder mismatch fails immediately under `ctest -R common.i18n`.
 
-`Tr()` 和 `error.h` 一样**禁止出现在数据热路径上**（它必然分配）。热路径需要
-文字时只能用 `Text()`。
+Like `Error`, `Tr()` is **forbidden on the data hot path** because it allocates; hot paths may only use `Text()`.
 
-语言由宿主决定：命令行看 `--lang` 与环境变量，GUI 通过 C ABI 的
-`tk_set_language` 推进来。这是**进程级单一状态**，不是每个会话一份 —— 日志与
-错误从多个线程产生，做成线程局部只会让同一次会话的输出出现两种语言。
+Language selection is controlled by the host process: the CLI inspects `--lang` and environment variables, while the GUI pushes language changes via C ABI `tk_set_language`. Language state is a **process-wide atomic** so all threads emit logs in a consistent language.
 
 ---
 
-## 7. 背压策略
+## 7. Backpressure Strategy
 
-| 位置 | 满了怎么办 | 理由 |
+| Location | Behavior When Full | Rationale |
 |---|---|---|
-| RX 队列（USB → BPF） | **丢弃并计数** | libusb 回调里不能阻塞（持锁），只能丢 |
-| TX 传输池（BPF → USB） | **丢弃并计入背压事件** | 等待会让 BPF 内核缓冲堆积，最终由内核丢 —— 那是运维**看不见**的丢包。在用户态丢并计数才能定位瓶颈。TCP 会重传，UDP 本来允许丢 |
-| 暂停期间的 RX | **不丢**，队列里的帧等恢复后继续送 | 链路只是暂时 down，帧仍然有效 |
-| 暂停期间的 TX | **丢弃并计数** | RNDIS 软复位期间设备会丢弃所有未完成的数据包，攒着只是浪费内存 |
+| RX Ring (USB → BPF) | **Drop and increment counter** | libusb callbacks cannot block (they hold internal locks) |
+| TX Transfer Pool (BPF → USB) | **Wait briefly for an in-flight transfer to complete; drop and count only on timeout/shutdown** | Waiting absorbs micro-bursts in the 4 MiB BPF buffer without premature frame loss (see [BENCHMARKS.md](BENCHMARKS.md)) |
+| RX During Pause | **Retain** queued frames and deliver after resume | The link is only transiently paused; queued frames remain valid |
+| TX During Pause | **Drop and increment counter** | During an RNDIS soft reset, the device discards all pending packets anyway |
 
 ---
 
-## 8. 拆除顺序（避免 use-after-free）
+## 8. Teardown Order (Preventing Use-After-Free)
 
-`libusb_close` **不会**回收在飞 transfer —— 它只是 `list_del` + 把
-`dev_handle` 置空并打一条日志，**不调回调、不释放内存**；之后 IOKit 中止仍会让
-`darwin_async_io_callback` 在 libusb 内部线程上跑。若那时已 `free` 就是 UAF。
-这是 libusb 用法里最常见的崩溃源。
+`libusb_close` **does not** reap in-flight transfers — it merely removes the device from the list, nulls out `dev_handle`, and logs a warning **without invoking callbacks or freeing transfer memory**. Subsequent IOKit aborts can still trigger `darwin_async_io_callback` on libusb's internal thread; freeing transfers before those callbacks finish causes a use-after-free crash.
 
-正确顺序（`Runtime::Stop()` 与 `UsbDataChannel::Shutdown()` 共同实现）：
+The required teardown order (implemented jointly by `Runtime::Stop()` and `UsbDataChannel::Shutdown()`):
 
 ```
 1. Bridge::Stop()
-     ├ 置停机标志
-     ├ link->Interrupt()        打断 BPF 阻塞读
-     ├ join rx-inject / tx-extract
+     ├ Set shutdown flag
+     ├ link->Interrupt()        Break blocking BPF read
+     ├ Join rx-inject / tx-extract threads
      └ DataChannel::Shutdown()
-          ├ 置停机标志（回调不再 resubmit）
-          ├ cancel 全部在飞 transfer
-          ├ **等在飞计数归零**（每个回调都回来了）
-          └ 才 libusb_free_transfer + 释放缓冲
-2. 关 BPF
-3. 销毁 feth 网卡对
-4. 状态机 Stop()：SET filter=0 → HALT
-5. 释放 USB 接口、关闭句柄
-6. 停 libusb 事件线程、libusb_exit
+          ├ Set shutdown flag (callbacks stop resubmitting)
+          ├ Cancel all in-flight transfers
+          ├ **Wait for in-flight count to reach zero** (every callback has returned)
+          └ Only then call libusb_free_transfer + free buffers
+2. Close BPF fd
+3. Destroy feth interface pair
+4. StateMachine::Stop(): SET filter=0 → HALT
+5. Release USB interfaces and close device handle
+6. Stop libusb event thread and call libusb_exit
 ```
 
-两个必须记住的约束：
+Two critical invariants:
 
-- **第 1 步里「等在飞计数归零」绝不能在 libusb 事件线程上等** —— 递减它的回调
-  正是在那个线程上跑的，在那里等就是自己等自己，必然死锁。
-- 等待超时时**故意泄漏**内存而不是冒险释放。泄漏几百 KB 远好于 UAF 崩溃，
-  并打出明确的错误日志说明这一决定。
+- **Waiting for the in-flight counter to reach zero in Step 1 must never happen on the libusb event thread** — the callbacks that decrement the counter run on that thread, so waiting there would deadlock.
+- If waiting times out, **deliberately leak** the transfer buffers rather than freeing them while IOKit may still access them, and log an explicit error.
 
 ---
 
-## 9. 可测试性
+## 9. Testability
 
-开发机既**没有 USB 设备**（`libusb_get_device_list` 返回 0）也**没有 root**。
-因此每个需要外部资源的边界都做了接口抽象：
+Because development and CI machines may have **neither a physical RNDIS device nor root privileges**, every external resource boundary is abstracted behind an interface:
 
-| 接口 | 生产实现 | 测试实现 |
+| Interface | Production Implementation | Test Implementation |
 |---|---|---|
 | `rndis::ControlChannel` | `usb::UsbControlChannel` | `testing::MockControlChannel` |
 | `usb::DataChannel` | `usb::UsbDataChannel` | `testing::MockDataChannel` |
 | `net::LinkBackend` | `net::BpfLink` | `net::LoopbackLink` |
 
-**抽象的粒度是「批」而不是「帧」**：一次虚调用处理几十上百帧，摊到每帧的开销
-远小于 1 ns。如果做成每帧一次虚调用就不可接受了 —— 那是刻意避开的设计。
+**Abstraction granularity is per-batch rather than per-frame**: one virtual call processes dozens or hundreds of frames, amortizing virtual dispatch overhead to well under 1 ns per frame.
 
-于是状态机的全部路径（含设备插队推送、保活失败、复位重放）、桥接层的全部路径
-（含双向并发、背压、暂停、有流量时停机）都能离线测试，并在 ThreadSanitizer 下
-验证。需要 root 的 feth/BPF 用例默认**跳过而非失败**，用
-`TETHERKITNEXT_ROOT_TESTS=1` 显式开启。
+This allows the entire state machine (including out-of-order device indications, keepalive timeouts, and soft-reset replay) and the entire data bridge (bidirectional load, backpressure, pause/resume, and shutdown under load) to be tested offline and verified under ThreadSanitizer. Root-only `feth`/BPF tests are **skipped rather than failed** by default and enabled via `TETHERKITNEXT_ROOT_TESTS=1`.
 
 ---
 
-## 10. 私有 ABI 的使用与风险
+## 10. Private ABI Usage and Risk Mitigation
 
-本项目用到三处不在公开 SDK 里的东西：
+TetherKitNext uses three interfaces not present in the public macOS SDK headers:
 
-| 私有 ABI | 用途 | 风险与对策 |
+| Private ABI | Purpose | Risk & Mitigation |
 |---|---|---|
-| `struct ifdrv` | `SIOCSDRVSPEC` 的参数 | 大小参与 ioctl 编号计算，算错只会得到不存在的 ioctl（返回 `ENOTTY`，不会做危险的事）。用 `static_assert` 把大小=40、各字段偏移、以及推导出的 `SIOCSDRVSPEC=0x8028697b` 全部钉死 |
-| `struct if_fake_request` | feth peer 配对 | 该文件在 xnu-7195(macOS 11) → xnu-12377(macOS 26) 的所有发布 tag 下内容完全相同，且 Apple 自己的 `ifconfig fethN peer fethM` 就依赖它 —— 实际上已被冻结。同样有 `static_assert`（大小=160） |
-| `BIOCSBATCHWRITE` / `BIOCSNOTSTAMP` | 性能优化 | **纯可选**。一律做运行时特性探测，失败回落到通用路径，不影响功能正确性 |
+| `struct ifdrv` | Parameter to `SIOCSDRVSPEC` | Structure size is encoded into the ioctl number; a size mismatch produces a non-existent ioctl (`ENOTTY`, safe failure). `static_assert` locks down `sizeof == 40`, field offsets, and `SIOCSDRVSPEC == 0x8028697b` |
+| `struct if_fake_request` | `feth` peer pairing | Identical across every XNU release tag from xnu-7195 (macOS 11) through xnu-12377 (macOS 26), and depended upon by Apple's own `/sbin/ifconfig fethN peer fethM`. Locked down with `static_assert(sizeof == 160)` |
+| `BIOCSBATCHWRITE` / `BIOCSNOTSTAMP` | Performance optimizations | **Strictly optional**. Probed at runtime via ioctl; if unsupported, falls back to standard per-frame writes without affecting correctness |
 
-一句话：**功能性 ABI 经过 15 年验证且有 `static_assert` 兜底；优化性 ABI 做特性
-探测。两者都不会静默走错路径。**
+In short: **functional ABIs have remained stable for 15+ years and are guarded by `static_assert` and CI ABI gates; optimization ABIs use runtime feature detection with safe fallbacks.**
 
 ---
 
-## 11. 代码规范
+## 11. Coding Conventions
 
-| 类别 | 约定 | 例 |
+| Category | Convention | Example |
 |---|---|---|
-| 命名空间 | `lower_case` | `tetherkitnext::rndis` |
-| 类型 | `CamelCase` | `PacketMessageWriter` |
-| 函数与方法（含访问器） | `CamelCase` | `MaxFrameBytes()` |
-| 局部变量与参数 | `lower_case` | `frame_length` |
-| 私有成员 | `lower_case_` | `bulk_in_endpoint_` |
-| 常量 / 枚举值 | `k` + `CamelCase` | `kPacketMsgHeaderBytes` |
-| 文件 | `snake_case`，`.h` / `.cc` | `packet_codec.h` |
-| 文案标识 | `k` + 模块前缀 + `CamelCase` | `kNetBpfBindFailed`、`kCliUnknownOption` |
+| Namespace | `lower_case` | `tetherkitnext::rndis` |
+| Types | `CamelCase` | `PacketMessageWriter` |
+| Functions & Methods (including accessors) | `CamelCase` | `MaxFrameBytes()` |
+| Local variables & parameters | `lower_case` | `frame_length` |
+| Private member variables | `lower_case_` | `bulk_in_endpoint_` |
+| Constants / Enumerator values | `k` + `CamelCase` | `kPacketMsgHeaderBytes` |
+| Files | `snake_case`, `.h` / `.cc` | `packet_codec.h` |
+| Message IDs | `k` + module prefix + `CamelCase` | `kNetBpfBindFailed`, `kCliUnknownOption` |
 
-访问器也用 `CamelCase`（而非标准库风格的 `lower_case`），是为了让
-`readability-identifier-naming` 能机械地全量检查，不留「凭记忆遵守」的例外。
+Accessors also use `CamelCase` (rather than STL-style `lower_case`) so that `readability-identifier-naming` can enforce naming mechanically without manual exceptions.
 
-`.clang-tidy` 里关掉了一批对底层系统编程不适用的检查，每一条都写了理由。
-特别是 `performance-enum-size` 必须关掉 —— 本项目的协议枚举底层类型**必须**
-精确等于线格式的字段宽度（RNDIS 全是 LE32），按它的建议缩小会直接写坏线格式。
+`.clang-tidy` disables specific checks unsuitable for low-level systems code, with documented rationale for each. In particular, `performance-enum-size` is disabled because protocol enum underlying types **must** match exact wire field widths (LE32 in RNDIS).

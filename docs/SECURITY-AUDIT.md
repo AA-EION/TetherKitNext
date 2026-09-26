@@ -96,7 +96,7 @@ response could open `file://` or custom-scheme URLs.
 **L1. Root child processes inherited the full environment.** `ipconfig` and
 `route` now run with a fixed `PATH` and `LANG=C`.
 
-**L2. The CI ABI gate could never pass.** It searched the log for `创建了 feth`,
+**L2. The CI ABI gate could never pass.** It searched the log for a legacy Chinese message ("Created feth"),
 a string that disappeared when log messages were localized. It now pins
 `TETHERKITNEXT_LANG=en` and matches the current message.
 
