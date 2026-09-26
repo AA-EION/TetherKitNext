@@ -10,10 +10,6 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
-</p>
-
-<p align="center">
   <sub>By <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
 </p>
 
@@ -130,7 +126,7 @@ disconnect, or reopen the window. The connection keeps running even if you quit 
 **VPNs work.** In automatic (DHCP) mode, the connection is registered as a regular macOS
 network service, so VPN apps such as FortiClient can use it.
 
-**Language**: switch between System, English and 中文 at any time from the TetherKitNext menu, the
+**Language**: switch between System, English and Chinese at any time from the TetherKitNext menu, the
 menu bar panel, or Settings.
 
 **Updates**: TetherKitNext checks this project's GitHub releases once a day and tells you when
@@ -181,7 +177,7 @@ Tip: `sudo` doesn't always pass your language setting through, so use `--lang en
 | **Stuck on "Allow TetherKitNext in System Settings"** | Open **System Settings › General › Login Items & Extensions** and turn TetherKitNext on. Make sure the app is in your **Applications** folder, not running from the downloaded disk image. |
 | **Connected, but no internet** | On the phone, check that mobile data or Wi-Fi actually works. On the **Network** page, turn on "route all traffic through this interface" if your Mac is also connected to another network. |
 | **Error about another program using the device** | Something else is holding the phone's USB connection, often an old HoRNDIS install. Remove it and restart. |
-| **Slow speeds** | Use a USB 3 port and a short, good cable. Close other tethering apps. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) (in Chinese) for tuning. |
+| **Slow speeds** | Use a USB 3 port and a short, good cable. Close other tethering apps. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for tuning. |
 | **Anything else** | The **Activity** page shows exactly what happened. Include it when you open an [issue](https://github.com/AA-EION/TetherKitNext/issues). |
 
 ---
@@ -229,7 +225,7 @@ into macOS. macOS treats them like any other network card: it gets an address, r
 and so on. Everything runs outside the kernel, so the worst a bug can do is make the app quit.
 It can't crash your Mac.
 
-More detail (in Chinese): [docs/DESIGN.md](docs/DESIGN.md) ·
+More detail: [docs/DESIGN.md](docs/DESIGN.md) ·
 [docs/RNDIS-PROTOCOL.md](docs/RNDIS-PROTOCOL.md) ·
 [docs/GUI-ARCHITECTURE.md](docs/GUI-ARCHITECTURE.md)
 
@@ -282,7 +278,7 @@ Repository secrets for signed releases:
 | `NOTARY_KEY_P8` | An App Store Connect API key (.p8), base64-encoded |
 | `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` | That key's ID and your issuer ID, from App Store Connect |
 
-Implementation notes and lessons learned are in [AGENTS.md](AGENTS.md) (in Chinese).
+Implementation notes and lessons learned are in [AGENTS.md](AGENTS.md).
 
 ---
 
