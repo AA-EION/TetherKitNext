@@ -1,16 +1,16 @@
-// 孤儿 feth 网卡的登记与清理。
+// Registration and cleanup of orphaned feth NICs.
 //
-// ★ 要解决的问题 ★
-//   FethInterface 是 RAII 的，正常退出时网卡会被销毁。但**进程被 SIGKILL 时
-//   析构根本不跑**，网卡就永远留在内核里了 —— 而 SIGKILL 是任何信号处理器都
-//   拦不住的，所以「装个信号处理器」解决不了这件事。
+// * The problem to solve *
+//   FethInterface is RAII, and on normal exit the NIC is destroyed. But **when a process is SIGKILLed
+//   destructors do not run at all**, and the NIC stays in the kernel forever -- and SIGKILL cannot be intercepted by any signal
+//   handler, so "install a signal handler" cannot solve this.
 //
-//   唯一可靠的兜底是把创建过的接口名落盘，下次启动时清理。本文件就是那个落盘
-//   与清理的实现。
+//   The only reliable backstop is to persist the names of created interfaces to disk and clean up on the next launch. This file is the implementation
+//   of that persistence and cleanup.
 //
-// ★ 为什么不是「启动时销毁所有 feth」★
-//   feth 是公共设施，别的程序（或用户手工 ifconfig）也可能在用。只销毁我们
-//   自己登记过的，才不会误伤。
+// * Why not "destroy all feth at startup" *
+//   feth is a shared facility, and other programs (or the user manually running ifconfig) may be using it too. Destroying only the ones
+//   we registered ourselves avoids collateral damage.
 #include <signal.h>
 #include <unistd.h>
 
@@ -43,14 +43,14 @@ using tetherkitnext::capi::ClearError;
 using tetherkitnext::capi::FillGenericError;
 using tetherkitnext::capi::IsValidFethName;
 
-/// 登记文件路径。
+/// Path of the registry file.
 ///
-/// 放 /var/run（= /private/var/run）而不是 /tmp：这里只有 root 可写，而能写
-/// 这个文件就等于能让我们去销毁任意名字的接口 —— 虽然名字有 feth<数字> 的
-/// 校验兜底，但把权限收紧成 root-only 才是正确的第一道防线。
+/// Placed in /var/run (= /private/var/run) rather than /tmp: only root can write here, and being able to write
+/// this file is equivalent to being able to make us destroy interfaces of arbitrary names -- although the feth<digits> name validation
+/// is a backstop, tightening permissions to root-only is the correct first line of defense.
 ///
-/// 系统重启时 /var/run 会被清空，而重启也会顺带清掉所有 feth —— 两者的生命周期
-/// 恰好一致，不需要额外处理陈旧条目。
+/// At system reboot /var/run is cleared, and a reboot also clears all feth along the way -- the lifecycles of the two
+/// coincide exactly, so no extra handling of stale entries is needed.
 constexpr const char* kRegistryPath = "/var/run/tetherkitnext-interfaces";
 
 std::mutex& RegistryMutex() {
@@ -74,7 +74,7 @@ struct RegistryEntry {
   }
   std::string line;
   while (std::getline(input, line)) {
-    // 去掉可能的尾随空白，再做一次名字校验 —— 文件内容永远当作不可信输入。
+    // Strip possible trailing whitespace, then validate the name once more -- file content is always treated as untrusted input.
     while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
       line.pop_back();
     }
@@ -98,7 +98,7 @@ struct RegistryEntry {
 }
 
 void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
-  // 空列表就把文件删掉，省得留一个空文件让人以为还有残留。
+  // If the list is empty, delete the file, to avoid leaving an empty file that makes people think there are still leftovers.
   if (entries.empty()) {
     ::unlink(kRegistryPath);
     return;
@@ -127,13 +127,13 @@ void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
   return ::kill(pid, 0) == 0 || errno == EPERM;
 }
 
-/// 安装给 net::SetInterfaceRegistry 的回调。
+/// The callback installed for net::SetInterfaceRegistry.
 ///
-/// 每次创建/销毁都整读整写一遍文件。听起来浪费，但一次会话只创建两张网卡，
-/// 而换成「只追加」就得处理销毁时的行删除与文件增长，复杂度不值得。
+/// Every create/destroy reads and rewrites the whole file. It sounds wasteful, but a session creates only two NICs,
+/// and switching to "append only" would require handling line deletion on destroy and file growth, which is not worth the complexity.
 void OnInterfaceChanged(std::string_view name, bool created) noexcept {
-  // 整个回调必须 noexcept —— 销毁路径可能在析构里。fstream 默认不抛异常
-  // （没有 exceptions() 设置），SystemConfiguration 的清理则显式兜住异常。
+  // The whole callback must be noexcept -- the destroy path may be in a destructor. fstream does not throw by default
+  // (no exceptions() setting), while the SystemConfiguration cleanup explicitly catches exceptions.
   {
     const std::lock_guard<std::mutex> guard(RegistryMutex());
     std::vector<RegistryEntry> entries = ReadRegistry();
@@ -152,8 +152,8 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
   }
 
   if (!created) {
-    // 网卡没了，为它注册的网络服务也该跟着走，否则会在「系统设置 → 网络」里
-    // 留下一条指向不存在接口的死条目。
+    // When the NIC is gone, the network service registered for it should go too, otherwise a dead entry pointing to a nonexistent interface
+    // would be left in "System Settings -> Network".
     try {
       if (const auto status = tetherkitnext::capi::RemoveManagedNetworkService(name); !status) {
         TETHERKITNEXT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, status.error().ToString());
@@ -184,25 +184,25 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
     return TK_ERR_PERMISSION;
   }
 
-  // ⚠️ 销毁循环里**绝不能**持有 RegistryMutex：DestroyInterfaceByName 成功后会
-  // 触发登记回调，而回调要拿同一把锁 —— std::mutex 不可重入，持着进去就是当场
-  // 自等死锁。所以这里把「读」「销毁」「收尾」拆成三段，锁只在头尾两段持有。
+  // WARNING: The destroy loop **must never** hold RegistryMutex: after DestroyInterfaceByName succeeds it
+  // triggers the registration callback, and the callback takes the same lock -- std::mutex is not reentrant, and going in holding it is an instant
+  // self-wait deadlock. So "read", "destroy" and "wrap-up" are split into three phases here, with the lock held only in the first and last.
   std::vector<RegistryEntry> entries;
   {
     const std::lock_guard<std::mutex> guard(RegistryMutex());
     entries = ReadRegistry();
   }
 
-  // Setup:/Network/Service 会跨进程乃至重启持久化。先扫掉带 TetherKitNext 标记的
-  // feth 服务，才能兜住上次 helper 被 SIGKILL、系统随后又重启的情况：那时
-  // /var/run 的接口登记已经没了，但网络偏好设置里的服务仍可能留着。
+  // Setup:/Network/Service persists across processes and even reboots. Sweeping away the feth services marked TetherKitNext first
+  // is what covers the case where the helper was SIGKILLed last time and the system then rebooted: by then
+  // the interface registration in /var/run is gone, but the services in the network preferences may still remain.
   //
   // Skipped while another live process still owns registered interfaces: its
   // services are not stale, and deleting them would cut that session's
   // network. The next cleanup after it exits catches anything left behind.
   //
-  // 失败只记日志：清网卡比清服务重要得多，不能让一个服务删不掉就把整轮兜底
-  // 清理挡住（残留的 feth 会一直占着内核资源）。
+  // Failures are only logged: cleaning NICs matters far more than cleaning services, and one service that cannot be deleted must not block the whole round of backstop
+  // cleanup (a leftover feth would keep occupying kernel resources).
   const bool another_session_alive = std::ranges::any_of(
       entries, [](const RegistryEntry& entry) { return IsOtherLiveProcess(entry.owner); });
   if (!another_session_alive) {
@@ -223,8 +223,8 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
       still_owned.push_back(entry);
       continue;
     }
-    // 销毁失败最常见的原因是接口已经不存在了（比如系统重启过），那正是我们
-    // 想要的结果。真正的失败只记日志，不阻断其余条目。
+    // The most common reason for a destroy failure is that the interface no longer exists (for example the system was rebooted), which is exactly what we
+    // want. Real failures are only logged and do not block the remaining entries.
     if (const auto status = tetherkitnext::net::DestroyInterfaceByName(entry.name); status) {
       ++removed;
       continue;
@@ -232,8 +232,8 @@ tk_result_t tk_cleanup_orphan_interfaces(size_t* out_removed, tk_error_t* out_er
     TETHERKITNEXT_DEBUG_TR(Msg::kCapiOrphanAlreadyGone, entry.name);
   }
 
-  // 收尾：能销毁的已经由回调逐行删掉了，剩下的是「本来就不在内核里」的条目，
-  // 留着只会让下次启动重复尝试，一并清空 —— but keep entries that are still
+  // Wrap-up: those that could be destroyed were already deleted row by row by the callback, and what remains are entries that "were not in the kernel to begin with",
+  // and leaving them would only make the next launch retry repeatedly, so clear them all -- but keep entries that are still
   // owned by a live process.
   {
     const std::lock_guard<std::mutex> guard(RegistryMutex());

@@ -1,24 +1,24 @@
 import Foundation
 import TetherKitNextIPC
 
-/// 与 tetherkitnext-helper 通信的客户端。
+/// The client that communicates with tetherkitnext-helper.
 ///
-/// 把「基于 reply block 的 XPC」包成 async/await。看着琐碎，但有一处必须小心：
-/// NSXPCConnection 的错误处理块与方法的 reply 块**可能都被调用**（比如请求已
-/// 发出、连接随后断开），而 CheckedContinuation 被 resume 两次是直接崩溃。
-/// 因此每次调用都用 ContinuationGuard 包一层，保证只兑现一次。
+/// Wraps "reply-block based XPC" into async/await. It looks trivial, but there is one place that needs care:
+/// NSXPCConnection's error-handling block and the method's reply block **may both be called** (for example the request has already been
+/// sent and the connection then drops), and a CheckedContinuation resumed twice is a direct crash.
+/// So every call is wrapped in a ContinuationGuard, guaranteeing it is fulfilled only once.
 /// `@unchecked Sendable`: the cached connection is guarded by `connectionLock`;
 /// everything else is immutable. AppModel (main actor) awaits these calls
 /// while XPC replies arrive on XPC's own queues.
 final class HelperClient: @unchecked Sendable {
     enum Failure: LocalizedError {
-        /// 连不上 —— 最常见的原因是 helper 还没安装。
+        /// Cannot connect -- the most common reason is that the helper is not installed yet.
         case unreachable(String)
-        /// helper 明确返回了错误。
+        /// The helper explicitly returned an error.
         case helper(String)
-        /// helper 复核授权没通过 —— 多半是凭据过期了，重新弹框再来一次就行。
+        /// The helper's authorization verification did not pass -- most likely the credential expired, and popping up the dialog again is enough.
         case authorizationRejected(String)
-        /// 应答解不出来（两端版本不一致）。
+        /// The reply cannot be decoded (the versions on the two ends are inconsistent).
         case malformedResponse
 
         var errorDescription: String? {
@@ -37,17 +37,17 @@ final class HelperClient: @unchecked Sendable {
             return false
         }
 
-        /// 是否值得「重新取一次授权再试」。
+        /// Whether it is worth "fetching the authorization again and retrying".
         var isAuthorizationProblem: Bool {
             if case .authorizationRejected = self { return true }
             return false
         }
     }
 
-    /// 保证一个 continuation 只被兑现一次。
+    /// Guarantees a continuation is fulfilled only once.
     ///
-    /// XPC 的错误块和 reply 块存在都被调用的可能，而重复 resume 会崩溃 ——
-    /// 这个坑只在「请求发出后连接才断」这种时序上出现，很难靠测试撞到。
+    /// It is possible for XPC's error block and reply block to both be called, and resuming twice crashes --
+    /// this pitfall appears only in timing like "the connection drops after the request is sent", and is hard to hit through tests.
     private final class ContinuationGuard<T: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<T, Error>?
@@ -79,7 +79,7 @@ final class HelperClient: @unchecked Sendable {
         cachedConnection?.invalidate()
     }
 
-    /// 取（必要时创建）到 helper 的连接。
+    /// Gets (creating if necessary) the connection to the helper.
     private func connection() -> NSXPCConnection {
         connectionLock.withLock {
             if let existing = cachedConnection {
@@ -94,8 +94,8 @@ final class HelperClient: @unchecked Sendable {
                 created.setCodeSigningRequirement(requirement)
             }
 
-            // 连接断掉后必须丢弃缓存，否则后续调用会一直打在一条死连接上，
-            // 表现为「helper 明明装好了却一直连不上」。
+            // After the connection drops the cache must be discarded, otherwise later calls would keep hitting a dead connection,
+            // showing up as "the helper is clearly installed but can never be connected to".
             let invalidate: @Sendable () -> Void = { [weak self] in
                 self?.connectionLock.withLock { self?.cachedConnection = nil }
             }
@@ -108,7 +108,7 @@ final class HelperClient: @unchecked Sendable {
         }
     }
 
-    /// 发一次调用。`body` 拿到代理与守卫，负责发起请求并兑现结果。
+    /// Makes one call. `body` gets the proxy and the guard, and is responsible for issuing the request and fulfilling the result.
     private func invoke<T: Sendable>(
         _ body: @escaping (TetherKitNextHelperProtocol, ContinuationGuard<T>) -> Void
     ) async throws -> T {
@@ -125,7 +125,7 @@ final class HelperClient: @unchecked Sendable {
         }
     }
 
-    /// 「返回一个 Codable 或一条错误」这种应答的通用处理。
+    /// The generic handling of replies of the kind "return a Codable or an error".
     private func decode<T: Decodable & Sendable>(_ type: T.Type, data: Data?, message: String?,
                                       into guarded: ContinuationGuard<T>) {
         if let message {
@@ -139,7 +139,7 @@ final class HelperClient: @unchecked Sendable {
         guarded.resume(returning: value)
     }
 
-    // MARK: - 探测（不需要授权）
+    // MARK: - Probing (no authorization needed)
 
     func helperVersion() async throws -> String {
         try await invoke { proxy, guarded in
@@ -192,16 +192,16 @@ final class HelperClient: @unchecked Sendable {
         }
     }
 
-    /// 把界面语言告诉 helper。**失败静默吞掉** —— 语言没同步上只是日志卡里
-    /// 混了另一种语言，不该让它把「连不上 helper」的错误弹给用户（正常启动
-    /// 顺序里 helper 可能还没装）。
+    /// Tells the helper the UI language. **Failures are swallowed silently** -- the language failing to sync only means the log card
+    /// mixes in another language, and it should not pop the "cannot connect to helper" error to the user (in the normal startup
+    /// order the helper may not be installed yet).
     func setLanguage(_ language: Language) async {
         _ = try? await invoke { proxy, guarded in
             proxy.setLanguage(language.rawValue) { guarded.resume(returning: ()) }
         }
     }
 
-    // MARK: - 特权操作（需要授权凭据）
+    // MARK: - Privileged operations (authorization credential needed)
 
     func startSession(authorization: Data, configuration: SessionConfiguration) async throws {
         let payload = try JSONEncoder().encode(configuration)

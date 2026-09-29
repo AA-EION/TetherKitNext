@@ -1,22 +1,22 @@
-// 虚拟网卡的上网方式配置：DHCP / 静态 IP / 撤销，以及真实生效状态的回读。
+// Configuration of the virtual NIC's connectivity method: DHCP / static IP / revoke, plus readback of the actual in-effect state.
 //
-// ★ 为什么 DHCP 要建立真正的 macOS 网络服务 ★
+// * Why DHCP establishes a real macOS network service *
 //
-//   `ipconfig set` 只建立 State:/Network/Service 下的临时服务。普通流量能用，
-//   但 NetworkExtension 接管路由时不会把这种服务当作可靠的底层路径：VPN
-//   provider 会在 feth0 明明仍有地址和 scoped 路由时得到 "No network route"。
+//   `ipconfig set` only establishes a temporary service under State:/Network/Service. Ordinary traffic can use it,
+//   but when NetworkExtension takes over routing it does not treat such a service as a reliable underlying path: a VPN
+//   provider gets "No network route" even though feth0 still has an address and a scoped route.
 //
-//   DHCP 模式因此经 SCPreferences / SCNetworkService 在当前网络集里注册 feth。
-//   feth 没有 IOKit 节点，公开 API 枚举不到；managed_network_service.cc 只用
-//   Apple 自己导出的 BSD-name constructor SPI 补出 SCNetworkInterface，后续服务、
-//   协议、提交与应用全部走公开 API。服务随 feth 销毁而移除。
+//   DHCP mode therefore registers feth in the current network set via SCPreferences / SCNetworkService.
+//   feth has no IOKit node, so public APIs cannot enumerate it; managed_network_service.cc uses only
+//   the BSD-name constructor SPI that Apple itself exports to fill in the SCNetworkInterface, and the subsequent service,
+//   protocol, commit and apply all go through public APIs. The service is removed when the feth is destroyed.
 //
-// ★ 静态 IP 的 DNS 是「尽力而为 + 回读验证」★
+// * The DNS of a static IP is "best effort + readback verification" *
 //
-//   IPConfiguration 只在 DHCP 模式下发布 DNS（那是从 DHCP 选项里来的）。
-//   MANUAL 模式没有 DNS 来源，我们只能往它建立的那个服务上补一个 DNS 键。
-//   这一手**未经真机验证**，所以绝不向上层承诺成功：tk_net_query 一律回读
-//   系统里真实生效的解析器，GUI 显示的是回读结果而不是我们下发的值。
+//   IPConfiguration publishes DNS only in DHCP mode (it comes from DHCP options).
+//   MANUAL mode has no DNS source, so all we can do is add a DNS key to the service it established.
+//   This move is **not verified on real hardware**, so success is never promised to upper layers: tk_net_query always reads back
+//   the resolvers actually in effect in the system, and what the GUI shows is the readback rather than the value we applied.
 #include <SystemConfiguration/SystemConfiguration.h>
 #include <arpa/inet.h>
 #include <net/if.h>
@@ -66,21 +66,21 @@ using tetherkitnext::capi::SharedDynamicStore;
 constexpr std::string_view kIpconfigPath = "/usr/sbin/ipconfig";
 constexpr std::string_view kRoutePath = "/sbin/route";
 
-/// DHCP 租约的等待上限。
+/// Upper limit of waiting for a DHCP lease.
 ///
-/// 取 10 秒的依据：DHCP 的 DISCOVER 重传是指数退避（1/2/4/8 秒），10 秒足够覆盖
-/// 前三次重传。再长就该告诉用户「对面大概没有 DHCP 服务器」而不是继续转圈。
+/// Basis for 10 seconds: DHCP DISCOVER retransmits use exponential backoff (1/2/4/8 seconds), and 10 seconds is enough to cover
+/// the first three retransmissions. Any longer and we should tell the user "there is probably no DHCP server on the other side" instead of spinning on.
 constexpr std::chrono::seconds kDhcpLeaseTimeout{10};
 constexpr std::chrono::milliseconds kDhcpPollInterval{250};
-/// 网关连续读到同一个值多少次才认为租约稳定了。
+/// How many consecutive times the gateway must read the same value before the lease is considered stable.
 ///
-/// 8 次 x 250 ms = 2 秒。依据：Android 的 USB 网络共享先给一份 464XLAT 过渡租约
-/// （192.0.0.2 / 网关 192.0.0.1），实测在 1 秒内就换成真正的网段；2 秒的静默期
-/// 足以跨过那次切换，又不会让「一次就到位」的设备白等太久。
+/// 8 times x 250 ms = 2 seconds. Basis: Android's USB tethering first hands out a 464XLAT transitional lease
+/// (192.0.0.2 / gateway 192.0.0.1), and measurement shows it is replaced by the real subnet within 1 second; a 2-second quiet period
+/// is enough to span that switch without making "right the first time" devices wait too long for nothing.
 constexpr int kDhcpStableSamples = 8;
 
 // ---------------------------------------------------------------------------
-// 参数校验
+// Parameter validation
 // ---------------------------------------------------------------------------
 
 [[nodiscard]] bool IsValidIpv4(std::string_view text) noexcept {
@@ -92,7 +92,7 @@ constexpr int kDhcpStableSamples = 8;
   return ::inet_pton(AF_INET, owned.c_str(), &parsed) == 1;
 }
 
-/// 校验接口名并翻译成人话错误。
+/// Validates the interface name and translates it into a plain-language error.
 [[nodiscard]] Status ValidateInterface(const char* interface_name) {
   if (interface_name == nullptr) {
     return std::unexpected(Error::Generic(Tr(Msg::kCapiInterfaceNameNull)));
@@ -104,20 +104,20 @@ constexpr int kDhcpStableSamples = 8;
 }
 
 // ---------------------------------------------------------------------------
-// 外部工具调用
+// External tool invocation
 // ---------------------------------------------------------------------------
 
-/// 跑一条工具命令，非零退出即视为失败并把它的输出原样带上。
+/// Runs a tool command; a non-zero exit is treated as failure and its output is carried along as-is.
 ///
-/// 原样带上很重要：ipconfig / route 的报错本身就是最准确的诊断信息，
-/// 我们二次转述只会丢信息。
+/// Carrying it as-is matters: the error output of ipconfig / route is itself the most accurate diagnostic information,
+/// and relaying it a second time ourselves would only lose information.
 [[nodiscard]] Status RunOrFail(std::string_view executable,
                                const std::vector<std::string>& arguments,
                                std::string_view what) {
   TETHERKITNEXT_ASSIGN_OR_RETURN(const ProcessResult result, RunTool(executable, arguments));
   if (!result.Succeeded()) {
     std::string detail{result.output};
-    // 工具的输出常带尾随换行，拼进一行错误里很难看。
+    // Tool output often has a trailing newline, which looks ugly when spliced into a single-line error.
     while (!detail.empty() && (detail.back() == '\n' || detail.back() == '\r')) {
       detail.pop_back();
     }
@@ -128,10 +128,10 @@ constexpr int kDhcpStableSamples = 8;
   return tetherkitnext::Ok();
 }
 
-/// 读接口当前的 IPv4 地址；没有地址时返回 std::nullopt。
+/// Reads the interface's current IPv4 address; returns std::nullopt when there is no address.
 ///
-/// 用 ioctl 而不是 `ipconfig getifaddr`：这是内核里的真实状态，不经过任何
-/// 中间层，而且不用 fork 一个进程。
+/// Uses ioctl rather than `ipconfig getifaddr`: this is the real state in the kernel, going through no
+/// intermediate layer, and needs no forked process.
 [[nodiscard]] std::optional<std::string> QueryAddress(std::string_view interface_name,
                                                       unsigned long request) noexcept {
   const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -158,14 +158,14 @@ constexpr int kDhcpStableSamples = 8;
 }
 
 // ---------------------------------------------------------------------------
-// SCDynamicStore 查询
+// SCDynamicStore queries
 // ---------------------------------------------------------------------------
 
-/// 找到 IPConfiguration 为该接口建立的服务 ID。
+/// Finds the service ID that IPConfiguration established for this interface.
 ///
-/// 做法是枚举 `State:/Network/Service/<id>/IPv4` 并按 `InterfaceName` 匹配，
-/// 而**不是**去猜服务 ID 的拼法。实测 `ipconfig set feth0 DHCP` 得到的 ID 是
-/// "DHCP-feth0"，看起来可以直接拼，但那是实现细节，按字段匹配才靠得住。
+/// The approach is to enumerate `State:/Network/Service/<id>/IPv4` and match by `InterfaceName`,
+/// rather than **guessing** how the service ID is spelled. Measured, the ID obtained from `ipconfig set feth0 DHCP` is
+/// "DHCP-feth0", which looks like it could be assembled directly, but that is an implementation detail, and matching by field is what is reliable.
 [[nodiscard]] std::optional<std::string> FindServiceId(SCDynamicStoreRef store,
                                                        std::string_view interface_name) {
   const ScopedCFRef<CFStringRef> pattern = MakeCFString("State:/Network/Service/[^/]+/IPv4");
@@ -189,7 +189,7 @@ constexpr int kDhcpStableSamples = 8;
       continue;
     }
 
-    // 从 "State:/Network/Service/<id>/IPv4" 里截出 <id>。
+    // Cut <id> out of "State:/Network/Service/<id>/IPv4".
     const std::string full = CopyToStdString(key);
     constexpr std::string_view kPrefix = "State:/Network/Service/";
     constexpr std::string_view kSuffix = "/IPv4";
@@ -210,7 +210,7 @@ constexpr int kDhcpStableSamples = 8;
       static_cast<CFDictionaryRef>(::SCDynamicStoreCopyValue(store, key.Get()))};
 }
 
-/// 取字典里的字符串字段；缺失时返回空串。
+/// Gets a string field from a dictionary; returns an empty string when missing.
 [[nodiscard]] std::string StringField(CFDictionaryRef dictionary, CFStringRef field) {
   if (dictionary == nullptr) {
     return {};
@@ -222,7 +222,7 @@ constexpr int kDhcpStableSamples = 8;
   return CopyToStdString(value);
 }
 
-/// 取字典里的字符串数组字段。
+/// Gets a string-array field from a dictionary.
 [[nodiscard]] std::vector<std::string> StringArrayField(CFDictionaryRef dictionary,
                                                         CFStringRef field) {
   std::vector<std::string> values;
@@ -244,7 +244,7 @@ constexpr int kDhcpStableSamples = 8;
   return values;
 }
 
-/// 全局默认路由当前指向哪个接口。
+/// Which interface the global default route currently points to.
 [[nodiscard]] std::string PrimaryInterface(SCDynamicStoreRef store) {
   const ScopedCFRef<CFStringRef> key = MakeCFString("State:/Network/Global/IPv4");
   const ScopedCFRef<CFDictionaryRef> global{
@@ -253,19 +253,19 @@ constexpr int kDhcpStableSamples = 8;
 }
 
 // ---------------------------------------------------------------------------
-// 下发
+// Applying
 // ---------------------------------------------------------------------------
 
-/// 把 DNS 服务器写到 IPConfiguration 建立的那个服务上。
+/// Writes DNS servers onto the service that IPConfiguration established.
 ///
-/// ⚠️ **未经真机验证的一手。** 已确认的是：手工**捏造**整个服务不会被 IPMonitor
-/// 采纳（GUI-SPIKE 第 3.2 节）。这里的赌注是「往一个**已经正规注册**的服务上
-/// 补 DNS 键会被采纳」。赌错了也不会有破坏，只是 DNS 不生效 —— 所以失败一律
-/// 只记日志，绝不让整个静态 IP 配置失败。真实结果由 tk_net_query 回读汇报。
+/// WARNING: **A move not verified on real hardware.** What is confirmed is that hand-**fabricating** a whole service is not adopted by IPMonitor
+/// (GUI-SPIKE section 3.2). The bet here is that "adding a DNS key onto a service that is **already properly registered**
+/// will be adopted". Losing the bet is not destructive, DNS just does not take effect -- so failures are only
+/// logged and never make the whole static IP configuration fail. The real result is reported by the readback in tk_net_query.
 ///
-/// 另外注意：SCDynamicStore 里的值**由设置它的会话持有**，会话一释放值就没了。
-/// 因此这里用的是进程级长命的 store（见 SharedDynamicStore 的说明），
-/// 绝不能改成局部创建。
+/// Also note: values in SCDynamicStore are **held by the session that set them**, and once the session is released the values are gone.
+/// So a process-wide long-lived store is used here (see the explanation of SharedDynamicStore),
+/// and it must never be changed to a locally created one.
 void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
                    const std::vector<std::string>& servers) {
   if (servers.empty()) {
@@ -296,22 +296,22 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   }
 }
 
-/// 等**本次新建的**服务发布出一个**稳定**的租约，返回它的网关。
+/// Waits for the **newly created** service to publish a **stable** lease, and returns its gateway.
 ///
-/// 判定用 `State:/Network/Service/<id>/IPv4` 里的 `InterfaceName` + `Addresses`
-/// + `Router`，而**不是**只看接口地址：旧服务刚被移除时接口上仍留着上一次的地址。
+/// The judgment uses `InterfaceName` + `Addresses` + `Router` in `State:/Network/Service/<id>/IPv4`,
+/// rather than looking only at the interface address: when an old service has just been removed, the interface still carries the previous address.
 ///
-/// ★ 为什么还要等「稳定」★
-///   Android 的 USB 网络共享会**先**发一份 464XLAT 过渡租约
-///   （192.0.0.2 / 网关 192.0.0.1），几秒后才换成真正的 172.19.x.x 段。实测拿
-///   第一份就装 scoped 路由，会在设备换租约后留下一条指向已失效网关的路由 ——
-///   而那正是 NetworkExtension 按接口查路径时会用的那条。所以要求网关连续
-///   kDhcpStableSamples 次读到同一个值才算稳。
+/// * Why we also wait for "stable" *
+///   Android's USB tethering **first** issues a 464XLAT transitional lease
+///   (192.0.0.2 / gateway 192.0.0.1), and only after a few seconds switches to the real 172.19.x.x range. Measured, installing a
+///   scoped route from the first one leaves a route pointing to an invalidated gateway after the device changes leases --
+///   and that is exactly the route NetworkExtension uses when it looks up paths per interface. So the gateway must read the same value
+///   kDhcpStableSamples times in a row to count as stable.
 ///
-/// ⚠️ 不能查 `ConfigMethod` 或 DHCP 字典里的 `State` —— **持久服务的动态存储条目
-/// 里没有这两个键**（实测：注册服务只有 Addresses / Router / InterfaceName /
-/// AdditionalRoutes，DHCP 字典只有 Lease* 与 Option_*；那两个键只出现在
-/// `ipconfig set` 建立的临时服务上）。
+/// WARNING: Do not query `ConfigMethod` or the `State` in the DHCP dictionary -- **the dynamic store entries of persistent services
+/// do not have these two keys** (measured: a registered service has only Addresses / Router / InterfaceName /
+/// AdditionalRoutes, and the DHCP dictionary has only Lease* and Option_*; those two keys appear only on the temporary service that
+/// `ipconfig set` establishes).
 ///
 /// `service_id` is nullopt on the transient-service fallback (`ipconfig set
 /// DHCP`), whose ID is only known once IPConfiguration publishes it; it is then
@@ -323,7 +323,7 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
     return std::nullopt;
   }
 
-  // 读一次「本服务当前发布的网关」；地址与接口名对不上时视为还没就绪。
+  // Read once "the gateway this service currently publishes"; if the address and interface name do not match, treat it as not ready yet.
   const auto published_router = [&]() -> std::optional<std::string> {
     const std::optional<std::string> address = QueryAddress(interface_name, SIOCGIFADDR);
     if (!address.has_value()) {
@@ -364,17 +364,17 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   return std::nullopt;
 }
 
-/// 装一条**绑定到本接口**的默认路由。
+/// Installs a default route **bound to this interface**.
 ///
-/// scoped 路由（RTF_IFSCOPE）是 macOS 支持的每接口独立默认路由：绑定到该接口的
-/// 流量走它，不影响系统主服务。IPConfiguration 通常会为 DHCP 服务装好这一条；
-/// 但 feth 成为主服务时，macOS 可能只保留全局默认路由。这里显式补齐，保证
-/// NetworkExtension 等按接口做路由查询的调用方仍能找到路径。
+/// A scoped route (RTF_IFSCOPE) is macOS's per-interface independent default route: traffic bound to that interface uses it,
+/// without affecting the system's primary service. IPConfiguration usually installs this one for DHCP services;
+/// but when feth becomes the primary service, macOS may keep only the global default route. It is explicitly filled in here, ensuring that
+/// callers such as NetworkExtension that do route lookups per interface can still find a path.
 ///
-/// 先删再加，不用 `change`：接口上可能残留一条指向**旧网关**的 scoped 路由
-/// （设备换过租约），`change` 改不动 destination 相同但已失效的那条的语义歧义，
-/// 删掉重建才能保证最终只有一条、且指向当前网关。删除失败通常意味着本来就没有，
-/// 属于正常情况，故忽略其结果。
+/// Delete first and then add, without using `change`: the interface may have a leftover scoped route pointing to the **old gateway**
+/// (the device changed leases), and `change` has ambiguous semantics for one with the same destination but already invalid,
+/// so deleting and rebuilding is the only way to guarantee exactly one at the end, pointing to the current gateway. A delete failure usually means there was none to begin with,
+/// which is a normal situation, so its result is ignored.
 [[nodiscard]] Status InstallScopedDefaultRoute(std::string_view interface_name,
                                                std::string_view router) {
   const std::vector<std::string> delete_arguments{
@@ -386,7 +386,7 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   return RunOrFail(kRoutePath, add_arguments, Text(Msg::kCapiWhatAddScopedRoute));
 }
 
-/// 把**全局**默认路由改到指定网关。
+/// Changes the **global** default route to the specified gateway.
 ///
 /// ⚠️ On its own this is not enough to send "all traffic" through the phone:
 /// it changes the kernel route but not the DNS resolvers (those follow the
@@ -401,8 +401,8 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
       status) {
     return tetherkitnext::Ok();
   }
-  // 系统当前可能压根没有全局默认路由（没连任何网络），此时 change 会失败，
-  // 该用 add。这正是 USB 网络共享最典型的场景，必须处理。
+  // The system may currently have no global default route at all (not connected to any network), in which case change fails,
+  // and add should be used. This is exactly the most typical USB tethering scenario and must be handled.
   const std::vector<std::string> add_arguments{"-n", "add", "-inet", "default",
                                                std::string{router}};
   return RunOrFail(kRoutePath, add_arguments, Text(Msg::kCapiWhatAddGlobalRoute));
@@ -411,8 +411,8 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 
 
 [[nodiscard]] Status ApplyDhcp(std::string_view interface_name, bool set_default_route) {
-  // 先清掉同接口的旧服务。`ipconfig NONE` 负责兼容升级前留下的临时服务；
-  // SCNetworkService 才是本次 DHCP 真正使用的服务。
+  // First clear the old service on the same interface. `ipconfig NONE` handles the temporary service left over from before the upgrade;
+  // the SCNetworkService is the service that DHCP actually uses this time.
   TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
   TETHERKITNEXT_RETURN_IF_ERROR(
       RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
@@ -432,16 +432,16 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
                   Text(Msg::kCapiWhatStartDhcp)));
   }
 
-  // 等一个稳定的租约。IPConfiguration 会拿租约、配 scoped DNS，并把服务发布到
-  // 动态存储；scoped 默认路由要我们显式补齐（feth 成为主服务时 macOS 可能只留
-  // 全局路由，NetworkExtension 对 feth 的 scoped 查询就会得到「No network route」）。
+  // Wait for a stable lease. IPConfiguration gets the lease, configures scoped DNS, and publishes the service to
+  // the dynamic store; the scoped default route must be filled in explicitly by us (when feth becomes the primary service macOS may keep only the
+  // global route, and NetworkExtension's scoped query for feth would get "No network route").
   const std::optional<std::string> router = WaitForStableLease(interface_name, service_id);
   if (!router.has_value()) {
-    // 地址都还没有 —— 对面很可能没在做网络共享，这才是真正的超时。
+    // There is no address yet -- the other side is probably not doing tethering, and this is the real timeout.
     if (!QueryAddress(interface_name, SIOCGIFADDR).has_value()) {
       return std::unexpected(Error::Generic(Tr(Msg::kCapiDhcpTimeout, kDhcpLeaseTimeout.count())));
     }
-    // 有地址但网关一直没稳定下来：不装任何默认路由，免得留下一条指向过期网关的。
+    // There is an address but the gateway never stabilized: install no default route, to avoid leaving one that points to a stale gateway.
     if (set_default_route) {
       return std::unexpected(Error::Generic(Tr(Msg::kCapiDhcpNoRouter)));
     }
@@ -487,7 +487,7 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   }
 
   TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
-  // 地址仍然经 IPConfiguration 下发，理由见文件头。
+  // The address is still applied via IPConfiguration; see the file header for the reason.
   TETHERKITNEXT_RETURN_IF_ERROR(RunOrFail(
       kIpconfigPath,
       {"set", std::string{interface_name}, "MANUAL", config.address, config.netmask},
@@ -527,10 +527,10 @@ void tk_ip_config_init(tk_ip_config_t* out_config) {
     return;
   }
   *out_config = tk_ip_config_t{};
-  // 默认 DHCP：RNDIS 设备几乎总是自带 DHCP 服务器，这是绝大多数用户唯一需要的选项。
+  // Default DHCP: RNDIS devices almost always come with their own DHCP server, and this is the only option most users need.
   out_config->mode = TK_IP_MODE_DHCP;
-  // 默认**不**抢全局默认路由。只有在同时存在更高优先级的连通服务时才需要它，
-  // 而 USB 网络共享的典型场景恰恰是没有别的网络可用 —— 那时本网卡自然就是主服务。
+  // Default is **not** to grab the global default route. It is only needed when a higher-priority connected service exists at the same time,
+  // while the typical USB tethering scenario is precisely that no other network is available -- then this NIC is naturally the primary service.
   out_config->set_default_route = false;
 }
 
@@ -584,8 +584,8 @@ tk_result_t tk_net_clear(const char* interface_name, tk_error_t* out_error) {
     return TK_ERR_PERMISSION;
   }
 
-  // 先撤掉我们自己写的 DNS 键（如果有），再让 IPConfiguration 拆服务。
-  // 顺序反了的话服务已经没了，键会变成没人认领的孤儿。
+  // First remove the DNS key we wrote ourselves (if any), then let IPConfiguration tear down the service.
+  // With the order reversed the service would already be gone, and the key would become an orphan nobody claims.
   if (SCDynamicStoreRef store = SharedDynamicStore(); store != nullptr) {
     if (const std::optional<std::string> service_id = FindServiceId(store, interface_name);
         service_id.has_value()) {
@@ -614,7 +614,7 @@ tk_result_t tk_net_query(const char* interface_name, tk_net_state_t* out_state,
   }
   *out_state = tk_net_state_t{};
 
-  // ---- 地址与掩码：内核里的真实状态 ----
+  // ---- Address and mask: the real state in the kernel ----
   if (const std::optional<std::string> address = QueryAddress(interface_name, SIOCGIFADDR);
       address.has_value()) {
     out_state->has_address = true;
@@ -625,10 +625,10 @@ tk_result_t tk_net_query(const char* interface_name, tk_net_state_t* out_state,
     CopyText(out_state->netmask, *netmask);
   }
 
-  // ---- 服务级信息：网关、DNS、配置方式 ----
+  // ---- Service-level information: gateway, DNS, configuration method ----
   SCDynamicStoreRef store = SharedDynamicStore();
   if (store == nullptr) {
-    // 拿不到动态存储不算查询失败 —— 地址那一半已经有了，照常返回。
+    // Failing to get the dynamic store does not count as a query failure -- the address half is already in hand, so return as usual.
     return TK_OK;
   }
 
@@ -640,12 +640,12 @@ tk_result_t tk_net_query(const char* interface_name, tk_net_state_t* out_state,
       CopyText(out_state->router, router);
       out_state->has_default_route = true;
     }
-    // ConfigMethod / State 只有临时服务才发布；持久服务没有这两个键，此时按
-    // 「DHCP 租约字典存不存在」回推配置方式与服务状态，免得界面显示空白。
+    // ConfigMethod / State are published only by temporary services; persistent services do not have these two keys, so here we infer the configuration method and service state from
+    // "whether the DHCP lease dictionary exists", to keep the UI from showing blanks.
     //
-    // ⚠️ 判据必须是**字典本身**，不能读里面的 LeaseStartTime —— 那个值是
-    // **CFDate 而不是 CFString**，StringField 会一律返回空串，于是每个 DHCP
-    // 服务都会被误判成 MANUAL（界面上真实出现过这个错 badge）。
+    // WARNING: The criterion must be **the dictionary itself**; do not read LeaseStartTime inside it -- that value is a
+    // **CFDate, not a CFString**, so StringField would always return an empty string, and every DHCP
+    // service would then be misjudged as MANUAL (this wrong badge really did appear in the UI).
     const ScopedCFRef<CFDictionaryRef> dhcp = CopyServiceEntry(store, *service_id, "DHCP");
 
     std::string method = StringField(ipv4.Get(), CFSTR("ConfigMethod"));
@@ -660,8 +660,8 @@ tk_result_t tk_net_query(const char* interface_name, tk_net_state_t* out_state,
     }
     CopyText(out_state->service_state, service_state);
 
-    // DNS 一律回读**系统里真实生效的**，而不是复述我们下发的值 ——
-    // 静态模式下 DNS 能不能生效取决于 IPMonitor 认不认，只有回读才准。
+    // DNS is always read back from **what is actually in effect in the system**, rather than restating the values we applied --
+    // in static mode whether DNS takes effect depends on whether IPMonitor accepts it, and only a readback is accurate.
     const ScopedCFRef<CFDictionaryRef> dns = CopyServiceEntry(store, *service_id, "DNS");
     const std::vector<std::string> servers = StringArrayField(dns.Get(), CFSTR("ServerAddresses"));
     for (const std::string& server : servers) {

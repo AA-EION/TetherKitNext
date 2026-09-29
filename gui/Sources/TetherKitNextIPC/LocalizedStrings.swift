@@ -1,26 +1,26 @@
 import Foundation
 
-// 图形界面与 helper 的全部面向用户文案。
+// All user-facing messages of the GUI and the helper.
 //
-// 加一条：在 `L10nKey` 里加 case，再到下面的 switch 里补中英两版。switch 是
-// 穷尽的，漏了直接编译不过。
+// To add one: add a case in `L10nKey`, then fill in both the Chinese and English versions in the switch below. The switch is
+// exhaustive, and omissions simply fail to compile.
 //
-// ★ 占位符的规矩 ★
+// * Placeholder rules *
 //
-//   走 `String(format:)`，printf 风格：`%@` 字符串、`%ld` 整数、`%.1f` 浮点。
-//   **两种语言的占位符必须一一对应**（个数、顺序、类型）。译文需要换语序时，
-//   两边都改成带位置的形式（`%1$@`、`%2$ld`）—— 只有一边带位置也是合法的
-//   printf，但那样两个串的参数含义就悄悄错位了。
+//   Goes through `String(format:)`, printf style: `%@` string, `%ld` integer, `%.1f` float.
+//   **The placeholders of the two languages must correspond one to one** (count, order, type). When a translation needs a different word order,
+//   switch both sides to the positional form (`%1$@`, `%2$ld`) -- having only one side positional is also legal
+//   printf, but then the argument meanings of the two strings would silently misalign.
 //
-//   调用点传参前统一转成 `Int` / `Double` / `String`：`UInt32` 之类的整型直接
-//   喂给 `%ld` 在 32/64 位上的行为不一致，转一次最省心。
+//   Call sites uniformly convert to `Int` / `Double` / `String` before passing arguments: feeding an integer type such as `UInt32` directly
+//   to `%ld` behaves inconsistently between 32/64 bits, and converting once is the least trouble.
 //
-//   这两条由 TetherKitNextIPCTests 的 LocalizationTests 逐条核对。
+//   These two rules are checked entry by entry by LocalizationTests in TetherKitNextIPCTests.
 
-/// 一条文案的标识。
+/// The identifier of a message.
 public enum L10nKey: String, CaseIterable, Sendable {
 
-    // MARK: - 通用
+    // MARK: - General
 
     case ok
     case cancel
@@ -37,7 +37,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case notConfigured
     case listSeparator
 
-    // MARK: - 语言设置
+    // MARK: - Language settings
 
     case languageLabel
     case languageSystem
@@ -45,14 +45,14 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case languageEnglish
     case languageMenuTitle
 
-    // MARK: - 数据模型（Models.swift）
+    // MARK: - Data models (Models.swift)
 
     case usbDeviceFallbackName
     case ipModeDhcp
     case ipModeManual
     case ipModeNone
 
-    // MARK: - 授权（Authorization.swift）
+    // MARK: - Authorization (Authorization.swift)
 
     case authorizationCancelled
     case authorizationDenied
@@ -61,11 +61,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case authorizationRestoreFailed
     case authorizationRightMissing
 
-    // MARK: - 库错误（TetherKitNextError.swift）
+    // MARK: - Library errors (TetherKitNextError.swift)
 
     case libraryGenericFailure
 
-    // MARK: - 会话事件（TetherKitNextSession.swift）
+    // MARK: - Session events (TetherKitNextSession.swift)
 
     case eventLinkUp
     case eventLinkDown
@@ -73,7 +73,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case eventDeviceReset
     case eventNegotiated
 
-    // MARK: - 网络参数校验（NetworkConfigurator.swift）
+    // MARK: - Network parameter validation (NetworkConfigurator.swift)
 
     case invalidIPAddress
     case invalidNetmask
@@ -81,7 +81,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case routerRequiredForDefaultRoute
     case invalidDNSServer
 
-    // MARK: - helper 服务（HelperService.swift / main.swift / InstallerMode.swift）
+    // MARK: - helper service (HelperService.swift / main.swift / InstallerMode.swift)
 
     case helperSessionAlreadyRunning
     case helperSessionStopped
@@ -93,12 +93,12 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case helperSigtermReceived
     case helperReady
 
-    // MARK: - helper 客户端（HelperClient.swift / HelperInstaller.swift）
+    // MARK: - helper client (HelperClient.swift / HelperInstaller.swift)
 
     case helperConnectFailed
     case helperReplyUnparsable
 
-    // MARK: - 检查更新（UpdateChecker.swift）
+    // MARK: - Update check (UpdateChecker.swift)
 
     case updateNoReleases
     case updateHTTPStatus
@@ -170,7 +170,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case autoConfigureNetwork
     case autoConfigureNetworkHelp
 
-    // MARK: - 连接状态（DesignSystem.swift）
+    // MARK: - Connection status (DesignSystem.swift)
 
     case statusDisconnected
     case statusConnecting
@@ -180,7 +180,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case statusStopped
     case statusFailed
 
-    // MARK: - 应用模型（AppModel.swift）
+    // MARK: - App model (AppModel.swift)
 
     case authPromptSession
     case presenceReasonSession
@@ -188,7 +188,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case helperPresenceNotAccepted
     case interfaceNotReadyYet
 
-    // MARK: - 主界面（ContentView.swift）
+    // MARK: - Main screen (ContentView.swift)
 
     case menuCheckForUpdates
     case alertOperationFailed
@@ -210,7 +210,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case sysctlNeedsFixTitle
     case sysctlNeedsFixBody
 
-    // MARK: - 设备卡（DeviceCard.swift）
+    // MARK: - Device card (DeviceCard.swift)
 
     case usbDeviceSectionTitle
     case cannotRescanWhileRunning
@@ -229,7 +229,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case compatibilityMode
     case compatibilityModeTooltip
 
-    // MARK: - 日志卡（LogCard.swift）
+    // MARK: - Log card (LogCard.swift)
 
     case logSectionTitle
     case logDroppedNotice
@@ -245,7 +245,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case logRepeatSuffix
     case logRepeatTooltip
 
-    // MARK: - 菜单栏面板（MenuBarPanel.swift）
+    // MARK: - Menu bar panel (MenuBarPanel.swift)
 
     case downstreamShort
     case upstreamShort
@@ -256,7 +256,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case quit
     case quitTooltip
 
-    // MARK: - 网络卡（NetworkCard.swift）
+    // MARK: - Network card (NetworkCard.swift)
 
     case dnsEffectivenessTooltip
     case ipModeLabel
@@ -276,7 +276,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case notEffective
     case noAddressYet
 
-    // MARK: - 状态卡（StatusHeroCard.swift）
+    // MARK: - Status card (StatusHeroCard.swift)
 
     case linkUp
     case linkDown
@@ -287,7 +287,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case interfaceCreating
     case connectDisabledHint
 
-    // MARK: - 吞吐卡（ThroughputCard.swift）
+    // MARK: - Throughput card (ThroughputCard.swift)
 
     case throughputSectionTitle
     case throughputLive
@@ -312,12 +312,12 @@ public enum L10nKey: String, CaseIterable, Sendable {
 
 extension L10nKey {
 
-    /// 一条文案的中英两版。**两边的占位符必须一一对应。**
+    /// The Chinese and English versions of one message. **The placeholders of both sides must correspond one to one.**
     // swiftlint:disable:next function_body_length cyclomatic_complexity
     public var localizations: (chinese: String, english: String) {
         switch self {
 
-        // MARK: 通用
+        // MARK: General
 
         case .ok: return ("好", "OK")
         case .cancel: return ("取消", "Cancel")
@@ -334,7 +334,7 @@ extension L10nKey {
         case .notConfigured: return ("未配置", "Not configured")
         case .listSeparator: return ("、", ", ")
 
-        // MARK: 语言设置
+        // MARK: Language settings
 
         case .languageLabel: return ("界面语言", "Language")
         case .languageSystem: return ("跟随系统", "Follow system")
@@ -342,14 +342,14 @@ extension L10nKey {
         case .languageEnglish: return ("English", "English")
         case .languageMenuTitle: return ("语言", "Language")
 
-        // MARK: 数据模型
+        // MARK: Data models
 
         case .usbDeviceFallbackName: return ("USB 设备 %04lx:%04lx", "USB device %04lx:%04lx")
         case .ipModeDhcp: return ("自动（DHCP）", "Automatic (DHCP)")
         case .ipModeManual: return ("静态 IP", "Static IP")
         case .ipModeNone: return ("不配置", "None")
 
-        // MARK: 授权
+        // MARK: Authorization
 
         case .authorizationCancelled: return ("已取消授权", "Authorization cancelled")
         case .authorizationDenied: return ("授权未通过（%ld）", "Authorization was denied (%ld)")
@@ -363,12 +363,12 @@ extension L10nKey {
             return ("调用方没有执行该操作所需的授权（%ld）",
                     "The caller lacks the authorization this operation requires (%ld)")
 
-        // MARK: 库错误
+        // MARK: Library errors
 
         case .libraryGenericFailure:
             return ("操作失败（错误码 %ld）", "The operation failed (error code %ld)")
 
-        // MARK: 会话事件
+        // MARK: Session events
 
         case .eventLinkUp: return ("链路已连接", "Link is up")
         case .eventLinkDown: return ("链路已断开", "Link is down")
@@ -380,7 +380,7 @@ extension L10nKey {
             return ("RNDIS 协商完成：MTU %1$ld，链路 %2$ld Mbps",
                     "RNDIS negotiation complete: MTU %1$ld, link %2$ld Mbps")
 
-        // MARK: 网络参数校验
+        // MARK: Network parameter validation
 
         case .invalidIPAddress: return ("IP 地址格式不正确", "The IP address is not valid")
         case .invalidNetmask:
@@ -393,7 +393,7 @@ extension L10nKey {
         case .invalidDNSServer:
             return ("DNS 服务器 %@ 格式不正确", "DNS server %@ is not a valid address")
 
-        // MARK: helper 服务
+        // MARK: helper service
 
         case .helperSessionAlreadyRunning: return ("会话已经在运行了", "A session is already running")
         case .helperSessionStopped: return ("会话已停止", "Session stopped")
@@ -411,7 +411,7 @@ extension L10nKey {
         case .helperSigtermReceived: return ("收到 SIGTERM，正在停机", "Received SIGTERM; shutting down")
         case .helperReady: return ("tetherkitnext-helper 已就绪：%@", "tetherkitnext-helper ready: %@")
 
-        // MARK: helper 客户端
+        // MARK: helper client
 
         case .helperConnectFailed:
             return ("无法连接到特权组件：%@", "Cannot reach the privileged helper: %@")
@@ -419,7 +419,7 @@ extension L10nKey {
             return ("特权组件的应答无法解析，可能是版本不一致",
                     "The helper's reply could not be parsed; the versions may not match")
 
-        // MARK: 检查更新
+        // MARK: Update check
 
         case .updateNoReleases: return ("仓库还没有发布任何版本", "The repository has no releases yet")
         case .updateHTTPStatus: return ("GitHub 返回了 %ld", "GitHub returned %ld")
@@ -613,7 +613,7 @@ extension L10nKey {
             return ("连接成功后立即应用“网络”页选择的方式（默认自动 DHCP），无需再点“应用”。",
                     "Applies the mode chosen on the Network page (DHCP by default) right after connecting, so internet works without another click.")
 
-        // MARK: 连接状态
+        // MARK: Connection status
 
         case .statusDisconnected: return ("未连接", "Not connected")
         case .statusConnecting: return ("正在连接", "Connecting")
@@ -623,7 +623,7 @@ extension L10nKey {
         case .statusStopped: return ("已断开", "Disconnected")
         case .statusFailed: return ("连接失败", "Connection failed")
 
-        // MARK: 应用模型
+        // MARK: App model
 
         // Shown by macOS as "TetherKitNext is trying to <reason>." (English)
         // / "“TetherKitNext”正在尝试<reason>。" (Chinese): a verb phrase, no
@@ -645,7 +645,7 @@ extension L10nKey {
             return ("虚拟网卡还没创建，请先连接设备",
                     "The virtual interface does not exist yet -- connect a device first")
 
-        // MARK: 主界面
+        // MARK: Main screen
 
         case .menuCheckForUpdates: return ("检查更新…", "Check for Updates…")
         case .alertOperationFailed: return ("操作失败", "Operation failed")
@@ -683,7 +683,7 @@ extension L10nKey {
                     + "created**, so changing them afterwards has no effect. Fix them before\n"
                     + "connecting:")
 
-        // MARK: 设备卡
+        // MARK: Device card
 
         case .usbDeviceSectionTitle: return ("USB 设备", "USB device")
         case .cannotRescanWhileRunning:
@@ -726,7 +726,7 @@ extension L10nKey {
                     "This device's CDC descriptors are non-standard, so the interface numbers "
                     + "were inferred using the usual Android layout")
 
-        // MARK: 日志卡
+        // MARK: Log card
 
         case .logSectionTitle: return ("运行日志", "Log")
         case .logDroppedNotice:
@@ -745,7 +745,7 @@ extension L10nKey {
             return ("这句话连续出现了 %1$ld 次，首次在 %2$@",
                     "This line repeated %1$ld times in a row, first at %2$@")
 
-        // MARK: 菜单栏面板
+        // MARK: Menu bar panel
 
         case .downstreamShort: return ("下行", "Down")
         case .upstreamShort: return ("上行", "Up")
@@ -763,7 +763,7 @@ extension L10nKey {
             return ("退出只是关闭界面，已建立的连接会继续运行。",
                     "Quitting only closes the interface; an established connection keeps running.")
 
-        // MARK: 网络卡
+        // MARK: Network card
 
         case .dnsEffectivenessTooltip:
             return ("静态模式下 DNS 是否生效取决于系统的解析器管理，请以「当前生效」里的回读结果为准。",
@@ -810,7 +810,7 @@ extension L10nKey {
             return ("%@ 目前没有 IP 地址。选择上网方式后点「应用」。",
                     "%@ has no IP address yet. Pick a configuration and press Apply.")
 
-        // MARK: 状态卡
+        // MARK: Status card
 
         case .linkUp: return ("链路已连通", "Link up")
         case .linkDown: return ("链路未连通", "Link down")
@@ -826,7 +826,7 @@ extension L10nKey {
             return ("先连接一台开启了 USB 网络共享的设备",
                     "Connect a device with USB tethering switched on first")
 
-        // MARK: 吞吐卡
+        // MARK: Throughput card
 
         case .throughputSectionTitle: return ("吞吐", "Throughput")
         case .throughputLive: return ("实时", "Live")

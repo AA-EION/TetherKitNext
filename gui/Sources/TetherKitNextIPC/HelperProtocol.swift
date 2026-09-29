@@ -1,73 +1,73 @@
 import Foundation
 
-/// App 调用 helper 的 XPC 接口。
+/// The XPC interface through which the App calls the helper.
 ///
-/// ★ 哪些方法需要授权，哪些不需要 ★
+/// * Which methods need authorization and which do not *
 ///
-///   带 `authorization` 参数的都要 —— 它是 App 通过 AuthorizationCopyRights
-///   拿到的凭据的外部形式（32 字节），helper 会**复核**它确实包含所需权利。
+///   Every one with an `authorization` parameter does -- it is the external form (32 bytes) of the credential the App obtained through
+///   AuthorizationCopyRights, and the helper **verifies** that it really contains the required right.
 ///
-///   探测类方法（helperVersion / status / queryNetwork / drainFeed）刻意**不**
-///   要求授权。理由是：如果连「helper 装没装」都要先弹一次指纹，用户就分不清
-///   「helper 没装」和「授权没过」这两种完全不同的失败了。这些方法只读，
-///   泄漏的信息也仅限于本机网络状态。
+///   Probe-type methods (helperVersion / status / queryNetwork / drainFeed) deliberately **do not**
+///   require authorization. The reason is: if even "is the helper installed" required popping up a fingerprint first, the user could not tell apart
+///   the two entirely different failures "helper not installed" and "authorization did not pass". These methods are read-only,
+///   and the information they leak is limited to the local machine's network state.
 ///
-/// ★ 特权方法的应答为什么是 (String?, Bool) 两个值 ★
-///   第二个值表示「这次失败是授权问题」。App 需要区分这两种情况：授权过期了
-///   该重新弹框重试，而操作本身失败（比如没插设备）重试多少次都一样。
-///   混在一条错误消息里，App 只能去匹配字符串 —— 那是最脆的一种耦合。
+/// * Why the reply of privileged methods is two values (String?, Bool) *
+///   The second value means "this failure is an authorization problem". The App needs to tell the two cases apart: an expired authorization
+///   should pop up the dialog again and retry, while if the operation itself failed (say no device plugged in), retrying any number of times is the same.
+///   Mixed into one error message, the App could only match strings -- the most brittle kind of coupling.
 ///
-/// ★ 为什么错误用 String? 而不是 NSError ★
-///   跨 XPC 传 NSError 要求两端都能反序列化它的 userInfo，一旦里面混进不可
-///   编码的对象就是运行时异常。而我们需要传给用户看的本来就只是一句中文，
-///   直接传字符串既简单又不会失败。nil 表示成功。
+/// * Why errors use String? rather than NSError *
+///   Passing NSError across XPC requires both ends to be able to deserialize its userInfo, and once an object that cannot be
+///   encoded slips in, it is a runtime exception. And what we need to show the user is only one sentence of text anyway,
+///   so passing a string is both simple and cannot fail. nil means success.
 @objc public protocol TetherKitNextHelperProtocol {
-    /// 连通性探测。**不要求授权** —— 否则「没装」和「没授权」两种失败会混在一起。
+    /// Connectivity probe. **Does not require authorization** -- otherwise the two failures "not installed" and "not authorized" would be mixed together.
     func helperVersion(reply: @escaping @Sendable (String) -> Void)
 
-    /// 运行环境预检（root 状态、feth 的创建期 sysctl、MTU 上限）。
+    /// Preflight of the runtime environment (root status, feth's creation-time sysctls, MTU upper limit).
     func environment(reply: @escaping @Sendable (Data?, String?) -> Void)
 
-    /// 枚举 RNDIS 设备。
+    /// Enumerates RNDIS devices.
     ///
-    /// 由 helper 而不是 App 来枚举：App 侧也能枚举（不需要 root），但会话跑起来
-    /// 之后设备已被 helper 独占，App 再去读字符串描述符只会失败。统一走 helper
-    /// 就没有这个不一致。
+    /// Enumerated by the helper rather than the App: the App side can also enumerate (no root needed), but once a session is running
+    /// the device is held exclusively by the helper, and the App reading string descriptors would only fail. Going through the helper uniformly
+    /// avoids this inconsistency.
     func listDevices(reply: @escaping @Sendable (Data?, String?) -> Void)
 
-    /// 启动 RNDIS 会话。**需要授权。**
+    /// Starts an RNDIS session. **Needs authorization.**
     func startSession(authorization: Data, configuration: Data,
                       reply: @escaping @Sendable (String?, Bool) -> Void)
 
-    /// 停止会话并销毁虚拟网卡。**需要授权。**
+    /// Stops the session and destroys the virtual NIC. **Needs authorization.**
     func stopSession(authorization: Data, reply: @escaping @Sendable (String?, Bool) -> Void)
 
-    /// 取会话状态快照。
+    /// Takes a snapshot of the session state.
     func sessionStatus(reply: @escaping @Sendable (Data?, String?) -> Void)
 
-    /// 给网卡下发上网方式（DHCP / 静态 IP / 撤销）。**需要授权。**
+    /// Applies a connectivity method (DHCP / static IP / revoke) to the NIC. **Needs authorization.**
     ///
-    /// DHCP 模式下这一调用会阻塞到拿到租约或超时（库内部上限 10 秒），
-    /// 因此 helper 侧不能把它排在会串行阻塞其它请求的队列上。
+    /// In DHCP mode this call blocks until a lease is obtained or it times out (the library's internal cap is 10 seconds),
+    /// so the helper side must not queue it on a queue that would serially block other requests.
     func applyNetwork(authorization: Data, interface: String, configuration: Data,
                       reply: @escaping @Sendable (String?, Bool) -> Void)
 
-    /// 回读网卡真实生效的 IP 状态。
+    /// Reads back the IP state the NIC actually has in effect.
     func queryNetwork(interface: String, reply: @escaping @Sendable (Data?, String?) -> Void)
 
-    /// 取走 helper 侧积压的日志与提示。
+    /// Takes away the logs and hints accumulated on the helper side.
     func drainFeed(reply: @escaping @Sendable (Data?) -> Void)
 
-    /// 告诉 helper 用哪种语言渲染它产生的文字。**不要求授权** —— 它只影响
-    /// 文案，改不了任何行为。
+    /// Tells the helper which language to render the text it produces in. **Does not require authorization** -- it only affects
+    /// messages and cannot change any behavior.
     ///
-    /// 为什么必须有这一条：helper 以 root 跑在 launchd 下，看不到用户的语言
-    /// 偏好，而它产生的提示（「会话已停止」）与 libtetherkitnext 的日志都会原样
-    /// 显示在 App 的日志卡里。不同步的话界面是一种语言、日志是另一种。
+    /// Why this one must exist: the helper runs as root under launchd and cannot see the user's language
+    /// preference, yet the hints it produces ("session stopped") and libtetherkitnext's logs are both shown as-is
+    /// in the App's log card. Without synchronization the UI would be in one language and the logs in another.
     ///
-    /// 参数是 `Language` 的 rawValue（`"chinese"` / `"english"`）。传字符串而
-    /// 不是整数：将来加语言时，旧 helper 收到不认识的值会原样忽略，而不是
-    /// 把它当成某个碰巧存在的枚举值。
+    /// The parameter is the rawValue of `Language` (`"chinese"` / `"english"`). A string is passed rather than
+    /// an integer: when a language is added in the future, an old helper receiving an unrecognized value simply ignores it, rather than
+    /// treating it as some enum value that happens to exist.
     func setLanguage(_ rawValue: String, reply: @escaping @Sendable () -> Void)
 
     /// Link (`install == true`) or unlink the bundled command-line tool at

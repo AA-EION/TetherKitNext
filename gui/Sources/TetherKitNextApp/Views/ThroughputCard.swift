@@ -2,10 +2,10 @@ import Charts
 import SwiftUI
 import TetherKitNextIPC
 
-/// 吞吐与计数器。
+/// Throughput and counters.
 ///
-/// 图表刻意只画**速率**而不画累计量：累计曲线永远单调上升，看不出任何东西；
-/// 而速率能一眼看出卡顿、抖动和被限速。累计量放在下面的指标格里，需要时能读到。
+/// The chart deliberately draws only **rates** and not cumulative amounts: a cumulative curve rises monotonically forever and reveals nothing;
+/// while a rate shows stalls, jitter and rate limiting at a glance. Cumulative amounts go in the metric cells below, readable when needed.
 struct ThroughputCard: View {
     @Bindable var model: AppModel
 
@@ -32,8 +32,8 @@ struct ThroughputCard: View {
         }
     }
 
-    // 速率四格排成 2×2 而不是一行：这卡现在住在半栏里，一行四格会把
-    // 「下行（设备 → 本机）」这类说明挤到截断。
+    // The four rate cells are arranged 2x2 rather than in one row: this card now lives in a half column, and four cells in a row would squeeze
+    // descriptions like "Download (device -> this machine)" into truncation.
     private var rateRow: some View {
         Grid(alignment: .leading,
              horizontalSpacing: Design.Spacing.medium,
@@ -94,8 +94,8 @@ struct ThroughputCard: View {
                     }
                 }
             }
-            // 横轴不画刻度：这是一条「最近 60 秒」的滚动曲线，具体时刻没有意义，
-            // 画上去只会挤占本来就不高的绘图区。
+            // The horizontal axis draws no ticks: this is a rolling "last 60 seconds" curve, specific moments are meaningless,
+            // and drawing them would only take up the plotting area that is not tall to begin with.
             .chartXAxis(.hidden)
             .frame(height: 120)
         } else {
@@ -123,11 +123,11 @@ struct ThroughputCard: View {
             || model.status.linkKernelDrops > 0 || model.status.txBackpressure > 0
     }
 
-    /// 丢包提示。
+    /// Packet loss hint.
     ///
-    /// 分开列四个数字而不是合成一个「丢包率」：它们指向完全不同的瓶颈 ——
-    /// 队列满是下游写不过来，内核丢是我们读得不够快，背压是 USB 侧发不出去。
-    /// 合并之后就分不清该调哪个参数了。
+    /// The four numbers are listed separately rather than merged into one "loss rate": they point to completely different bottlenecks --
+    /// queue full means the downstream cannot write fast enough, kernel drops mean we read too slowly, and backpressure means the USB side cannot send.
+    /// After merging, one could no longer tell which parameter to tune.
     private var dropHint: some View {
         HStack(spacing: Design.Spacing.medium) {
             MetricTile(caption: L(.downstreamDropped), value: Format.count(model.status.rxDropped), tint: .orange)

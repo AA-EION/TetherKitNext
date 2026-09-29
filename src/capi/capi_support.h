@@ -1,7 +1,7 @@
-// C ABI 实现层的内部工具。**不对外安装**，只在 src/capi 内部使用。
+// Internal utilities of the C ABI implementation layer. **Not installed externally**; used only inside src/capi.
 //
-// 这里集中处理「C++ 世界 ↔ C 世界」的三件重复劳动：把 std::string_view 拷进
-// 定长缓冲、把 tetherkitnext::Error 翻译成 tk_error_t、取墙上时间。
+// This centralizes three repetitive chores of the "C++ world <-> C world" boundary: copying std::string_view into
+// fixed-size buffers, translating tetherkitnext::Error into tk_error_t, and getting the wall-clock time.
 #pragma once
 
 #include <cstddef>
@@ -16,20 +16,20 @@
 
 namespace tetherkitnext::capi {
 
-/// 把文本拷进定长缓冲并保证 NUL 结尾，超长时截断。
+/// Copies text into a fixed-size buffer and guarantees NUL termination, truncating when too long.
 ///
-/// ★ 截断必须落在 UTF-8 的字符边界上 ★
-///   本项目的错误消息全是中文，一个汉字 3 字节。按字节硬切会在缓冲末尾留下
-///   半个字符，Swift 侧 `String(cString:)` 遇到非法序列会**整串变成替换字符**，
-///   等于把整条错误信息毁掉。所以截断后要退回到最近的字符起点。
+/// * Truncation must land on a UTF-8 character boundary *
+///   This project's error messages can be Chinese, where one Chinese character is 3 bytes. Cutting hard by bytes would leave
+///   half a character at the end of the buffer, and when Swift's `String(cString:)` meets an illegal sequence the **whole string becomes replacement characters**,
+///   which amounts to destroying the entire error message. So after truncating, back up to the nearest character start.
 inline void CopyText(char* destination, std::size_t capacity, std::string_view text) noexcept {
   if (destination == nullptr || capacity == 0) {
     return;
   }
   std::size_t length = text.size() < capacity - 1 ? text.size() : capacity - 1;
 
-  // length < text.size() 说明发生了截断：若切点落在了某个多字节序列的中间
-  // （text[length] 是 0b10xxxxxx 的续接字节），就一路退到该序列的起点。
+  // length < text.size() means truncation occurred: if the cut point falls in the middle of a multi-byte sequence
+  // (text[length] is a 0b10xxxxxx continuation byte), back up all the way to the start of that sequence.
   while (length > 0 && length < text.size() &&
          (static_cast<unsigned char>(text[length]) & 0xC0U) == 0x80U) {
     --length;
@@ -39,25 +39,25 @@ inline void CopyText(char* destination, std::size_t capacity, std::string_view t
   destination[length] = '\0';
 }
 
-/// 数组版本，省掉每处都写 sizeof。
+/// Array version, saving writing sizeof everywhere.
 template <std::size_t N>
 inline void CopyText(char (&destination)[N], std::string_view text) noexcept {
   CopyText(destination, N, text);
 }
 
-/// 把 C++ 侧的错误翻译成 C 结构体。`out_error` 可为 nullptr（调用方不关心原因）。
+/// Translates a C++-side error into a C struct. `out_error` may be nullptr (the caller does not care about the cause).
 inline void FillError(tk_error_t* out_error, const Error& error) noexcept {
   if (out_error == nullptr) {
     return;
   }
   out_error->domain = static_cast<std::int32_t>(error.Domain());
   out_error->code = error.Code();
-  // 用 ToString() 而非 Context()：前者带上了「[libusb: LIBUSB_ERROR_ACCESS(-3)]」
-  // 这样的域与码，用户报错时能直接贴给我们。
+  // ToString() is used rather than Context(): the former includes the domain and code such as "[libusb: LIBUSB_ERROR_ACCESS(-3)]",
+  // which users can paste straight to us when reporting errors.
   CopyText(out_error->message, error.ToString());
 }
 
-/// 填一条没有底层错误码的纯逻辑错误。
+/// Fills a pure logic error without an underlying error code.
 inline void FillGenericError(tk_error_t* out_error, std::string_view message) noexcept {
   if (out_error == nullptr) {
     return;
@@ -67,7 +67,7 @@ inline void FillGenericError(tk_error_t* out_error, std::string_view message) no
   CopyText(out_error->message, message);
 }
 
-/// 把错误结构体清成「无错误」。成功路径上调用，避免调用方读到上一次的残留。
+/// Clears the error struct to "no error". Called on success paths, so callers do not read leftovers from the last time.
 inline void ClearError(tk_error_t* out_error) noexcept {
   if (out_error == nullptr) {
     return;
@@ -77,10 +77,10 @@ inline void ClearError(tk_error_t* out_error) noexcept {
   out_error->message[0] = '\0';
 }
 
-/// 唯一确定「插在总线上的一台设备」的四元组。
+/// The quadruple that uniquely identifies "one device plugged into the bus".
 ///
-/// 总线地址在拔插后可能被系统复用，多带上 VID:PID 才不会把一台设备的记忆
-/// 错安到接替同一地址的另一台头上。
+/// Bus addresses may be reused by the system after unplug/replug, so VID:PID is included as well to avoid attaching one device's memory
+/// to another device that takes over the same address.
 struct DeviceIdentity {
   std::uint8_t bus_number = 0;
   std::uint8_t device_address = 0;
@@ -90,7 +90,7 @@ struct DeviceIdentity {
   [[nodiscard]] bool operator==(const DeviceIdentity&) const noexcept = default;
 };
 
-/// 从枚举结果里取设备身份。
+/// Takes the device identity from an enumeration result.
 [[nodiscard]] inline DeviceIdentity IdentityOf(const tk_device_info_t& info) noexcept {
   return DeviceIdentity{.bus_number = info.bus_number,
                         .device_address = info.device_address,
@@ -98,7 +98,7 @@ struct DeviceIdentity {
                         .product_id = info.product_id};
 }
 
-/// 一台设备最近一次**成功读到**的字符串描述符。
+/// The string descriptors of a device most recently **read successfully**.
 struct RememberedDeviceStrings {
   DeviceIdentity identity;
   char manufacturer[TK_USB_STRING_CAPACITY]{};
@@ -106,46 +106,46 @@ struct RememberedDeviceStrings {
   char serial[TK_USB_STRING_CAPACITY]{};
 };
 
-/// 维护字符串描述符的记忆：读到了就记住，没读到就用记忆回填。
+/// Maintains the memory of string descriptors: remember when read, backfill from memory when not read.
 ///
-/// ★ 为什么需要 ★
-///   字符串描述符要 libusb_open 才能读，而会话运行期间设备被本进程独占，
-///   读取会被调用方跳过或直接失败 —— 但设备本身没变，「这一次拿不到」不等于
-///   「设备没有名字」。不回填的话，连接瞬间的一次枚举就会把界面上的
-///   「vivo iQOO Z10x」覆盖成「USB 设备 2d95:600b」，并在整个会话期间挂着。
+/// * Why it is needed *
+///   String descriptors need libusb_open to read, and during a session the device is held exclusively by this process,
+///   so the read is skipped by the caller or fails outright -- but the device itself has not changed, and "could not get it this time" does not mean
+///   "the device has no name". Without backfilling, a single enumeration at the moment of connecting would overwrite
+///   "vivo iQOO Z10x" on the UI with "USB device 2d95:600b" and leave it hanging there for the entire session.
 ///
-/// 规则（`infos` 是本次枚举已填好基础字段的设备）：
-///   - `infos[i]` 三个字符串**有任何一个非空** → 这次读到了，覆盖式记入 `memory`；
-///   - 全空 → 没读到（被跳过或设备被占用），若 `memory` 里有同身份的记忆则回填；
-///   - `memory` 里身份不在 `present`（当前总线上的全部设备）中的条目被清除 ——
-///     设备已经拔掉，记忆过期；同一地址若再插上一台读不出名字的设备，
-///     宁可显示 VID:PID 也不能把前一台的名字安给它。
+/// Rules (`infos` are the devices of this enumeration whose base fields are already filled):
+///   - If **any** of the three strings of `infos[i]` is non-empty -> it was read this time; record it into `memory` by overwriting;
+///   - All empty -> not read (skipped or the device is occupied); if `memory` has a memory of the same identity, backfill it;
+///   - Entries in `memory` whose identity is not in `present` (all devices currently on the bus) are cleared --
+///     the device has been unplugged and the memory is stale; if another device whose name cannot be read is plugged in at the same address,
+///     it is better to show VID:PID than to attach the previous device's name to it.
 ///
-/// `present` 可能比 `infos` 长：调用方给的数组容量不够时只填了前几台，
-/// 后面那些仍然在场，它们的记忆不该被误删。
-/// 纯逻辑、不碰 libusb，锁由调用方负责 —— 这样才能离线单测。
+/// `present` may be longer than `infos`: when the caller's array capacity is insufficient only the first few devices were filled,
+/// and the rest are still present, so their memory must not be deleted by mistake.
+/// Pure logic, touching no libusb, with locking the caller's responsibility -- this is what makes offline unit testing possible.
 void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
                             std::span<const DeviceIdentity> present,
                             std::span<tk_device_info_t> infos);
 
-/// 自 Unix 纪元的墙上时间（纳秒）。
+/// Wall-clock time since the Unix epoch (nanoseconds).
 ///
-/// 事件与日志用墙上时间而非单调时间：它们要显示给人看，并且要能和 Console.app
-/// 里的系统日志对齐。速率计算另有单调时间，见 tk_session_status.monotonic_nanos。
+/// Events and logs use wall time rather than monotonic time: they are displayed to humans and must line up with the system log
+/// in Console.app. Rate computation has its own monotonic time; see tk_session_status.monotonic_nanos.
 [[nodiscard]] std::int64_t WallNanos() noexcept;
 
-/// 校验网卡名：只接受 `feth<数字>`。
+/// Validates a NIC name: accepts only `feth<digits>`.
 ///
-/// 这不是洁癖 —— 网卡名会被拼进 `ipconfig` / `route` 的 argv。虽然我们用
-/// posix_spawn 传数组而非过 shell（本身已经杜绝了注入），但把接口名限制成
-/// 我们自己创建过的那种形态，还能挡住「误把 en0 传进来，把用户的 Wi-Fi 配置
-/// 冲掉」这类更现实的事故。
+/// This is not fastidiousness -- the NIC name gets spliced into the argv of `ipconfig` / `route`. Although we pass an array via
+/// posix_spawn rather than going through a shell (which already rules out injection), restricting interface names to the form
+/// that we created ourselves also blocks more realistic accidents such as "mistakenly passing en0 in and
+/// wiping out the user's Wi-Fi configuration".
 [[nodiscard]] bool IsValidFethName(std::string_view name) noexcept;
 
-/// 安装 feth 接口的落盘登记（见 orphan_cleanup.cc）。幂等。
+/// Installs the on-disk registration of feth interfaces (see orphan_cleanup.cc). Idempotent.
 ///
-/// 由 tk_session_create 调用 —— 只有真的要创建网卡时才需要登记，让免 root 的
-/// 那组接口（版本、枚举、预检）保持零副作用。
+/// Called by tk_session_create -- registration is needed only when a NIC is really going to be created, keeping the root-free
+/// group of interfaces (version, enumeration, preflight) free of side effects.
 void InstallInterfaceRegistry();
 
 }  // namespace tetherkitnext::capi

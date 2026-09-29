@@ -1,7 +1,7 @@
-# tk_usb —— USB 传输层
+# tk_usb -- USB transport layer
 #
-# 封装 libusb：设备发现与识别、接口声明、控制通道、中断通知、异步 bulk 传输池。
-# 依赖 tk_rndis 只为拿协议常量（接口签名、控制请求码、通知格式），不含状态机。
+# Wraps libusb: device discovery and identification, interface claiming, control channel, interrupt notifications, async bulk transfer pool.
+# It depends on tk_rndis only to get protocol constants (interface signatures, control request codes, notification format), not the state machine.
 
 add_library(
   tk_usb STATIC

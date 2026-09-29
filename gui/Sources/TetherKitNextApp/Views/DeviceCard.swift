@@ -1,10 +1,10 @@
 import SwiftUI
 import TetherKitNextIPC
 
-/// 设备选择与会话参数。
+/// Device selection and session parameters.
 ///
-/// 会话跑起来之后整块变成只读 —— 改 MTU 或换设备都需要重连，做成「能改但不生效」
-/// 比直接禁用更让人困惑。
+/// Once the session is running the whole block becomes read-only -- changing the MTU or switching devices both require reconnecting, and making it "changeable but ineffective"
+/// would be more confusing than simply disabling it.
 struct DeviceCard: View {
     @Bindable var model: AppModel
 
@@ -43,7 +43,7 @@ struct DeviceCard: View {
         ContentUnavailableView {
             Label(L(.noDeviceDetected), systemImage: "cable.connector.slash")
         } description: {
-            // 这三条正是 macOS 上 RNDIS 连不上的全部常见原因，按命中率排序。
+            // These three are exactly all the common reasons RNDIS cannot connect on macOS, ordered by hit rate.
             VStack(alignment: .leading, spacing: 4) {
                 Text(L(.deviceChecklistCable))
                 Text(L(.deviceChecklistTethering))
@@ -66,16 +66,16 @@ struct DeviceCard: View {
         }
     }
 
-    // 长解释一律放进悬停提示：这两个参数一年也调不了一次，说明文字却天天占着
-    // 屏幕 —— 界面上只留「什么时候需要动它」这一句。
+    // Long explanations always go into hover tooltips: these two parameters cannot be tuned once a year, yet explanatory text occupies
+    // the screen every day -- only the single sentence "when you need to touch it" is left on the UI.
     private var tuningControls: some View {
         VStack(alignment: .leading, spacing: Design.Spacing.small) {
             HStack {
                 Text("MTU")
                     .font(.callout)
                     .frame(width: 92, alignment: .leading)
-                // 步进 100 而不是 1：MTU 是要和对端协商的，逐字节微调没有意义，
-                // 而 1500 / 1400 / 2000 这样的整数才是用户真正会试的值。
+                // Step by 100 rather than 1: the MTU must be negotiated with the peer, byte-by-byte fine-tuning is meaningless,
+                // and round numbers like 1500 / 1400 / 2000 are the values users will really try.
                 Stepper(value: $model.requestedMTU, in: 576...2048, step: 100) {
                     Text(L(.mtuBytes, String(model.requestedMTU)))
                         .font(.system(.callout, design: .monospaced))
@@ -83,8 +83,8 @@ struct DeviceCard: View {
                 .disabled(isLocked)
                 Spacer()
             }
-            // 上限只有在环境预检拿到之后才知道，所以是两条独立文案而不是拼接 ——
-            // 「（本机上限 N）」这半句在英文里落到句子的另一个位置，拼不出来。
+            // The upper limit is known only after the environment preflight, so these are two independent messages rather than concatenation --
+            // the half sentence "(this machine's limit N)" lands in another position in the English sentence and cannot be concatenated.
             Text(model.environment.map { L(.mtuHelpWithLimit, Int($0.fethMaxMTU)) }
                  ?? L(.mtuHelp))
                 .font(.caption)
@@ -106,7 +106,7 @@ struct DeviceCard: View {
     }
 }
 
-/// 设备列表里的一行。
+/// One row in the device list.
 private struct DeviceRow: View {
     let device: DeviceDescriptor
     let isSelected: Bool
@@ -137,8 +137,8 @@ private struct DeviceRow: View {
                 Spacer(minLength: 0)
 
                 if device.usedAndroidQuirk {
-                    // 这条信息对排障很有用：走了兜底路径说明设备的 CDC 描述符不
-                    // 规范，日后若出问题这是第一个该看的线索。
+                    // This information is very useful for troubleshooting: taking the fallback path indicates the device's CDC descriptor is not
+                    // standard, and if problems arise later this is the first clue to look at.
                     StatusBadge(text: L(.compatibilityMode), color: .orange)
                         .help(L(.compatibilityModeTooltip))
                 }

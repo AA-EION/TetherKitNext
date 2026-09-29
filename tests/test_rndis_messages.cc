@@ -1,13 +1,13 @@
-// RNDIS 控制消息编解码的单元测试。
+// Unit tests of RNDIS control message encoding/decoding.
 //
-// 重点覆盖：
-//   1. 偏移字段的基准点是「消息起始 + 8」—— 这是 RNDIS 的第一号陷阱；
-//   2. RESET_MSG / RESET_CMPLT **没有** RequestId，字段偏移与其他消息不同；
-//   3. 变长 / 定长 OID 的 InformationBufferLength 规则相反；
-//   4. INDICATE_STATUS 的 StatusBufferOffset 基准点在规范里是矛盾的；
-//   5. 设备 quirk 的归一化（MaxPacketsPerMessage=0、对齐因子越界、
-//      MaxTransferSize 过大或过小）；
-//   6. 全部畸形输入都必须返回错误而非崩溃或读越界。
+// Key coverage:
+//   1. The base point of offset fields is "message start + 8" -- this is RNDIS's number one trap;
+//   2. RESET_MSG / RESET_CMPLT **have no** RequestId, and their field offsets differ from other messages;
+//   3. The InformationBufferLength rules for variable-length / fixed-length OIDs are opposite;
+//   4. The base point of INDICATE_STATUS's StatusBufferOffset is contradictory in the spec;
+//   5. Normalization of device quirks (MaxPacketsPerMessage=0, alignment factor out of range,
+//      MaxTransferSize too large or too small);
+//   6. All malformed inputs must return an error rather than crash or read out of bounds.
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +25,7 @@ using namespace tetherkitnext::rndis;  // NOLINT(google-build-using-namespace)
 
 namespace {
 
-/// 造一条 RNDIS 消息：先写 Type/Length，再由调用方填字段。
+/// Builds an RNDIS message: write Type/Length first, then the caller fills in the fields.
 std::vector<std::byte> MakeMessage(MessageType type, std::uint32_t message_length,
                                    std::uint32_t buffer_bytes = 0) {
   std::vector<std::byte> buffer(buffer_bytes == 0 ? message_length : buffer_bytes);
@@ -34,7 +34,7 @@ std::vector<std::byte> MakeMessage(MessageType type, std::uint32_t message_lengt
   return buffer;
 }
 
-/// 造一条主线 Linux gadget（Android）会发的 INITIALIZE_CMPLT。
+/// Builds an INITIALIZE_CMPLT of the kind a mainline Linux gadget (Android) would send.
 std::vector<std::byte> MakeInitializeComplete(std::uint32_t max_transfer_size = 2048,
                                               std::uint32_t max_packets = 1,
                                               std::uint32_t alignment_factor = 0,
@@ -60,7 +60,7 @@ std::vector<std::byte> MakeInitializeComplete(std::uint32_t max_transfer_size = 
 TEST_SUITE("rndis.messages") {
 
 // ---------------------------------------------------------------------------
-// 常量自检
+// Constant self-checks
 // ---------------------------------------------------------------------------
 
 TEST_CASE("协议常量与规范一致") {
@@ -73,7 +73,7 @@ TEST_CASE("协议常量与规范一致") {
   CHECK(ToRaw(MessageType::kIndicateStatus) == 0x0000'0007U);
   CHECK(ToRaw(MessageType::kKeepAliveComplete) == 0x8000'0008U);
 
-  // 几个最容易记错的状态码。
+  // A few status codes that are the easiest to misremember.
   CHECK(ToRaw(StatusCode::kNotSupported) == 0xC000'00BBU);
   CHECK(ToRaw(StatusCode::kInvalidLength) == 0xC001'0014U);
   CHECK(ToRaw(StatusCode::kInvalidData) == 0xC001'0015U);
@@ -91,7 +91,7 @@ TEST_CASE("协议常量与规范一致") {
 }
 
 TEST_CASE("偏移基准点常量：DataOffset 内联值必须是 36 而不是 44") {
-  // 这是 RNDIS 实现的第一号陷阱：偏移字段的基准点是消息起始 +8。
+  // This is RNDIS's number one trap: the base point of offset fields is message start +8.
   CHECK(kPacketInlineDataOffset == 36);
   CHECK(kPacketMsgHeaderBytes == 44);
   CHECK(kOffsetFieldBase == 8);
@@ -100,8 +100,8 @@ TEST_CASE("偏移基准点常量：DataOffset 内联值必须是 36 而不是 44
 }
 
 TEST_CASE("MaxTransferSize 推导与 Linux 一致") {
-  CHECK(MaxTransferSizeFor(1500, 512) == 2048);  // 高速
-  CHECK(MaxTransferSizeFor(1500, 64) == 1600);   // 全速
+  CHECK(MaxTransferSizeFor(1500, 512) == 2048);  // high speed
+  CHECK(MaxTransferSizeFor(1500, 64) == 1600);   // full speed
   CHECK(HardMtuFor(1500) == 1558);
 }
 
@@ -112,7 +112,7 @@ TEST_CASE("状态码与 OID 的名字可查") {
   CHECK(OidName(0x0001'010EU) == "OID_GEN_CURRENT_PACKET_FILTER");
   CHECK(OidName(0xDEAD'BEEFU).empty());
   CHECK(MessageTypeName(0x8000'0002U) == "REMOTE_NDIS_INITIALIZE_CMPLT");
-  // CONDIS 消息族必须能被识别出来（虽然不支持），而不是报「未知」。
+  // The CONDIS message family must be recognizable (even though unsupported), rather than reported as "unknown".
   CHECK(MessageTypeName(0x0000'8001U) == "RNDIS_MSG_MP_CREATE_VC");
   CHECK(IsCondis(0x0000'8001U));
   CHECK_FALSE(IsCondis(ToRaw(MessageType::kPacket)));
@@ -165,7 +165,7 @@ TEST_CASE("解码 INITIALIZE_CMPLT：设备返回失败状态") {
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE_FALSE(complete.has_value());
   CHECK(complete.error().Code() == static_cast<std::int64_t>(ToRaw(StatusCode::kFailure)));
-  // 错误串里应带上状态码的符号名，便于排障。
+  // The error string should carry the symbolic name of the status code, to ease troubleshooting.
   CHECK(complete.error().ToString().find("RNDIS_STATUS_FAILURE") != std::string::npos);
 }
 
@@ -197,7 +197,7 @@ TEST_CASE("解码 INITIALIZE_CMPLT：畸形输入一律报错不崩溃") {
 }
 
 // ---------------------------------------------------------------------------
-// 协商与设备 quirk 归一化
+// Negotiation and normalization of device quirks
 // ---------------------------------------------------------------------------
 
 TEST_CASE("协商：Android 主线 gadget 的典型参数") {
@@ -210,7 +210,7 @@ TEST_CASE("协商：Android 主线 gadget 的典型参数") {
   CHECK(params->mtu == 1500);
   CHECK(params->device_max_transfer_size == 2048);
   CHECK(params->max_packets_per_message == 1);
-  CHECK(params->tx_alignment_bytes == 1);  // factor 0 → 对齐 1 字节
+  CHECK(params->tx_alignment_bytes == 1);  // factor 0 -> alignment of 1 byte
 }
 
 TEST_CASE("协商 quirk：MaxPacketsPerMessage 为 0 时按 1 处理") {
@@ -228,7 +228,7 @@ TEST_CASE("协商 quirk：PacketAlignmentFactor 越界时钳到 7") {
   REQUIRE(complete.has_value());
   const auto params = Negotiate(*complete, 1500, 65536);
   REQUIRE(params.has_value());
-  // 不钳位的话 1u << 31 会得到荒谬的对齐值。
+  // Without clamping, 1u << 31 would give an absurd alignment value.
   CHECK(params->tx_alignment_bytes == 128);
 }
 
@@ -243,7 +243,7 @@ TEST_CASE("协商 quirk：高通聚合补丁报 MaxPacketsPerMessage=3") {
 }
 
 TEST_CASE("协商 quirk：设备 MaxTransferSize 小于满帧时下调 MTU") {
-  // 实测案例：HTC Diamond 报 1536，小于 hard_mtu(1558)。
+  // Measured case: the HTC Diamond reports 1536, less than hard_mtu(1558).
   const auto buffer = MakeInitializeComplete(1536, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -259,7 +259,7 @@ TEST_CASE("协商 quirk：WinCE 报 16KB 巨帧时钳到 host 上限") {
   const auto params = Negotiate(*complete, 1500, 4096);
   REQUIRE(params.has_value());
   CHECK(params->device_max_transfer_size == 4096);
-  CHECK(params->mtu == 1500);  // 仍然装得下满帧，MTU 不变
+  CHECK(params->mtu == 1500);  // still fits a full frame, MTU unchanged
 }
 
 TEST_CASE("协商失败：MaxTransferSize 装不下头部") {
@@ -300,13 +300,13 @@ TEST_CASE("编码 QUERY_MSG：定长 OID 必须带占位长度与尾部零字节
 
   CHECK(LoadLe32(buffer.data() + kQuerySetOidOffset) == ToRaw(Oid::kEthernetPermanentAddress));
   CHECK(LoadLe32(buffer.data() + kQuerySetInfoBufferLengthOffset) == 48);
-  // 基准点是消息起始 +8，所以内联数据的偏移值是 20 而不是 28。
+  // The base point is message start +8, so the offset value for inline data is 20 rather than 28.
   CHECK(LoadLe32(buffer.data() + kQuerySetInfoBufferOffsetOffset) == 20);
   CHECK(LoadLe32(buffer.data() + kQuerySetDeviceVcHandleOffset) == 0);
 }
 
 TEST_CASE("编码 QUERY_MSG：变长 OID 的长度必须为 0") {
-  // ActiveSync 的未文档化行为：变长 OID 传非零长度会被拒。
+  // Undocumented behavior of ActiveSync: passing a non-zero length for a variable-length OID gets rejected.
   std::array<std::byte, 128> buffer{};
   const auto written = Encode(QueryRequest{.request_id = 4,
                                            .oid = Oid::kGenSupportedList,
@@ -315,7 +315,7 @@ TEST_CASE("编码 QUERY_MSG：变长 OID 的长度必须为 0") {
   REQUIRE(written.has_value());
   CHECK(written.value() == kQuerySetHeaderBytes);
   CHECK(LoadLe32(buffer.data() + kQuerySetInfoBufferLengthOffset) == 0);
-  // 长度为 0 时偏移也必须写 0。
+  // When the length is 0, the offset must also be written as 0.
   CHECK(LoadLe32(buffer.data() + kQuerySetInfoBufferOffsetOffset) == 0);
 }
 
@@ -341,8 +341,8 @@ TEST_CASE("解码 QUERY_CMPLT：按 +8 基准点定位信息缓冲区") {
 }
 
 TEST_CASE("解码 QUERY_CMPLT：设备返回不支持时不算致命错误") {
-  // 可选 OID（如 OID_GEN_PHYSICAL_MEDIUM）返回 NOT_SUPPORTED 是正常情况，
-  // 解码必须成功返回并把状态交给调用方判断。
+  // An optional OID (such as OID_GEN_PHYSICAL_MEDIUM) returning NOT_SUPPORTED is a normal situation,
+  // and decoding must return successfully and hand the status to the caller to judge.
   auto buffer = MakeMessage(MessageType::kQueryComplete, kQueryCmpltHeaderBytes);
   StoreLe32(buffer.data() + kQueryCmpltStatusOffset, ToRaw(StatusCode::kNotSupported));
   const auto complete = DecodeQueryComplete(buffer);
@@ -354,7 +354,7 @@ TEST_CASE("解码 QUERY_CMPLT：设备返回不支持时不算致命错误") {
 TEST_CASE("解码 QUERY_CMPLT：信息缓冲区越界必须报错") {
   auto buffer = MakeMessage(MessageType::kQueryComplete, kQueryCmpltHeaderBytes + 4);
   StoreLe32(buffer.data() + kQueryCmpltStatusOffset, 0);
-  StoreLe32(buffer.data() + kQueryCmpltInfoBufferLengthOffset, 1024);  // 撒谎
+  StoreLe32(buffer.data() + kQueryCmpltInfoBufferLengthOffset, 1024);  // lie
   StoreLe32(buffer.data() + kQueryCmpltInfoBufferOffsetOffset, kQueryCmpltInlineInfoOffset);
   CHECK_FALSE(DecodeQueryComplete(buffer).has_value());
 }
@@ -383,12 +383,12 @@ TEST_CASE("解码 SET_CMPLT") {
 }
 
 // ---------------------------------------------------------------------------
-// RESET —— 字段偏移与其他消息不同
+// RESET -- field offsets differ from other messages
 // ---------------------------------------------------------------------------
 
 TEST_CASE("编码 RESET_MSG：offset 8 是 Reserved 而非 RequestId") {
   std::array<std::byte, 32> buffer{};
-  buffer[kResetReservedOffset] = std::byte{0xFF};  // 先污染，验证被清零
+  buffer[kResetReservedOffset] = std::byte{0xFF};  // pollute first, to verify it gets zeroed
   const auto written = EncodeReset(buffer);
   REQUIRE(written.has_value());
   CHECK(written.value() == kResetMsgBytes);
@@ -405,7 +405,7 @@ TEST_CASE("解码 RESET_CMPLT：Status 在 offset 8 而不是 12") {
   const auto complete = DecodeResetComplete(buffer);
   REQUIRE(complete.has_value());
   CHECK(complete->status == 0);
-  // AddressingReset 非零 → host 必须重发 SET OID_GEN_CURRENT_PACKET_FILTER。
+  // AddressingReset non-zero -> the host must resend SET OID_GEN_CURRENT_PACKET_FILTER.
   CHECK(complete->addressing_reset);
 }
 
@@ -446,7 +446,7 @@ TEST_CASE("host 也要能编码 KEEPALIVE_CMPLT（设备可主动发起保活）
 }
 
 // ---------------------------------------------------------------------------
-// INDICATE_STATUS —— 基准点矛盾的容错处理
+// INDICATE_STATUS -- tolerant handling of the contradictory base point
 // ---------------------------------------------------------------------------
 
 TEST_CASE("解码 INDICATE_STATUS：MEDIA_CONNECT 无负载") {
@@ -466,7 +466,7 @@ TEST_CASE("解码 INDICATE_STATUS：按 +8 基准点解释状态缓冲区") {
   auto buffer = MakeMessage(MessageType::kIndicateStatus, total);
   StoreLe32(buffer.data() + kIndicateStatusStatusOffset, ToRaw(StatusCode::kInvalidData));
   StoreLe32(buffer.data() + kIndicateStatusBufferLengthOffset, kDiagnosticInfoBytes);
-  // +8 基准点：20 - 8 = 12
+  // +8 base point: 20 - 8 = 12
   StoreLe32(buffer.data() + kIndicateStatusBufferOffsetOffset,
             kIndicateStatusHeaderBytes - kOffsetFieldBase);
   StoreLe32(buffer.data() + kIndicateStatusHeaderBytes + kDiagnosticInfoDiagStatusOffset,
@@ -482,28 +482,28 @@ TEST_CASE("解码 INDICATE_STATUS：按 +8 基准点解释状态缓冲区") {
 }
 
 TEST_CASE("解码 INDICATE_STATUS：按消息起始基准点解释也能工作") {
-  // 某些设备按 MS 文档字面实现（基准点 = 消息起始）。
+  // Some devices implement the MS documentation literally (base point = message start).
   const std::uint32_t total = kIndicateStatusHeaderBytes + kDiagnosticInfoBytes;
   auto buffer = MakeMessage(MessageType::kIndicateStatus, total);
   StoreLe32(buffer.data() + kIndicateStatusStatusOffset, ToRaw(StatusCode::kInvalidData));
   StoreLe32(buffer.data() + kIndicateStatusBufferLengthOffset, kDiagnosticInfoBytes);
-  // 基准点 = 消息起始：直接填 20
+  // Base point = message start: fill in 20 directly
   StoreLe32(buffer.data() + kIndicateStatusBufferOffsetOffset, kIndicateStatusHeaderBytes);
   StoreLe32(buffer.data() + kIndicateStatusHeaderBytes + kDiagnosticInfoDiagStatusOffset, 0xAAU);
 
   const auto indication = DecodeIndicateStatus(buffer);
   REQUIRE(indication.has_value());
-  // +8 解释会越界（8+20+8=36 > 28），因此回退到字面解释。
+  // The +8 interpretation would go out of bounds (8+20+8=36 > 28), so fall back to the literal interpretation.
   REQUIRE(indication->status_buffer.size() == kDiagnosticInfoBytes);
   CHECK(indication->diagnostic_status == 0xAAU);
 }
 
 TEST_CASE("解码 INDICATE_STATUS：两种基准点都越界时仍返回成功") {
-  // 关键行为：status 本身有用（可能就是 MEDIA_DISCONNECT），
-  // 不能因为一个可选负载解析不了就把链路判死。
+  // Key behavior: the status itself is useful (it may be MEDIA_DISCONNECT),
+  // and the link must not be judged dead just because an optional payload cannot be parsed.
   auto buffer = MakeMessage(MessageType::kIndicateStatus, kIndicateStatusHeaderBytes);
   StoreLe32(buffer.data() + kIndicateStatusStatusOffset, ToRaw(StatusCode::kMediaDisconnect));
-  StoreLe32(buffer.data() + kIndicateStatusBufferLengthOffset, 4096);  // 撒谎
+  StoreLe32(buffer.data() + kIndicateStatusBufferLengthOffset, 4096);  // lie
   StoreLe32(buffer.data() + kIndicateStatusBufferOffsetOffset, 12);
 
   const auto indication = DecodeIndicateStatus(buffer);
@@ -518,7 +518,7 @@ TEST_CASE("解码 INDICATE_STATUS：类型不对时报错") {
 }
 
 // ---------------------------------------------------------------------------
-// OID 负载解析
+// OID payload parsing
 // ---------------------------------------------------------------------------
 
 TEST_CASE("ParseUint32 / ParseCounter / ParseMac") {
@@ -555,18 +555,18 @@ TEST_CASE("FormatMac 输出规范格式") {
 }
 
 // ---------------------------------------------------------------------------
-// USB 描述符签名识别
+// USB descriptor signature recognition
 // ---------------------------------------------------------------------------
 
 TEST_CASE("识别四种已知的 RNDIS 通信类接口签名") {
-  CHECK(IsRndisControlSignature({0x02, 0x02, 0xFF}));  // 标准 MS RNDIS
+  CHECK(IsRndisControlSignature({0x02, 0x02, 0xFF}));  // standard MS RNDIS
   CHECK(IsRndisControlSignature({0xEF, 0x01, 0x01}));  // ActiveSync
-  CHECK(IsRndisControlSignature({0xE0, 0x01, 0x03}));  // 无线 RNDIS（手机共享）
-  CHECK(IsRndisControlSignature({0xEF, 0x04, 0x01}));  // Novatel 变体
+  CHECK(IsRndisControlSignature({0xE0, 0x01, 0x03}));  // wireless RNDIS (phone tethering)
+  CHECK(IsRndisControlSignature({0xEF, 0x04, 0x01}));  // Novatel variant
 
-  // 真 CDC ACM 调制解调器（protocol=0x01）不能误判成 RNDIS。
+  // A real CDC ACM modem (protocol=0x01) must not be misjudged as RNDIS.
   CHECK_FALSE(IsRndisControlSignature({0x02, 0x02, 0x01}));
-  // CDC ECM 也不是 RNDIS。
+  // CDC ECM is not RNDIS either.
   CHECK_FALSE(IsRndisControlSignature({0x02, 0x06, 0x00}));
   CHECK(kDataSignature == InterfaceSignature{0x0A, 0x00, 0x00});
 }

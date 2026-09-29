@@ -1,10 +1,10 @@
 import SwiftUI
 import TetherKitNextIPC
 
-/// 主状态卡：整个界面的视觉与操作重心。
+/// The main status card: the visual and operational focus of the entire UI.
 ///
-/// 一屏之内回答三个问题：现在通不通、通到哪张网卡、什么 IP。
-/// 其余细节都往下面的卡片里放 —— 用户九成的时间只看这一块。
+/// Answers three questions within one screen: is it connected now, through which NIC, and with what IP.
+/// All other details go into the cards below -- users spend ninety percent of their time looking only at this block.
 struct StatusHeroCard: View {
     @Bindable var model: AppModel
 
@@ -111,10 +111,10 @@ struct StatusHeroCard: View {
     }
 }
 
-/// 状态圆环。
+/// The status ring.
 ///
-/// 运行中时外圈缓慢旋转、内圈呼吸 —— 这是界面上唯一的动效，用来表达「它在活着
-/// 干活」。其余状态一律静止，避免把注意力浪费在没有信息量的动画上。
+/// While running the outer ring rotates slowly and the inner ring breathes -- this is the only animation on the UI, used to express "it is alive
+/// and working". All other states are static, to avoid wasting attention on animations that carry no information.
 private struct StatusRing: View {
     let status: SessionStatus
     let accent: Color
@@ -136,7 +136,7 @@ private struct StatusRing: View {
                 .stroke(accent.opacity(0.25), lineWidth: 3)
                 .frame(width: 64, height: 64)
 
-            // 过渡态用一段旋转的弧表示「正在进行中，进度不可知」。
+            // The transitional state uses a rotating arc to mean "in progress, progress unknown".
             Circle()
                 .trim(from: 0, to: isWorking ? 0.25 : (isActive ? 1.0 : 0.0))
                 .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))

@@ -1,20 +1,20 @@
-# src —— 各功能模块
+# src -- feature modules
 #
-# 依赖方向严格单向，禁止反向依赖或循环依赖：
+# The dependency direction is strictly one-way; reverse or circular dependencies are forbidden:
 #
-#   tk_common  ← 无依赖（日志、错误、无锁容器、内存池、统计）
+#   tk_common  <- no dependencies (logging, errors, lock-free containers, memory pool, statistics)
 #      ↑
-#   tk_rndis   ← common          （RNDIS 线格式与状态机，纯逻辑，不碰 I/O）
-#   tk_net     ← common          （feth 虚拟网卡 + BPF 链路，仅 macOS 系统调用）
-#   tk_usb     ← common          （libusb 封装）
+#   tk_rndis   <- common          (RNDIS wire format and state machine; pure logic, no I/O)
+#   tk_net     <- common          (feth virtual NIC + BPF link; macOS system calls only)
+#   tk_usb     <- common          (libusb wrapper)
 #      ↑
-#   tk_core    ← common+rndis+net+usb （数据路径桥接与运行时编排）
+#   tk_core    <- common+rndis+net+usb (data-path bridge and runtime orchestration)
 #      ↑
-#   tetherkitnext  ← core            （命令行可执行程序）
-#   tk_capi    ← core            （C ABI，供 Swift GUI 使用）
+#   tetherkitnext  <- core            (command-line executable)
+#   tk_capi    <- core            (C ABI, for use by the Swift GUI)
 
 # ------------------------------------------------------------------------------
-# 公共编译属性：所有本项目目标都继承它
+# Common compile properties: all of this project's targets inherit it
 # ------------------------------------------------------------------------------
 add_library(tetherkitnext_base INTERFACE)
 target_include_directories(tetherkitnext_base INTERFACE "${PROJECT_SOURCE_DIR}/include")
@@ -22,7 +22,7 @@ target_link_libraries(tetherkitnext_base INTERFACE tetherkitnext_warnings tether
                                                tetherkitnext_optimizations)
 
 # ------------------------------------------------------------------------------
-# 版本号：从模板生成，避免版本变更导致全量重编译
+# Version: generated from a template, so a version change does not trigger a full rebuild
 # ------------------------------------------------------------------------------
 # Build identity. The marketing version alone cannot tell two builds apart
 # (every 0.2.0 prerelease reports "0.2.0"), so the app could not notice that

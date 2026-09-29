@@ -1,24 +1,24 @@
 import SwiftUI
 import TetherKitNextIPC
 
-/// 界面的设计语言。
+/// The design language of the UI.
 ///
-/// 集中定义间距、圆角、颜色与几个复用容器，目的只有一个：**让每一处的视觉决定
-/// 只做一次**。散落在各个 View 里的魔数会在加新面板时慢慢走形，而这类走形没有
-/// 任何自动化手段能发现。
+/// Centralizes spacing, corner radii, colors and a few reusable containers, with a single purpose: **make each visual decision
+/// only once**. Magic numbers scattered across the various Views gradually drift out of shape as new panels are added, and no automated
+/// means can detect this kind of drift.
 enum Design {
-    // MARK: - 尺寸
+    // MARK: - Sizes
 
-    /// 间距阶梯。按 4 的倍数递进 —— 与系统控件的内部留白同源，混排时不会错位。
+    /// The spacing ladder. Advances in multiples of 4 -- from the same source as the internal padding of system controls, so mixing them does not misalign.
     enum Spacing {
         static let tight: CGFloat = 6
         static let small: CGFloat = 10
-        /// 卡片之间、两栏之间的沟槽。整页要在一屏内放下，卡片间距是第一个
-        /// 该省的地方 —— 它出现的次数最多，而信息密度为零。
+        /// The gutter between cards and between the two columns. The whole page must fit on one screen, and the card spacing is the first
+        /// place to economize -- it occurs the most times and its information density is zero.
         static let gutter: CGFloat = 12
         static let medium: CGFloat = 16
         static let large: CGFloat = 24
-        /// 卡片内边距。
+        /// Card inner padding.
         static let section: CGFloat = 16
     }
 
@@ -40,10 +40,10 @@ enum Design {
         static let contentMaxWidth: CGFloat = 860
     }
 
-    // MARK: - 状态色
+    // MARK: - Status colors
 
-    /// 会话状态对应的强调色。整个界面的色彩都由它驱动 —— 用户扫一眼颜色就知道
-    /// 现在是什么情况，不需要读文字。
+    /// The accent color corresponding to the session state. The whole UI's color scheme is driven by it -- the user knows what the situation is
+    /// at a glance of the color, without needing to read text.
     static func accent(for state: RunState) -> Color {
         switch state {
         case .idle, .stopped: return .secondary
@@ -64,7 +64,7 @@ enum Design {
         }
     }
 
-    /// 状态圆环里的 SF Symbol。
+    /// The SF Symbol inside the status ring.
     static func statusSymbol(for status: SessionStatus) -> String {
         switch status.runState {
         case .idle, .stopped: return "bolt.horizontal"
@@ -84,13 +84,13 @@ enum Design {
     }
 }
 
-// MARK: - 复用容器
+// MARK: - Reusable containers
 
-/// 卡片容器。所有内容面板都用它包一层，保证圆角、留白、描边一致。
+/// The card container. All content panels wrap themselves in it, guaranteeing consistent corner radii, padding and strokes.
 struct Card<Content: View>: View {
     var title: String?
     var systemImage: String?
-    /// 标题右侧的附属视图（刷新按钮、状态徽标等）。
+    /// The auxiliary view to the right of the title (refresh button, status badge, etc.).
     var accessory: AnyView?
     @ViewBuilder var content: () -> Content
 
@@ -244,7 +244,7 @@ extension Design {
 }
 #endif
 
-/// 一格指标：上面是说明，下面是值。
+/// One metric cell: the description on top, the value below.
 struct MetricTile: View {
     let caption: String
     let value: String
@@ -264,7 +264,7 @@ struct MetricTile: View {
             .foregroundStyle(.secondary)
 
             Text(value)
-                // 等宽数字：数值跳动时字符不会左右抖动。
+                // Monospaced digits: characters do not jitter left and right when values change.
                 .font(.system(.title3, design: .rounded).weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(tint)
@@ -275,7 +275,7 @@ struct MetricTile: View {
     }
 }
 
-/// 小圆点徽标，用于「链路已连通 / 已断开」这类二元状态。
+/// A small dot badge, for binary states such as "link connected / disconnected".
 struct StatusBadge: View {
     let text: String
     let color: Color
@@ -295,14 +295,14 @@ struct StatusBadge: View {
     }
 }
 
-// MARK: - 格式化
+// MARK: - Formatting
 
-/// 界面上所有数值的格式化都走这里，避免同一个量在不同面板显示成不同样子。
+/// The formatting of all numeric values on the UI goes through here, avoiding the same quantity being displayed looking different in different panels.
 enum Format {
-    /// 速率。自动在 bit/s、Kbps、Mbps、Gbps 之间选单位。
+    /// Rate. Automatically picks the unit among bit/s, Kbps, Mbps, Gbps.
     ///
-    /// 用 bit 而不是 byte：网络吞吐的行业惯例是 bit，和用户在路由器、
-    /// 运营商那里看到的口径一致。
+    /// Bits rather than bytes: the industry convention for network throughput is bits, consistent with the figures the user sees on routers and
+    /// at carriers.
     static func bitrate(_ bitsPerSecond: Double) -> String {
         let units: [(threshold: Double, suffix: String, divisor: Double)] = [
             (1_000_000_000, "Gbps", 1_000_000_000),
@@ -315,17 +315,17 @@ enum Format {
         return String(format: "%.0f bps", max(0, bitsPerSecond))
     }
 
-    /// 累计字节数。
+    /// Cumulative byte count.
     static func bytes(_ value: UInt64) -> String {
-        // ByteCountFormatter 把 0 渲染成 "Zero KB"（它的本地化行为），
-        // 在一排数字里显得格外突兀，单独处理掉。
+        // ByteCountFormatter renders 0 as "Zero KB" (its localized behavior),
+        // which looks especially abrupt in a row of numbers, so it is handled separately.
         guard value > 0 else { return "0 B" }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: Int64(clamping: value))
     }
 
-    /// 大整数加千分位，便于读「12,345,678 帧」。
+    /// Adds thousands separators to large integers, easier to read as "12,345,678 frames".
     static func count(_ value: UInt64) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -357,7 +357,7 @@ enum Format {
         timeFormatter.string(from: date)
     }
 
-    /// 把秒数渲染成 "1:02:03" / "2:03"。
+    /// Renders seconds as "1:02:03" / "2:03".
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(max(0, seconds))
         let hours = total / 3600

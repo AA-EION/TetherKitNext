@@ -1,14 +1,14 @@
-# FindLibUSB.cmake —— 定位 libusb-1.0
+# FindLibUSB.cmake -- locate libusb-1.0
 #
-# 优先走 pkg-config（Homebrew 安装的 libusb 自带 .pc 文件，能正确给出
-# `include/libusb-1.0` 这个非常规的头文件目录）；失败时回退到手工搜索常见前缀。
+# Prefer pkg-config (the libusb installed by Homebrew ships a .pc file, which correctly reports
+# the unconventional header directory `include/libusb-1.0`); on failure, fall back to a manual search of common prefixes.
 #
-# 输出：
-#   LibUSB_FOUND        —— 是否找到
-#   LibUSB_VERSION      —— 版本号字符串
-#   LibUSB_INCLUDE_DIR  —— 含 libusb.h 的目录
-#   LibUSB_LIBRARY      —— 库文件路径
-#   LibUSB::LibUSB      —— 可直接 link 的 IMPORTED 目标
+# Outputs:
+#   LibUSB_FOUND        -- whether it was found
+#   LibUSB_VERSION      -- version string
+#   LibUSB_INCLUDE_DIR  -- directory containing libusb.h
+#   LibUSB_LIBRARY      -- path to the library file
+#   LibUSB::LibUSB      -- IMPORTED target that can be linked directly
 
 # LibUSB_ROOT (see scripts/build-libusb.sh) pins a specific build — the
 # universal, @rpath-named libusb that release builds embed in TetherKitNext.app.
@@ -56,7 +56,7 @@ find_library(
   PATHS /opt/homebrew/opt/libusb/lib /usr/local/opt/libusb/lib /opt/local/lib /usr/local/lib
         /usr/lib)
 
-# 版本号：pkg-config 最可靠；否则从头文件的 LIBUSB_API_VERSION 推断一个下限。
+# Version: pkg-config is the most reliable; otherwise infer a lower bound from LIBUSB_API_VERSION in the header.
 if(PC_LIBUSB_VERSION)
   set(LibUSB_VERSION "${PC_LIBUSB_VERSION}")
 elseif(LibUSB_INCLUDE_DIR AND EXISTS "${LibUSB_INCLUDE_DIR}/libusb.h")
@@ -82,7 +82,7 @@ if(LibUSB_FOUND AND NOT TARGET LibUSB::LibUSB)
     LibUSB::LibUSB
     PROPERTIES IMPORTED_LOCATION "${LibUSB_LIBRARY}"
                INTERFACE_INCLUDE_DIRECTORIES "${LibUSB_INCLUDE_DIR}")
-  # libusb 的 darwin 后端需要 IOKit 与 CoreFoundation，以及 Security（IOUSBHost 权限校验）。
+  # libusb's darwin backend needs IOKit and CoreFoundation, plus Security (IOUSBHost permission checks).
   find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
   find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
   find_library(SECURITY_FRAMEWORK Security REQUIRED)

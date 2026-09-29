@@ -12,16 +12,16 @@
 namespace tetherkitnext::usb {
 namespace {
 
-/// 传输缓冲的对齐字节数。
+/// Alignment in bytes of transfer buffers.
 ///
-/// darwin 后端不提供零拷贝 DMA 缓冲（libusb_dev_mem_alloc 返回 NULL），
-/// 只能自己分配。按系统页大小对齐能减少 IOKit 为该缓冲建立 DMA 描述符时的
-/// 内存分段数量。Apple Silicon 上 hw.pagesize 是 16384。
+/// The darwin backend does not provide zero-copy DMA buffers (libusb_dev_mem_alloc returns NULL),
+/// so we can only allocate them ourselves. Aligning to the system page size reduces the number of
+/// memory segments IOKit needs when building DMA descriptors for the buffer. On Apple Silicon hw.pagesize is 16384.
 [[nodiscard]] std::size_t QueryPageSize() {
   std::int64_t value = 0;
   std::size_t size = sizeof(value);
   if (::sysctlbyname("hw.pagesize", &value, &size, nullptr, 0) != 0 || value <= 0) {
-    return 16384;  // Apple Silicon 的实际值，作为兜底
+    return 16384;  // the actual value on Apple Silicon, used as a backstop
   }
   return static_cast<std::size_t>(value);
 }
@@ -29,7 +29,7 @@ namespace {
 }  // namespace
 
 // =============================================================================
-// 构造与析构
+// Construction and destruction
 // =============================================================================
 
 Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
@@ -40,7 +40,7 @@ Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
   channel->parameters_ = parameters;
   channel->config_ = config;
 
-  // TX 缓冲不能超过设备宣称的 MaxTransferSize —— 超了设备会拒收或截断。
+  // The TX buffer must not exceed the MaxTransferSize the device claims -- if it does, the device will reject or truncate.
   channel->tx_transfer_bytes_ =
       std::min(config.tx_transfer_bytes, parameters.device_max_transfer_size);
   if (channel->tx_transfer_bytes_ < rndis::kPacketMsgHeaderBytes + parameters.mtu +
@@ -55,7 +55,7 @@ Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
   TETHERKITNEXT_RETURN_IF_ERROR(channel->AllocatePool(channel->tx_pool_, config.tx_transfer_count,
                                                   channel->tx_transfer_bytes_));
 
-  // TX 空闲槽位队列：初始全部空闲。
+  // Queue of free TX slots: initially all free.
   channel->tx_free_slots_ = std::make_unique<SpscRing<std::uint32_t>>(config.tx_transfer_count);
   for (std::uint32_t i = 0; i < config.tx_transfer_count; ++i) {
     if (!channel->tx_free_slots_->TryPush(i)) {
@@ -74,7 +74,7 @@ Result<std::unique_ptr<UsbDataChannel>> UsbDataChannel::Create(
 }
 
 UsbDataChannel::~UsbDataChannel() {
-  // Shutdown 是幂等的；这里兜底一次，防止调用方忘了。
+  // Shutdown is idempotent; it is called once more here as a backstop, in case the caller forgot.
   Shutdown();
   FreePool(rx_pool_);
   FreePool(tx_pool_);
@@ -92,7 +92,7 @@ Status UsbDataChannel::AllocatePool(std::vector<Slot>& pool, std::uint32_t count
     slot.buffer_bytes = buffer_bytes;
 
     void* raw = nullptr;
-    // 长度也向上取整到对齐边界，避免尾部跨页。
+    // The length is also rounded up to the alignment boundary, to avoid the tail straddling a page.
     const std::size_t allocation =
         ((buffer_bytes + alignment - 1) / alignment) * alignment;
     if (::posix_memalign(&raw, alignment, allocation) != 0 || raw == nullptr) {
@@ -115,7 +115,7 @@ void UsbDataChannel::FreePool(std::vector<Slot>& pool) noexcept {
       ::libusb_free_transfer(slot.transfer);
       slot.transfer = nullptr;
     }
-    // posix_memalign 分配的内存必须用 free 释放（不能用 delete）。
+    // Memory allocated by posix_memalign must be released with free (not delete).
     // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory)
     std::free(slot.buffer);
     slot.buffer = nullptr;
@@ -124,7 +124,7 @@ void UsbDataChannel::FreePool(std::vector<Slot>& pool) noexcept {
 }
 
 // =============================================================================
-// 接收路径（设备 → 主机）
+// Receive path (device -> host)
 // =============================================================================
 
 Status UsbDataChannel::StartReceiving(FrameRing& rx_ring, DirectionCounters& rx_counters) {
@@ -145,13 +145,13 @@ Status UsbDataChannel::SubmitReceive(Slot& slot) {
       &UsbDataChannel::ReceiveCallbackTrampoline, &slot,
       static_cast<unsigned int>(config_.rx_timeout_millis));
 
-  // **刻意不设 LIBUSB_TRANSFER_SHORT_NOT_OK。**
-  // 短包在 bulk IN 上是完全正常的语义（设备只有半个缓冲的数据就发短包结束传输）。
-  // 设了这个标志会让 io.c 把「COMPLETED 且 actual_length != 请求长度」重判为
-  // LIBUSB_TRANSFER_ERROR —— 那样几乎每个传输都会「失败」。
+  // **Deliberately not setting LIBUSB_TRANSFER_SHORT_NOT_OK.**
+  // A short packet on bulk IN is completely normal semantics (the device ends the transfer with a short packet when it has only half a buffer of data).
+  // Setting this flag makes io.c re-judge "COMPLETED with actual_length != requested length" as
+  // LIBUSB_TRANSFER_ERROR -- then nearly every transfer would "fail".
   slot.transfer->flags = 0;
 
-  // 先递增在飞计数再提交：否则回调可能在递增之前就跑完，导致计数下溢。
+  // Increment the in-flight count first and then submit: otherwise the callback might finish running before the increment, making the count underflow.
   outstanding_.fetch_add(1, std::memory_order_acq_rel);
 
   const int rc = ::libusb_submit_transfer(slot.transfer);
@@ -168,12 +168,12 @@ void UsbDataChannel::ReceiveCallbackTrampoline(::libusb_transfer* transfer) {
 }
 
 void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
-  // ⚠️ 本函数在 libusb **事件线程**上执行，并且持有 ctx->event_waiters_lock。
-  // 因此这里：
-  //   * 绝不能调用同步 API（会返回 LIBUSB_ERROR_BUSY）；
-  //   * 绝不能做阻塞 I/O（会拖住所有等同步传输的线程）；
-  //   * 只做「解包 + memcpy 进无锁队列 + 立刻 resubmit」。
-  //   真正的 BPF write() 由另一个线程负责。
+  // WARNING: This function executes on the libusb **event thread** and holds ctx->event_waiters_lock.
+  // Therefore here:
+  //   * a synchronous API must never be called (it would return LIBUSB_ERROR_BUSY);
+  //   * blocking I/O must never be done (it would hold up all threads waiting on synchronous transfers);
+  //   * only do "unpack + memcpy into the lock-free queue + resubmit immediately".
+  //   The real BPF write() is handled by another thread.
   const ::libusb_transfer* transfer = slot.transfer;
   bool should_resubmit = true;
 
@@ -181,7 +181,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
     case LIBUSB_TRANSFER_COMPLETED: {
       const auto received = static_cast<std::size_t>(transfer->actual_length);
       if (received > 0 && rx_ring_ != nullptr) {
-        // 批量发布：整个传输里的所有帧只做一次 release store。
+        // Batch publish: all frames in the whole transfer do only one release store.
         auto batch = rx_ring_->BeginBatchWrite();
         rndis::PacketMessageReader reader(
             std::span<const std::byte>{slot.buffer, received}, rx_ring_->MaxFrameBytes());
@@ -192,7 +192,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
           const rndis::ReadOutcome outcome = reader.Next(frame);
           if (outcome == rndis::ReadOutcome::kFrame) {
             if (!batch.Push(frame)) [[unlikely]] {
-              // 下游队列满 —— BPF 写线程跟不上。丢弃并计数，不能阻塞在这里。
+              // The downstream queue is full -- the BPF write thread cannot keep up. Drop and count; must not block here.
               rx_counters_->AddDroppedFull();
               continue;
             }
@@ -219,9 +219,9 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
     }
 
     case LIBUSB_TRANSFER_STALL:
-      // 端点 halt。清掉再继续 —— libusb_clear_halt 走同步 IOKit 调用但**没有**
-      // usbi_handling_events 守卫，在回调里调用是安全的（代价是阻塞事件线程
-      // 几十微秒到毫秒级，所以只在真 STALL 时做）。
+      // Endpoint halt. Clear it and continue -- libusb_clear_halt goes through a synchronous IOKit call but has **no**
+      // usbi_handling_events guard, so calling it inside a callback is safe (the cost is blocking the event thread
+      // for tens of microseconds to milliseconds, so it is done only on a real STALL).
       rx_counters_->AddIoError();
       TETHERKITNEXT_WARN_TR(Msg::kUsbBulkInStall);
       if (const auto status = device_->ClearHalt(device_->BulkInEndpoint()); !status) {
@@ -231,18 +231,18 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
       break;
 
     case LIBUSB_TRANSFER_CANCELLED:
-      // 停机路径。**不要** resubmit。
+      // Shutdown path. **Do not** resubmit.
       should_resubmit = false;
       break;
 
     case LIBUSB_TRANSFER_NO_DEVICE:
-      // 设备拔了。停止重提交，让在飞计数收敛，由上层重连逻辑处理。
+      // The device was unplugged. Stop resubmitting, let the in-flight count converge, and leave it to the upper layer's reconnection logic.
       should_resubmit = false;
       TETHERKITNEXT_INFO_TR(Msg::kUsbBulkInDeviceGone);
       break;
 
     case LIBUSB_TRANSFER_TIMED_OUT:
-      // rx_timeout_millis 默认 0（无限），正常不该出现。出现了就继续提交。
+      // rx_timeout_millis defaults to 0 (infinite), so this should not normally occur. If it occurs, keep submitting.
       rx_counters_->AddIoError();
       break;
 
@@ -259,17 +259,17 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
   }
 
   if (should_resubmit) {
-    // 官方保证：在回调里直接 resubmit 同一个 transfer 是安全的
-    // （usbi_handle_transfer_completion 在调回调前已把它移出 flying list
-    //  并清了 IN_FLIGHT 标志，且不持 itransfer->lock）。
+    // Official guarantee: resubmitting the same transfer directly inside a callback is safe
+    // (usbi_handle_transfer_completion has already removed it from the flying list before calling the callback,
+    //  and cleared the IN_FLIGHT flag, and does not hold itransfer->lock).
     const int rc = ::libusb_submit_transfer(slot.transfer);
     if (rc == LIBUSB_SUCCESS) {
-      return;  // 在飞计数保持不变：一进一出
+      return;  // in-flight count stays unchanged: one in, one out
     }
     TETHERKITNEXT_WARN_TR(Msg::kUsbBulkInResubmitFailed, ::libusb_error_name(rc));
   }
 
-  // 该传输就此退出飞行。通知可能正在等待归零的 Shutdown()。
+  // This transfer leaves flight here. Notifies Shutdown(), which may be waiting for the count to reach zero.
   if (outstanding_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
     const std::lock_guard<std::mutex> guard(drain_mutex_);
     drain_condition_.notify_all();
@@ -277,7 +277,7 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
 }
 
 // =============================================================================
-// 发送路径（主机 → 设备）
+// Send path (host -> device)
 // =============================================================================
 
 bool UsbDataChannel::CanSend() const noexcept {
@@ -297,13 +297,13 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
   while (outcome.consumed < frames.size()) {
     std::uint32_t slot_index = 0;
     if (!tx_free_slots_->TryPop(slot_index)) {
-      // 没有空闲传输槽位 —— 这就是背压。如实返回已消费数，调用方应
-      // WaitForSendCapacity() 后重试剩余帧，而不是丢弃。
+      // No free transfer slot -- this is backpressure. Faithfully return the number consumed; the caller should
+      // retry the remaining frames after WaitForSendCapacity(), rather than drop them.
       break;
     }
     Slot& slot = tx_pool_[slot_index];
 
-    // 把尽可能多的帧聚合进这一个传输。
+    // Aggregate as many frames as possible into this one transfer.
     rndis::PacketMessageWriter writer(
         std::span<std::byte>{slot.buffer, slot.buffer_bytes},
         rndis::PacketMessageWriter::Limits{
@@ -313,28 +313,28 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
         },
         device_->BulkMaxPacketSize());
 
-    std::uint32_t scanned = 0;   // 从输入消费掉的帧数（含被跳过的短帧）
-    std::uint32_t appended = 0;  // 真正装进本传输的帧数
+    std::uint32_t scanned = 0;   // number of frames consumed from the input (including skipped short frames)
+    std::uint32_t appended = 0;  // number of frames that actually went into this transfer
     bool append_failed = false;
     while (outcome.consumed + scanned < frames.size()) {
       const FrameView& frame = frames[outcome.consumed + scanned];
       if (frame.length < kMinEthernetFrameBytes) [[unlikely]] {
-        // 非法短帧：跳过并如实计入 skipped —— 它没有被发出。
+        // Illegal short frame: skip it and faithfully count it in skipped -- it was not sent.
         ++scanned;
         ++outcome.skipped;
         continue;
       }
       if (!writer.TryAppend(frame.Bytes())) {
         append_failed = true;
-        break;  // 本批装满了（受字节数或包数上限），或单帧超长
+        break;  // this batch is full (limited by bytes or packet count), or a single frame is oversized
       }
       ++scanned;
       ++appended;
     }
 
     if (writer.Empty()) {
-      // 一帧都没装进去。要么这一段全是被跳过的短帧，要么第一个合法帧就超过了
-      // 设备的 MaxTransferSize —— 后者必须跳过并前进，否则会死循环。
+      // Not a single frame was put in. Either this whole stretch is skipped short frames, or the first legal frame already exceeds
+      // the device's MaxTransferSize -- the latter must be skipped and advanced past, otherwise it would loop forever.
       outcome.consumed += scanned;
       if (append_failed && outcome.consumed < frames.size()) {
         ++outcome.consumed;
@@ -368,8 +368,8 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
       return std::unexpected(Error::FromLibUsb(rc, Tr(Msg::kUsbSubmitBulkOutFailed)));
     }
 
-    // 帧数与字节数由**桥接层**统计（它是 TX 计数器的唯一写者）。这里只记
-    // 供诊断用的聚合效果。
+    // Frame counts and byte counts are tallied by the **bridge layer** (the sole writer of the TX counters). Here we only record
+    // the aggregation effect for diagnostics.
     TETHERKITNEXT_TRACE_TR(Msg::kUsbBulkOutSubmitted, message_count, payload_bytes, transfer_bytes);
     outcome.consumed += scanned;
     outcome.sent_frames += appended;
@@ -393,7 +393,7 @@ void UsbDataChannel::SendCallbackTrampoline(::libusb_transfer* transfer) {
 }
 
 void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
-  // 同样在 libusb 事件线程上，同样不能阻塞。
+  // Also on the libusb event thread, and likewise must not block.
   switch (slot.transfer->status) {
     case LIBUSB_TRANSFER_COMPLETED:
       break;
@@ -416,13 +416,13 @@ void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
       break;
   }
 
-  // 归还槽位。停机时不归还也无所谓 —— 反正不会再有人取。
+  // Return the slot. Not returning it at shutdown does not matter -- nobody will take from it anyway.
   if (!shutting_down_.load(std::memory_order_acquire)) {
     if (!tx_free_slots_->TryPush(slot.index)) {
       TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot.index);
     }
-    // 唤醒可能在 WaitForSendCapacity 里等槽位的 TX 线程。空临界区惯用法：
-    // 取一下锁保证等待方不会在「查完谓词、还没睡下」的窗口里漏掉这次通知。
+    // Wake the TX thread that may be waiting for a slot in WaitForSendCapacity. Empty-critical-section idiom:
+    // taking the lock guarantees the waiter will not miss this notification in the window between "checked the predicate" and "not yet asleep".
     { const std::lock_guard<std::mutex> guard(send_capacity_mutex_); }
     send_capacity_cv_.notify_one();
   }
@@ -434,29 +434,29 @@ void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
 }
 
 // =============================================================================
-// 拆除
+// Teardown
 // =============================================================================
 
 void UsbDataChannel::Shutdown() {
   if (shutdown_complete_) {
     return;
   }
-  // ⚠️ 本函数**绝对不能**从 libusb 事件线程调用：下面要等在飞计数归零，
-  // 而递减它的回调正是在事件线程上跑的 —— 在那里等就是自己等自己，必然死锁。
-  // 正确的调用者是控制线程或主线程。
+  // WARNING: This function **must never** be called from the libusb event thread: below it waits for the in-flight count to reach zero,
+  // and the callbacks that decrement it run exactly on the event thread -- waiting there means waiting on oneself, an inevitable deadlock.
+  // The correct callers are the control thread or the main thread.
 
-  // 1. 置停机标志。回调看到它就不再 resubmit，在飞数开始自然收敛。
-  //    同时唤醒可能还在 WaitForSendCapacity 里等槽位的线程（正常拆除顺序下
-  //    TX 线程此时已被 join，这里是防御性兜底 —— 比如测试直接驱动通道时）。
+  // 1. Set the shutdown flag. Callbacks that see it no longer resubmit, and the in-flight count starts converging naturally.
+  //    Also wake threads that may still be waiting for a slot in WaitForSendCapacity (under the normal teardown order
+  //    the TX thread has already been joined by now, so this is a defensive backstop -- for example when tests drive the channel directly).
   shutting_down_.store(true, std::memory_order_release);
   { const std::lock_guard<std::mutex> guard(send_capacity_mutex_); }
   send_capacity_cv_.notify_all();
 
-  // 2. 取消在飞传输。
+  // 2. Cancel the in-flight transfers.
   //
-  // darwin 上 libusb_cancel_transfer 是 AbortPipe，会取消**该端点上所有**在飞
-  // 传输，所以每个端点其实只需调一次；这里逐个调是幂等且更清晰的写法。
-  // LIBUSB_ERROR_NOT_FOUND 表示它本来就不在飞，属于正常情况。
+  // On darwin libusb_cancel_transfer is AbortPipe, which cancels **all** in-flight transfers on **that endpoint**,
+  // so in fact each endpoint needs to be called only once; calling one by one here is an idempotent and clearer way to write it.
+  // LIBUSB_ERROR_NOT_FOUND means it was not in flight to begin with, which is a normal situation.
   for (Slot& slot : rx_pool_) {
     if (slot.transfer != nullptr) {
       const int rc = ::libusb_cancel_transfer(slot.transfer);
@@ -474,8 +474,8 @@ void UsbDataChannel::Shutdown() {
     }
   }
 
-  // 3. 等在飞计数归零。**这一步是避免 use-after-free 的关键** ——
-  //    必须等到每个回调都跑完，才能释放 transfer 与缓冲。
+  // 3. Wait for the in-flight count to reach zero. **This step is the key to avoiding use-after-free** --
+  //    it must wait until every callback has finished running before transfers and buffers can be freed.
   {
     constexpr auto kDrainTimeout = std::chrono::seconds(5);
     std::unique_lock<std::mutex> lock(drain_mutex_);
@@ -483,12 +483,12 @@ void UsbDataChannel::Shutdown() {
       return outstanding_.load(std::memory_order_acquire) == 0;
     });
     if (!drained) {
-      // 超时。这时释放缓冲是危险的（回调可能还会访问），所以**故意泄漏** ——
-      // 泄漏几百 KB 远好于 use-after-free 崩溃。
+      // Timed out. Freeing the buffers now is dangerous (callbacks may still access them), so **deliberately leak** --
+      // leaking a few hundred KB is far better than a use-after-free crash.
       const std::uint32_t stuck = outstanding_.load(std::memory_order_acquire);
       TETHERKITNEXT_ERROR_TR(Msg::kUsbTransferReclaimTimeout, stuck,
                          (stuck * config_.rx_transfer_bytes) / 1024);
-      // 把 transfer 指针清空，让 FreePool 跳过它们。
+      // Null out the transfer pointers so FreePool skips them.
       for (Slot& slot : rx_pool_) {
         slot.transfer = nullptr;
         slot.buffer = nullptr;

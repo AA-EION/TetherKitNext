@@ -22,10 +22,10 @@ void ConfigureCurrentThread(std::string_view name, ThreadRole role) noexcept {
   SetCurrentThreadName(name);
 
   const auto qos = static_cast<qos_class_t>(QosClassFor(role));
-  // relative_priority 传 0 表示该 QoS 等级内的默认优先级。
+  // Passing 0 for relative_priority means the default priority within that QoS class.
   const int rc = ::pthread_set_qos_class_self_np(qos, 0);
   if (rc != 0) {
-    // QoS 设置失败不影响功能，只影响性能，因此只告警不返回错误。
+    // A QoS setting failure does not affect functionality, only performance, so it only warns and returns no error.
     TETHERKITNEXT_WARN_TR(Msg::kCommonThreadQosFailed, static_cast<int>(qos), rc);
   }
 }

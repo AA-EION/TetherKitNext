@@ -4,7 +4,7 @@ import SwiftUI
 import TetherKitNextCore
 import TetherKitNextIPC
 
-/// 一次采样得到的瞬时速率。
+/// The instantaneous rate obtained from one sample.
 struct ThroughputSample: Identifiable {
     let id = UUID()
     let timestamp: Date
@@ -18,11 +18,11 @@ struct ThroughputSample: Identifiable {
                                        transmitPacketsPerSecond: 0)
 }
 
-/// 连续重复的日志折叠成一条。
+/// Consecutive repeated logs are folded into one.
 ///
-/// 周期性路径（比如每 2 秒一次的设备枚举）会把同一句话刷成一整列，淹没真正
-/// 有信息量的行；折叠成「一行 ×N」承载同样的信息。id 取首条的 —— 重复只更新
-/// 计数与时间戳，行的身份不变，列表不用整行重建。
+/// Periodic paths (such as device enumeration once every 2 seconds) flood the same sentence into a whole column, drowning the lines that really
+/// carry information; folding into "one line x N" carries the same information. The id is taken from the first entry -- repeats only update the
+/// count and timestamp, and the row's identity stays unchanged, so the list need not rebuild whole rows.
 struct CollapsedLogEntry: Identifiable {
     let first: LogEntry
     private(set) var latest: LogEntry
@@ -35,7 +35,7 @@ struct CollapsedLogEntry: Identifiable {
 
     var id: UUID { first.id }
 
-    /// 时间戳以外完全相同才算重复 —— 消息里带着变化的值（地址、计数）就该分行。
+    /// Only entries identical apart from the timestamp count as repeats -- messages carrying changing values (addresses, counts) should stay on separate lines.
     func matches(_ entry: LogEntry) -> Bool {
         entry.level == first.level && entry.thread == first.thread
             && entry.message == first.message
@@ -47,15 +47,15 @@ struct CollapsedLogEntry: Identifiable {
     }
 }
 
-/// helper 的可达性。界面靠它决定是「显示安装引导」还是「正常工作」。
+/// The reachability of the helper. The UI uses it to decide between "show install guidance" and "work normally".
 enum HelperAvailability: Equatable {
     case unknown
     case available(version: String)
     case missing(reason: String)
-    /// 装着的 helper 比当前 App 旧（或新），XPC 接口对不上。
+    /// The installed helper is older (or newer) than the current App, and the XPC interface does not match.
     ///
-    /// 单独一个状态而不是并进 missing：这两种情况的解决办法不一样，
-    /// 一个是「去装」，一个是「去重装」，提示文案必须能区分。
+    /// A separate state rather than merged into missing: the remedies for the two cases differ,
+    /// one being "go install" and the other "go reinstall", and the hint text must be able to tell them apart.
     case outdated(installed: Int, expected: Int)
 
     var isAvailable: Bool {
@@ -64,47 +64,47 @@ enum HelperAvailability: Equatable {
     }
 }
 
-/// 装着的特权组件与 App 自带的那份不是同一个版本。
+/// The installed privileged component is not the same version as the one the App bundles.
 ///
-/// ★ 与 `HelperAvailability.outdated` 的分工 ★
-///   那个说的是**协议对不上**：方法签名都不一致了，再调下去要么卡住要么崩，
-///   所以必须挡在安装引导页上。这个说的是**协议仍兼容、版本却不一样** ——
-///   组件照常能用，只是它里面还是升级前的那份 libtetherkitnext，新版修的问题在
-///   真正干活的那一侧一个都没修（`brew upgrade` 只换 .app，动不了
-///   /Library/PrivilegedHelperTools）。
+/// * Division of labor with `HelperAvailability.outdated` *
+///   That one is about a **protocol mismatch**: the method signatures are no longer consistent, and calling further would either hang or crash,
+///   so it must be stopped at the install guidance page. This one is about **the protocol still being compatible but the version differing** --
+///   the component works as usual, but it still contains the pre-upgrade libtetherkitnext, and the problems fixed in the new version have not been fixed
+///   at all on the side that really does the work (`brew upgrade` only replaces the .app and cannot touch
+///   /Library/PrivilegedHelperTools).
 ///
-///   所以它不拦路，只在管理行里点亮一个「更新特权组件」。协议号不变的版本
-///   （0.1.4 → 0.1.5 这种）以前完全没有提示，用户唯一能察觉的迹象是
-///   「更新说明里写着修好的毛病还在」。
+///   So it does not block the way, and only lights up an "Update privileged component" in the management row. For versions where the protocol number is unchanged
+///   (like 0.1.4 -> 0.1.5) there used to be no hint at all, and the only sign the user could notice was
+///   "the bug the release notes say was fixed is still there".
 struct HelperVersionMismatch: Equatable {
-    /// 装着的那份，只取版本号（如 `"0.1.3"`）。
+    /// The installed one, taking only the version number (such as `"0.1.3"`).
     let installed: String
-    /// App 自带的那份 —— 点了按钮之后会装上去的版本。
+    /// The one the App bundles -- the version that will be installed after the button is clicked.
     let expected: String
 }
 
-/// 手动「检查更新」的结果，驱动一个弹窗。
+/// The result of a manual "check for updates", driving a popup.
 enum UpdateCheckResult: Equatable {
     case upToDate(current: String)
     case updateAvailable(UpdateChecker.Release)
     case failed(String)
-    /// 开发构建（`swift run` 的裸可执行文件）没有版本号，没法比。
+    /// A development build (the bare executable from `swift run`) has no version number and cannot be compared.
     case unavailable
 }
 
-/// 界面的全部状态与动作。
+/// All of the UI's state and actions.
 ///
-/// ★ 为什么所有事都经过 helper，而不是 App 自己调库 ★
-///   App 以普通用户身份运行，建 feth 和开 BPF 都要 root，所以会话只能在 helper
-///   里跑。设备枚举与环境预检虽然不需要 root，但也统一走 helper —— 会话跑起来后
-///   设备已被 helper 独占，App 再去读只会得到不一致的结果。
+/// * Why everything goes through the helper rather than the App calling the library itself *
+///   The App runs as an ordinary user, and creating feth and opening BPF both need root, so a session can only run inside
+///   the helper. Device enumeration and the environment preflight, although they need no root, also go uniformly through the helper -- once a session is running
+///   the device is held exclusively by the helper, and the App reading it again would only get inconsistent results.
 @Observable
 @MainActor
 final class AppModel {
-    // MARK: - 对界面公开的状态
+    // MARK: - State exposed to the UI
 
     private(set) var helperAvailability: HelperAvailability = .unknown
-    /// 装着的组件与 App 版本对不上时的两个版本号；一致（或还没探到）为 nil。
+    /// The two version numbers when the installed component and the App version do not match; nil when consistent (or not yet probed).
     private(set) var helperVersionMismatch: HelperVersionMismatch?
     private(set) var environment: EnvironmentReport?
     private(set) var devices: [DeviceDescriptor] = []
@@ -122,12 +122,12 @@ final class AppModel {
     /// State of the `/usr/local/bin/tetherkitnext-cli` link.
     private(set) var commandLineToolState: CommandLineToolState = .current
 
-    /// 用户在设备列表里选中的那台。为 nil 表示「用找到的第一台」。
+    /// The one the user selected in the device list. nil means "use the first one found".
     var selectedDeviceID: String?
-    /// 会话配置里用户可调的部分。
+    /// The user-adjustable part of the session configuration.
     var requestedMTU: UInt32 = 1500
     var adoptDeviceMAC: Bool = true
-    /// 网络配置表单。
+    /// The network configuration form.
     ///
     /// Persisted, so a choice like "route all traffic through this interface"
     /// sticks across launches and the automatic configuration on Connect
@@ -149,12 +149,12 @@ final class AppModel {
         networkConfiguration = stored
     }
 
-    /// 界面语言偏好。改它会**同时**做三件事：切 Swift 侧的文案表、把语言推给
-    /// libtetherkitnext（否则日志卡里会混进另一种语言）、再推给 helper（它以 root
-    /// 跑在 launchd 下，看不到用户的语言偏好）。
+    /// The UI language preference. Changing it does **three** things at once: switches the Swift-side message table, pushes the language to
+    /// libtetherkitnext (otherwise another language would get mixed into the log card), and then pushes it to the helper (which runs as root
+    /// under launchd and cannot see the user's language preference).
     ///
-    /// `didSet` 里顺带把 `languageRevision` 加一 —— 文案是从全局表里查的，
-    /// SwiftUI 无从得知它变了，得靠这个值把视图树整个重建一次。
+    /// `didSet` also increments `languageRevision` -- messages are looked up from a global table,
+    /// and SwiftUI has no way to know they changed, so this value is used to rebuild the whole view tree once.
     var languagePreference: LanguagePreference = .system {
         didSet {
             guard languagePreference != oldValue else { return }
@@ -162,42 +162,42 @@ final class AppModel {
         }
     }
 
-    /// 语言换了多少次。视图根上挂 `.id(model.languageRevision)`，靠它触发重建。
+    /// How many times the language has changed. `.id(model.languageRevision)` is attached at the view root, and it triggers the rebuild.
     private(set) var languageRevision = 0
 
-    /// 正在等待某个特权操作完成 —— 界面据此禁用按钮并显示进度。
+    /// Waiting for some privileged operation to complete -- the UI uses it to disable buttons and show progress.
     private(set) var isBusy: Bool = false
-    /// 需要弹给用户看的错误。
+    /// An error that needs to be popped up to the user.
     var alertMessage: String?
 
-    /// 已知的新版本。驱动管理行里的「有新版」提示；nil = 没有或没查过。
+    /// The known new version. Drives the "new version available" hint in the management row; nil = none or never checked.
     private(set) var availableUpdate: UpdateChecker.Release?
-    /// 手动「检查更新」的结果弹窗。视图关掉弹窗时置回 nil。
+    /// The popup of the manual "check for updates" result. Set back to nil when the view dismisses the popup.
     var updateCheckResult: UpdateCheckResult?
 
     var logLevelFilter: LogLevel = .info
 
-    // MARK: - 内部
+    // MARK: - Internal
 
     private let client = HelperClient()
     private var pollingTask: Task<Void, Never>?
-    /// 上一次的状态快照，用来做差算速率。
+    /// The previous state snapshot, used to compute rates by differencing.
     private var previousStatus: SessionStatus?
     private var sessionStartedAt: Date?
-    /// 上次枚举设备的时刻。用单调时钟，避免系统时间被调整时算出负的间隔。
+    /// The moment of the last device enumeration. A monotonic clock is used, avoiding negative intervals when the system time is adjusted.
     private var lastDeviceRefresh: ContinuousClock.Instant?
 
-    /// 主窗口当前是否可见。只影响轮询节奏；程序坞图标策略在视图层处理。
+    /// Whether the main window is currently visible. It only affects the polling pace; the Dock icon policy is handled at the view layer.
     private var isWindowVisible = true
 
-    /// 最近一次「明确要求显示主窗口」的时刻。初始值 = 现在，因为 App 启动本身
-    /// 就是一次合法的窗口展示。
+    /// The moment of the most recent "explicitly asked to show the main window". The initial value = now, because the App's launch itself
+    /// is a legitimate window presentation.
     private var windowPresentationRequestedAt = ContinuousClock.now
 
-    /// 缓存的授权令牌。为 nil 表示下次特权操作需要弹框。
+    /// The cached authorization token. nil means the next privileged operation needs to pop up a dialog.
     ///
-    /// 不自己记过期时间：系统的 timeout 由授权数据库控制（可能被管理员改），
-    /// 我们自己算一份只会和系统不一致。以 helper 的复核结果为准更可靠。
+    /// It does not keep its own expiry time: the system's timeout is controlled by the authorization database (and may be changed by an administrator),
+    /// and computing our own copy would only disagree with the system. Going by the helper's verification result is more reliable.
     private var cachedAuthorization: AuthorizationToken?
 
     /// The daemon refused a Touch ID-confirmed request (the user is not an
@@ -207,35 +207,35 @@ final class AppModel {
 
 
 
-    /// 轮询周期。
+    /// Polling period.
     ///
-    /// 500 ms 是「看起来实时」与「别把 XPC 往返变成负担」的平衡点：更快对人眼
-    /// 已无区别，更慢会让速率曲线看起来一顿一顿的。
+    /// 500 ms is the balance point between "looks real-time" and "do not turn XPC round trips into a burden": faster makes no difference
+    /// to the human eye, and slower makes the rate curve look choppy.
     private static let pollInterval: Duration = .milliseconds(500)
 
-    /// 纯后台待机（窗口关着、会话没跑）时的轮询间隔。
+    /// The polling interval in pure background standby (window closed, no session running).
     private static let backgroundPollInterval: Duration = .seconds(2)
 
-    /// 设备枚举的最小间隔。
+    /// The minimum interval of device enumeration.
     ///
-    /// 比状态轮询慢得多，因为枚举要 libusb_open 去读字符串描述符。2 秒的插拔
-    /// 响应延迟用户基本感觉不到，而开销降到了原来的四分之一。
+    /// Much slower than state polling, because enumeration needs libusb_open to read string descriptors. A 2-second plug/unplug
+    /// response delay is basically imperceptible to the user, while the overhead drops to a quarter of the original.
     private static let deviceRefreshInterval: Duration = .seconds(2)
 
-    /// 吞吐曲线保留的采样点数。120 点 × 500 ms = 最近 60 秒。
+    /// The number of sample points the throughput curve retains. 120 points x 500 ms = the most recent 60 seconds.
     private static let historyCapacity = 120
 
-    /// 日志面板保留的行数。
+    /// The number of lines the log panel retains.
     ///
-    /// 2000 行足够回溯一整次启动序列加若干分钟运行；再多 SwiftUI 的列表会开始卡。
+    /// 2000 lines are enough to look back over a whole startup sequence plus several minutes of running; more than that and SwiftUI's list starts to lag.
     private static let logCapacity = 2000
 
-    // MARK: - 生命周期
+    // MARK: - Lifecycle
 
-    /// 应用一个语言偏好：本进程 → libtetherkitnext → helper，一处都不能漏。
+    /// Applies a language preference: this process -> libtetherkitnext -> helper, not one place may be missed.
     ///
-    /// UserDefaults 只在这里写，读在 `restoreLanguagePreference()` 里 ——
-    /// 两边都走同一个键名常量，改名不会漏改一半。
+    /// UserDefaults is written only here, and read in `restoreLanguagePreference()` --
+    /// both sides use the same key-name constant, so a rename cannot miss half.
     func applyLanguage(_ preference: LanguagePreference) {
         let resolved = L10n.apply(preference)
         TetherKitNextLibrary.setLanguage(resolved)
@@ -244,12 +244,12 @@ final class AppModel {
         Task { await client.setLanguage(resolved) }
     }
 
-    /// 启动时恢复上次选的语言。没存过就是 `.system`。
+    /// Restores the language chosen last time at startup. If never saved it is `.system`.
     private func restoreLanguagePreference() {
         let stored = UserDefaults.standard.string(forKey: Self.languageDefaultsKey)
         let preference = stored.flatMap(LanguagePreference.init(rawValue:)) ?? .system
-        // 直接写存储属性会触发 didSet 再存一次盘，绕开它：这里是「恢复」，
-        // 不是「用户改了」。
+        // Writing the stored property directly would trigger didSet to save to disk once more, so bypass it: this is a "restore",
+        // not "the user changed it".
         if preference != languagePreference {
             languagePreference = preference
         } else {
@@ -267,7 +267,7 @@ final class AppModel {
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
-                // 间隔是动态的：会话在跑或窗口开着就保持流畅，纯后台待机时放慢。
+                // The interval is dynamic: keep it smooth while a session is running or the window is open, and slow down in pure background standby.
                 try? await Task.sleep(for: self.pollDelay)
             }
         }
@@ -280,48 +280,48 @@ final class AppModel {
         pollingTask = nil
     }
 
-    /// 主窗口出现（含从菜单栏重新打开）。
+    /// The main window appears (including reopening from the menu bar).
     ///
-    /// 立刻刷一次而不是等下一个周期：后台轮询可能正睡在 2 秒的长间隔里，
-    /// 用户打开窗口的第一眼不该看到陈旧数据。
+    /// Refresh once immediately rather than waiting for the next period: background polling may be sleeping in a 2-second long interval,
+    /// and the first glance the user gets when opening the window should not be stale data.
     func windowDidAppear() {
         isWindowVisible = true
         Task { await refresh() }
     }
 
-    /// 主窗口关闭。App 转入后台模式，轮询继续（菜单栏靠它喂数据）但会放慢。
+    /// The main window closes. The App moves into background mode; polling continues (the menu bar relies on it for data) but slows down.
     func windowDidDisappear() {
         isWindowVisible = false
     }
 
-    /// 登记「接下来这次主窗口展示是我们主动要求的」。
+    /// Registers that "this upcoming main window presentation is one we asked for ourselves".
     ///
-    /// App 启动时（初始化默认值）与「打开主窗口」按钮各登记一次。
+    /// Registered once at App launch (initializing defaults) and once by the "open main window" button.
     func expectWindowPresentation() {
         windowPresentationRequestedAt = ContinuousClock.now
     }
 
-    /// 这次窗口出现是不是我们自己要求的。
+    /// Whether this window appearance was requested by ourselves.
     ///
-    /// SwiftUI 会在「无窗口的 App 被激活」时（点菜单栏图标就会触发）擅自重建
-    /// Window 场景，那种复活必须当场关掉。用时间窗而不是一次性标志来判定：
-    /// 「3 秒内登记过」就算数 —— 一次性标志在「窗口已开着时再点打开」这类
-    /// 路径上会残留，时间窗天然自愈。
+    /// SwiftUI will on its own recreate the Window scene when "an App without windows is activated" (clicking the menu bar icon triggers it),
+    /// and such a revival must be closed on the spot. A time window rather than a one-shot flag is used to decide:
+    /// "registered within the last 3 seconds" counts -- a one-shot flag would linger on paths like
+    /// "click open again while the window is already open", while a time window heals itself naturally.
     func isWindowPresentationExpected() -> Bool {
         ContinuousClock.now - windowPresentationRequestedAt < .seconds(3)
     }
 
-    /// 当前该用的轮询间隔。
+    /// The polling interval that should be used right now.
     ///
-    /// 三种情况用快节奏：会话在跑（菜单栏要显示实时速率）、正在启动/停止
-    /// （用户在等结果）、窗口开着（用户在看）。只有「纯后台待机」才放慢 ——
-    /// 那时轮询唯一的产出是 helper 探活与设备扫描，没人需要它们每半秒一次。
+    /// Three cases use the fast pace: a session is running (the menu bar shows real-time rates), starting/stopping
+    /// (the user is waiting for a result), and the window is open (the user is looking). Only "pure background standby" slows down --
+    /// then the only output of polling is helper liveness probing and device scanning, and nobody needs them every half second.
     private var pollDelay: Duration {
         let sessionActive = status.runState == .running || status.runState.isTransitional
         return sessionActive || isWindowVisible ? Self.pollInterval : Self.backgroundPollInterval
     }
 
-    // MARK: - 轮询
+    // MARK: - Polling
 
     private func refresh() async {
         do {
@@ -330,10 +330,10 @@ final class AppModel {
             guard revision == HelperConstants.protocolRevision else {
                 helperAvailability = .outdated(installed: revision,
                                                expected: HelperConstants.protocolRevision)
-                // 协议对不上时不再另报版本不一致：那张卡本来就是要用户去更新组件，
-                // 同一件事说两遍只会让人怀疑是两个问题。
+                // When the protocol does not match, do not additionally report a version mismatch: that card is meant to make the user update the component anyway,
+                // and saying the same thing twice would only make people suspect there are two problems.
                 helperVersionMismatch = nil
-                // 接口对不上就别继续发请求了 —— 参数与应答的形状都可能不一致。
+                // If the interface does not match, do not keep sending requests -- the shapes of both parameters and replies may be inconsistent.
                 return
             }
             helperAvailability = .available(version: version)
@@ -347,8 +347,8 @@ final class AppModel {
             helperAvailability = .missing(reason: error.localizedDescription)
             helperVersionMismatch = nil
             helperNeedsApproval = HelperInstaller.needsApproval
-            // 连不上就别再发后续请求了 —— 每一个都会重复同样的失败，
-            // 只会把日志刷满。
+            // If it cannot connect, do not send subsequent requests -- each would repeat the same failure,
+            // and only flood the log.
             return
         }
 
@@ -363,17 +363,17 @@ final class AppModel {
             apply(feed: feed)
         }
 
-        // 设备列表只在没跑起来的时候刷：运行中设备已被独占，列表也不该变。
+        // The device list is refreshed only when not running: while running the device is held exclusively and the list should not change.
         //
-        // 而且**刷得比状态慢**。枚举一次要读 USB 字符串描述符，那需要
-        // libusb_open 真的把设备打开一遍 —— 按 500 ms 的状态轮询节奏做这件事，
-        // 等于每秒钟去开关用户的设备两次，既浪费又可能干扰它。插拔响应慢 2 秒
-        // 完全不影响体感。
+        // And **refreshed more slowly than state**. One enumeration has to read USB string descriptors, which needs
+        // libusb_open to really open the device once -- doing this at the 500 ms state-polling pace
+        // amounts to opening and closing the user's device twice a second, both wasteful and possibly disruptive to it. A 2-second slower plug/unplug response
+        // does not affect the perceived experience at all.
         if status.runState != .running, shouldRefreshDevices() {
             if let fresh = try? await client.listDevices() {
                 devices = fresh
-                // 用户选中的设备被拔掉后，选择要跟着失效，否则「启动」会按一个
-                // 不存在的总线地址去找设备。
+                // After the device the user selected is unplugged, the selection must be invalidated with it, otherwise "Start" would look for a device by a
+                // nonexistent bus address.
                 if let selected = selectedDeviceID,
                    !devices.contains(where: { $0.id == selected }) {
                     selectedDeviceID = nil
@@ -396,7 +396,7 @@ final class AppModel {
             status = fresh
         }
 
-        // 记录/清除连接时刻，用于显示已连接时长。
+        // Record/clear the connection moment, used to display the connected duration.
         if fresh.runState == .running, sessionStartedAt == nil {
             sessionStartedAt = Date()
         } else if fresh.runState != .running, fresh.runState != .stopping {
@@ -412,8 +412,8 @@ final class AppModel {
             return
         }
 
-        // 分母用库那边的单调时钟差，而不是我们的轮询周期 —— 两次拉取之间的
-        // 真实间隔会被调度拉长，用固定周期当分母会把速率算高。
+        // The denominator uses the difference of the library's monotonic clock rather than our polling period -- the real
+        // interval between two pulls gets stretched by scheduling, and using a fixed period as the denominator would overestimate the rate.
         let seconds = Double(fresh.monotonicNanos - previous.monotonicNanos) / 1_000_000_000
         guard seconds > 0 else { return }
 
@@ -441,9 +441,9 @@ final class AppModel {
         droppedLogCount += feed.droppedLogs
     }
 
-    // MARK: - 动作
+    // MARK: - Actions
 
-    /// 已连接时长；未连接时为 nil。
+    /// The connected duration; nil when not connected.
     var connectedDuration: TimeInterval? {
         sessionStartedAt.map { Date().timeIntervalSince($0) }
     }
@@ -455,11 +455,11 @@ final class AppModel {
         return devices.first
     }
 
-    /// 过滤 + 连续去重后的日志。
+    /// The log after filtering + consecutive deduplication.
     ///
-    /// 折叠放在过滤**之后**：原始流里两条相同的 INFO 之间可能夹着 trace，
-    /// 按原始顺序折叠会失效，而用户在某个级别下看到的相邻重复才是该合并的。
-    /// O(n) 重算，n ≤ 2000，对 500 ms 的刷新节奏无感。
+    /// Folding is placed **after** filtering: two identical INFO entries in the raw stream may have a trace between them,
+    /// so folding in raw order would fail, while the adjacent repeats the user sees at some level are what should be merged.
+    /// Recomputed in O(n), n <= 2000, imperceptible at a 500 ms refresh pace.
     var filteredLogs: [CollapsedLogEntry] {
         var collapsed: [CollapsedLogEntry] = []
         for entry in logs where entry.level >= logLevelFilter {
@@ -472,7 +472,7 @@ final class AppModel {
         return collapsed
     }
 
-    /// 启动会话。会弹一次系统授权框。
+    /// Starts a session. Pops up the system authorization dialog once.
     func startSession() async {
         guard !isBusy else { return }
         isBusy = true
@@ -480,8 +480,8 @@ final class AppModel {
 
         var configuration = SessionConfiguration(mtu: requestedMTU,
                                                  adoptDeviceMAC: adoptDeviceMAC)
-        // 指定总线 + 地址而不是 VID/PID：同型号两台设备 VID/PID 完全一样，
-        // 只有总线地址能区分。
+        // Specify bus + address rather than VID/PID: two devices of the same model have exactly the same VID/PID,
+        // and only the bus address can tell them apart.
         if let device = selectedDevice {
             configuration.busNumber = device.busNumber
             configuration.deviceAddress = device.deviceAddress
@@ -542,7 +542,7 @@ final class AppModel {
         }
     }
 
-    /// 停止会话。
+    /// Stops the session.
     func stopSession() async {
         guard !isBusy else { return }
         isBusy = true
@@ -553,7 +553,7 @@ final class AppModel {
         }
     }
 
-    /// 下发网络配置。
+    /// Applies the network configuration.
     func applyNetworkConfiguration() async {
         guard !isBusy else { return }
         let interface = status.systemInterface
@@ -572,15 +572,15 @@ final class AppModel {
         await authorized { [self] authorization in
             try await client.applyNetwork(authorization: authorization, interface: interface,
                                           configuration: networkConfiguration)
-            // 立刻回读一次，让界面马上反映真实生效的地址，而不用等下一个轮询周期。
+            // Immediately read back once, so the UI reflects the address actually in effect right away, without waiting for the next polling period.
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
         }
     }
 
-    /// 撤销网卡上的 IP 配置。
+    /// Revokes the IP configuration on the NIC.
     ///
-    /// 单独一个动作而不是「上网方式选『不配置』再点应用」：撤销是一次性操作，
-    /// 混进模式选择器里会让人以为选中它就已经生效了。
+    /// A separate action rather than "choose 'do not configure' as the connectivity method and click apply": revoking is a one-time operation,
+    /// and mixing it into the mode selector would make people think choosing it already takes effect.
     func clearNetworkConfiguration() async {
         guard !isBusy else { return }
         let interface = status.systemInterface
@@ -596,15 +596,15 @@ final class AppModel {
         }
     }
 
-    /// 手动刷新设备列表（界面上的刷新按钮）。
+    /// Manually refreshes the device list (the refresh button on the UI).
     ///
-    /// 手动触发时不受节流限制 —— 用户点了按钮就是想立刻看到结果。
+    /// Not subject to throttling when triggered manually -- the user clicking the button wants to see results immediately.
     func refreshDevices() async {
         lastDeviceRefresh = .now
         devices = (try? await client.listDevices()) ?? []
     }
 
-    /// 距上次枚举是否已经够久。顺带记下这一次的时刻。
+    /// Whether it has been long enough since the last enumeration. Also records the moment of this one.
     private func shouldRefreshDevices() -> Bool {
         let now = ContinuousClock.now
         if let last = lastDeviceRefresh, now - last < Self.deviceRefreshInterval {
@@ -619,20 +619,20 @@ final class AppModel {
         droppedLogCount = 0
     }
 
-    /// App 自带的库版本 —— 「特权组件应该是哪一版」的标准答案。
+    /// The library version the App bundles -- the standard answer to "which version the privileged component should be".
     ///
-    /// 用**库**的版本而不是 Info.plist 里的 App 版本号：装到
-    /// /Library/PrivilegedHelperTools 的正是 .app 里那份 libtetherkitnext 的拷贝
-    /// （见 build-gui.sh 组装载荷那段），两边同源才比得准。而且 `swift run`
-    /// 的裸可执行文件根本没有 bundle，读 Info.plist 那条路上这个判断会整个失效。
+    /// The **library's** version is used rather than the App version number in Info.plist: what gets installed into
+    /// /Library/PrivilegedHelperTools is exactly a copy of the libtetherkitnext inside the .app
+    /// (see the payload-assembly section of build-gui.sh), and comparing is more accurate when both sides share a source. Also the bare executable of `swift run`
+    /// has no bundle at all, and on the path that reads Info.plist this judgment would fail entirely.
     ///
-    /// 敢用 `static let` 缓存是因为它是编译期烧进 dylib 的常量，进程活着的时候
-    /// 不会变 —— 与上面几个必须跟着语言走的提示语不同。顺手把版本号提取也
-    /// 做掉：这个判断挂在 500 ms 一次的轮询上，没必要每次都重跑一遍正则。
+    /// It is safe to cache with `static let` because it is a constant burned into the dylib at compile time and does not
+    /// change while the process lives -- unlike the several hint strings above that must follow the language. The version number extraction is also
+    /// done along the way: this judgment hangs on polling that runs every 500 ms, and there is no need to rerun a regex every time.
     private static let bundledVersion =
         HelperConstants.semanticVersion(of: TetherKitNextLibrary.versionInfo.version)
 
-    /// 装着的组件和 App 自带的是不是同一版。一致时返回 nil。
+    /// Whether the installed component and the App-bundled one are the same version. Returns nil when consistent.
     ///
     /// Also compares build IDs: two builds can share a version number (every
     /// 0.2.0 prerelease), and the daemon keeps running the old binary after the
@@ -747,9 +747,9 @@ final class AppModel {
         commandLineToolState = .current
     }
 
-    // MARK: - 检查更新
+    // MARK: - Checking for updates
 
-    /// 手动检查（App 菜单「检查更新…」）。结果无论好坏都弹窗。
+    /// Manual check (the App menu "Check for Updates..."). The result pops up a dialog whether good or bad.
     func checkForUpdates() async {
         guard let current = UpdateChecker.currentVersion else {
             updateCheckResult = .unavailable
@@ -770,9 +770,9 @@ final class AppModel {
         }
     }
 
-    /// 自动检查：每天至多一次、失败静默、发现新版只点亮管理行的提示，
-    /// 绝不弹窗打断 —— 更新是「顺便知道」的事，不值得一个模态框。
-    /// `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES` 可关掉。
+    /// Automatic check: at most once a day, silent on failure, and on finding a new version only lights up the hint in the management row,
+    /// never popping up to interrupt -- an update is something to learn "in passing" and does not deserve a modal box.
+    /// It can be turned off with `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES`.
     private func checkForUpdatesQuietly() async {
         guard let current = UpdateChecker.currentVersion else { return }
         let defaults = UserDefaults.standard
@@ -788,15 +788,15 @@ final class AppModel {
         availableUpdate = UpdateChecker.isNewer(latest.version, than: current) ? latest : nil
     }
 
-    /// 把查到的最新版记进 defaults —— 明天的启动被节流拦住时，提示不该消失。
+    /// Records the latest version found into defaults -- when tomorrow's launch is blocked by throttling, the hint should not disappear.
     private func remember(_ release: UpdateChecker.Release) {
         let defaults = UserDefaults.standard
         defaults.set(release.version, forKey: Self.updateKnownVersionKey)
         defaults.set(release.pageURL.absoluteString, forKey: Self.updateKnownPageKey)
     }
 
-    /// 启动时恢复上次查到的新版提示。升级完成后（当前版本 ≥ 记住的版本）
-    /// 自然失效，不需要任何清理逻辑。
+    /// Restores the new-version hint found last time at startup. After the upgrade completes (current version >= the remembered version)
+    /// it naturally becomes invalid, needing no cleanup logic whatsoever.
     private func restoreKnownUpdate() {
         guard let current = UpdateChecker.currentVersion,
               let version = UserDefaults.standard.string(forKey: Self.updateKnownVersionKey),
@@ -812,28 +812,28 @@ final class AppModel {
     private static let updateKnownVersionKey = "updateKnownVersion"
     private static let updateKnownPageKey = "updateKnownPageURL"
 
-    /// 带着授权凭据执行一次特权操作，必要时才弹系统授权框。
+    /// Executes a privileged operation carrying an authorization credential, popping up the system authorization dialog only when necessary.
     ///
-    /// ★ 为什么缓存令牌 ★
-    ///   `system.privilege.admin` 的实测参数是 `shared = false`、`timeout = 300`。
-    ///   `shared = false` 意味着凭据**不跨 AuthorizationRef 共享** —— 每次操作
-    ///   新建一个 ref，就必然要用户重新认证一次，于是「连接、配网络、断开」
-    ///   会连弹三次框。而 `timeout = 300` 意味着同一个 ref 上的凭据 5 分钟内
-    ///   一直有效。
+    /// * Why the token is cached *
+    ///   The measured parameters of `system.privilege.admin` are `shared = false` and `timeout = 300`.
+    ///   `shared = false` means the credential is **not shared across AuthorizationRefs** -- creating a new ref
+    ///   for every operation necessarily makes the user authenticate again, so "connect, configure network, disconnect"
+    ///   would pop up the dialog three times in a row. And `timeout = 300` means the credential on the same ref
+    ///   stays valid for 5 minutes.
     ///
-    ///   所以缓存令牌复用：第一次操作弹一次框，之后 5 分钟内都不用再弹。
-    ///   过期后 helper 的复核会失败并明确告知「这是授权问题」，我们据此丢弃
-    ///   缓存、重新弹一次框、把这次操作重试一遍 —— 用户看到的仍然是「操作前
-    ///   弹了一次框」，而不是一个莫名其妙的失败。
+    ///   So the token is cached and reused: the first operation pops up a dialog once, and afterwards none is needed for 5 minutes.
+    ///   After expiry the helper's verification fails and explicitly says "this is an authorization problem", and on that basis we discard the
+    ///   cache, pop up a dialog again, and retry this operation -- what the user sees is still "a dialog popped up
+    ///   before the operation", rather than an inexplicable failure.
     ///
-    /// ★ 为什么不能自己接住凭据再用 ★
-    ///   外部形式只是指向 securityd 里那份授权的一把钥匙，不是凭据本身。
-    ///   AuthorizationRef 一释放，helper 还原时就会报 -60005。所以令牌由
-    ///   `cachedAuthorization` 持有，并用 `withExtendedLifetime` 保证它活到
-    ///   XPC 往返结束之后。
+    /// * Why we cannot catch the credential ourselves and use it later *
+    ///   The external form is only a key pointing to that authorization in securityd, not the credential itself.
+    ///   Once the AuthorizationRef is released, the helper reports -60005 when restoring. So the token is held by
+    ///   `cachedAuthorization`, and `withExtendedLifetime` guarantees it lives until after the
+    ///   XPC round trip ends.
     ///
-    /// 用户取消时**不**弹错误提示 —— 取消是正常操作，再弹一个「已取消」的框
-    /// 只会烦人。
+    /// On user cancellation **no** error hint is popped up -- cancelling is a normal action, and popping up another "cancelled" box
+    /// would only be annoying.
     /// Returns whether `body` ran to completion.
     @discardableResult
     private func authorized(prompt: String = L(.authPromptSession),
@@ -861,17 +861,17 @@ final class AppModel {
             }
         }
 
-        // 第一趟：有缓存就直接用，不打扰用户。
+        // First pass: if there is a cache, use it directly without disturbing the user.
         if let cached = cachedAuthorization {
-            // withExtendedLifetime 不能接 async 闭包，所以用 defer 把令牌钉到
-            // 作用域结束 —— 光靠局部 let 不够，ARC 可以在最后一次读
-            // externalForm 之后就释放它，而那时 XPC 往返还没回来。
+            // withExtendedLifetime cannot take an async closure, so defer is used to pin the token until the
+            // end of scope -- a local let alone is not enough, since ARC may release it right after the last read of
+            // externalForm, when the XPC round trip has not yet come back.
             defer { withExtendedLifetime(cached) {} }
             do {
                 try await body(cached.externalForm)
                 return true
             } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
-                // 凭据过期了。丢掉缓存，往下走「重新授权 + 重试」。
+                // The credential expired. Discard the cache and go on to "re-authorize + retry".
                 cachedAuthorization = nil
             } catch {
                 alertMessage = error.localizedDescription
@@ -879,7 +879,7 @@ final class AppModel {
             }
         }
 
-        // 第二趟：弹框取新凭据，然后执行（或重试）。
+        // Second pass: pop up a dialog to get a new credential, then execute (or retry).
         do {
             let token = try AuthorizationBroker.requestAuthorization(prompt: prompt)
             defer { withExtendedLifetime(token) {} }

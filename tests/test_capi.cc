@@ -1,9 +1,9 @@
-// C ABI 层的单元测试。
+// Unit tests of the C ABI layer.
 //
-// 覆盖那些「写错了不会当场崩、但会在 GUI 上表现成乱码或安全漏洞」的地方：
-// UTF-8 边界截断、网卡名校验、日志环形缓冲的丢弃语义。
+// Covers the places where "a mistake does not crash on the spot, but shows up on the GUI as garbled text or a security hole":
+// UTF-8 boundary truncation, NIC name validation, the drop semantics of the log ring buffer.
 //
-// 会话与网卡配置需要 root 与真实设备，不在这里测 —— 只测它们的参数校验分支。
+// Sessions and NIC configuration need root and a real device, so they are not tested here -- only their argument-validation branches are tested.
 #include <array>
 #include <cstring>
 #include <string>
@@ -27,15 +27,15 @@ TEST_CASE("CopyText 正常拷贝并补终止符") {
 }
 
 TEST_CASE("CopyText 容量为 0 或目标为空时不写内存") {
-  CopyText(nullptr, 16, "x");  // 不崩即通过
+  CopyText(nullptr, 16, "x");  // passing if it does not crash
   std::array<char, 4> buffer{'a', 'b', 'c', 'd'};
   CopyText(buffer.data(), 0, "xyz");
   CHECK(buffer[0] == 'a');
 }
 
 TEST_CASE("CopyText 截断落在 UTF-8 字符边界上") {
-  // 「设备」= 6 字节（每字 3 字节）。给 6 字节容量（可用 5 字节 + 终止符）时，
-  // 只能装下第一个字；若按字节硬切会留下半个「备」，Swift 侧整串会变成替换字符。
+  // "设备" ("device") = 6 bytes (3 bytes per character). With a capacity of 6 bytes (5 usable + the terminator),
+  // only the first character fits; cutting hard by bytes would leave half of "备", and on the Swift side the whole string would become replacement characters.
   std::array<char, 6> buffer{};
   CopyText(buffer.data(), buffer.size(), "设备");
   CHECK(std::string{buffer.data()} == "设");
@@ -49,7 +49,7 @@ TEST_CASE("CopyText 恰好装得下时不截断") {
 }
 
 TEST_CASE("CopyText 首字符就装不下时得到空串而非半个字符") {
-  std::array<char, 3> buffer{};  // 可用 2 字节，装不下 3 字节的「设」
+  std::array<char, 3> buffer{};  // 2 usable bytes, cannot fit the 3-byte "设"
   CopyText(buffer.data(), buffer.size(), "设备");
   CHECK(std::string{buffer.data()}.empty());
 }
@@ -83,7 +83,7 @@ using tetherkitnext::capi::DeviceIdentity;
 using tetherkitnext::capi::ReconcileDeviceStrings;
 using tetherkitnext::capi::RememberedDeviceStrings;
 
-/// 造一条已填好身份与字符串的枚举结果。字符串传空串表示「这次没读到」。
+/// Builds an enumeration result with identity and strings already filled in. Passing an empty string for a string means "not read this time".
 tk_device_info_t DeviceInfo(const DeviceIdentity& identity, const char* manufacturer,
                             const char* product, const char* serial) {
   tk_device_info_t info{};
@@ -100,19 +100,19 @@ tk_device_info_t DeviceInfo(const DeviceIdentity& identity, const char* manufact
 }  // namespace
 
 TEST_CASE("ReconcileDeviceStrings 在读不到时回填上次成功读到的名字") {
-  // 场景即 GUI 上那个真实缺陷：连接后设备被独占、读不到字符串，
-  // 「vivo iQOO Z10x」退化成「USB 设备 2d95:600b」。
+  // The scenario is that real defect on the GUI: after connecting the device is held exclusively and strings cannot be read,
+  // and "vivo iQOO Z10x" degrades into "USB device 2d95:600b".
   const DeviceIdentity phone{.bus_number = 0, .device_address = 1,
                              .vendor_id = 0x2d95, .product_id = 0x600b};
   std::vector<RememberedDeviceStrings> memory;
   const std::vector<DeviceIdentity> present{phone};
 
-  // 第一次：空闲时读到了 → 记住。
+  // First time: read while idle -> remember.
   std::vector<tk_device_info_t> infos{DeviceInfo(phone, "vivo", "iQOO Z10x", "10AFAC2X72005KT")};
   ReconcileDeviceStrings(memory, present, infos);
   REQUIRE(memory.size() == 1);
 
-  // 第二次：会话启动，读被跳过（全空）→ 回填。
+  // Second time: the session starts, the read is skipped (all empty) -> backfill.
   infos = {DeviceInfo(phone, "", "", "")};
   ReconcileDeviceStrings(memory, present, infos);
   CHECK(std::string{infos[0].manufacturer} == "vivo");
@@ -145,12 +145,12 @@ TEST_CASE("ReconcileDeviceStrings 不把旧名字安给接替同一地址的另�
   }
 
   SUBCASE("设备拔掉（不在场）→ 记忆清除；重插后读不到也不回填") {
-    // 拔掉：present 为空。
+    // Unplugged: present is empty.
     infos.clear();
     ReconcileDeviceStrings(memory, {}, infos);
     CHECK(memory.empty());
 
-    // 重插同身份（可能已是同型号的另一台），读不到 → 宁可显示 VID:PID。
+    // Re-plugged with the same identity (possibly already another device of the same model), cannot be read -> better to show VID:PID.
     infos = {DeviceInfo(old_phone, "", "", "")};
     ReconcileDeviceStrings(memory, {std::vector<DeviceIdentity>{old_phone}}, infos);
     CHECK(std::string{infos[0].product}.empty());
@@ -163,14 +163,14 @@ TEST_CASE("ReconcileDeviceStrings 对没有字符串的设备保持诚实的空�
   std::vector<RememberedDeviceStrings> memory;
   std::vector<tk_device_info_t> infos{DeviceInfo(mute, "", "", "")};
   ReconcileDeviceStrings(memory, {std::vector<DeviceIdentity>{mute}}, infos);
-  // 不记忆（没读到东西）、不回填（无中生有）。
+  // Do not remember (nothing was read), do not backfill (nothing conjured out of thin air).
   CHECK(memory.empty());
   CHECK(std::string{infos[0].product}.empty());
 }
 
 TEST_CASE("ReconcileDeviceStrings 不清除仍在场但没被填出的设备的记忆") {
-  // 调用方数组容量不够时，present 比 infos 长 —— 超出部分只是没被填，
-  // 不是拔掉了。
+  // When the caller's array capacity is insufficient, present is longer than infos -- the excess was merely not filled,
+  // not unplugged.
   const DeviceIdentity first{.bus_number = 0, .device_address = 1,
                              .vendor_id = 0x2d95, .product_id = 0x600b};
   const DeviceIdentity second{.bus_number = 0, .device_address = 2,
@@ -183,12 +183,12 @@ TEST_CASE("ReconcileDeviceStrings 不清除仍在场但没被填出的设备的�
   ReconcileDeviceStrings(memory, both, infos);
   REQUIRE(memory.size() == 2);
 
-  // 容量降到 1：只填了第一台，第二台仍在场。
+  // Capacity dropped to 1: only the first was filled, and the second is still present.
   infos = {DeviceInfo(first, "", "", "")};
   ReconcileDeviceStrings(memory, both, infos);
   CHECK(memory.size() == 2);
 
-  // 之后第二台重新被填出且读不到时，记忆还在，能回填。
+  // Afterwards, when the second is filled again and cannot be read, the memory is still there and can backfill.
   infos = {DeviceInfo(second, "", "", "")};
   ReconcileDeviceStrings(memory, both, infos);
   CHECK(std::string{infos[0].product} == "Pixel");
@@ -214,9 +214,9 @@ TEST_CASE("tk_version 填出非空的版本串") {
 TEST_CASE("tk_check_environment 永远成功，只在字段里表达结论") {
   tk_environment_t environment{};
   CHECK(tk_check_environment(&environment) == TK_OK);
-  // 测试进程不是 root，这一条是确定的。
+  // The test process is not root, so this one is certain.
   CHECK_FALSE(environment.is_root);
-  // sysctl 合格时不应该同时带着说明文字。
+  // When the sysctls are acceptable there should not be explanatory text at the same time.
   if (environment.sysctls_ok) {
     CHECK(std::strlen(environment.sysctl_detail) == 0);
   }
@@ -229,8 +229,8 @@ TEST_CASE("tk_check_environment 永远成功，只在字段里表达结论") {
 TEST_CASE("tk_list_devices 允许只统计数量") {
   std::size_t count = 0;
   tk_error_t error{};
-  // 开发机上通常没插 RNDIS 设备，这里只验证「调用成功且不写越界」，
-  // 不断言具体数量。
+  // The development machine usually has no RNDIS device plugged in, so here we only verify "the call succeeds and does not write out of bounds",
+  // without asserting a specific count.
   const tk_result_t result = tk_list_devices(nullptr, 0, &count, false, &error);
   CHECK(result == TK_OK);
   CHECK(std::strlen(error.message) == 0);
@@ -241,9 +241,9 @@ TEST_CASE("tk_list_devices 允许只统计数量") {
 }
 
 TEST_CASE("重复枚举不会反复初始化 libusb") {
-  // GUI 会周期性刷新设备列表。若每次枚举都新建一个 libusb 上下文，就会每次都
-  // 起停一条事件线程与一条 IOKit runloop 线程，日志里还会被「libusb 已初始化」
-  // 刷满 —— 这个问题真实发生过，这条用例把修复钉住。
+  // The GUI refreshes the device list periodically. If every enumeration created a new libusb context, every time it would
+  // start and stop one event thread and one IOKit runloop thread, and the log would be flooded with "libusb initialized"
+  // -- this problem really happened, and this test case pins the fix.
   tk_enable_log_capture(true);
   const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
   tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
@@ -252,7 +252,7 @@ TEST_CASE("重复枚举不会反复初始化 libusb") {
   std::array<tk_log_record_t, 64> records{};
   std::uint64_t dropped = 0;
 
-  // 先枚举一次并把日志清空，确保共享上下文已经建立（第一次初始化是应该有的）。
+  // Enumerate once first and clear the log, making sure the shared context has been established (the first initialization is supposed to happen).
   tk_list_devices(nullptr, 0, &count, false, nullptr);
   while (tk_drain_logs(records.data(), records.size(), &dropped) > 0) {
   }
@@ -323,7 +323,7 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
   const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
   tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
 
-  // 容量是 256（见 log_ring.cc），多打 10 条把最旧的挤掉。
+  // Capacity is 256 (see log_ring.cc); log 10 more to push out the oldest.
   constexpr int kOverflow = 10;
   constexpr int kTotal = 256 + kOverflow;
   for (int i = 0; i < kTotal; ++i) {
@@ -336,7 +336,7 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
 
   CHECK(taken == 256);
   CHECK(dropped == kOverflow);
-  // 留下来的应该是**最新**的那 256 条，所以第一条是第 10 条。
+  // What remains should be the **newest** 256, so the first one is number 10.
   CHECK(std::string{records[0].message} == "第 10 条");
   CHECK(std::string{records[taken - 1].message} == "第 265 条");
 
@@ -365,7 +365,7 @@ TEST_CASE("tk_session_config_init 填出可直接使用的默认值") {
   CHECK(config.rx_transfer_kib > 0);
   CHECK(config.max_transfer_kib > 0);
   CHECK(config.bpf_buffer_kib > 0);
-  // 设备筛选默认不限，否则 GUI 一上来就筛不到任何设备。
+  // The device filter defaults to unrestricted, otherwise the GUI could not filter any device right from the start.
   CHECK(config.vendor_id == 0);
   CHECK(config.product_id == 0);
 }
@@ -397,7 +397,7 @@ TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
   }
 
   SUBCASE("非 root 启动返回 TK_ERR_PERMISSION 而不是笼统的失败") {
-    // GUI 靠这个码区分「该弹授权」和「真的出错了」。
+    // The GUI relies on this code to distinguish "should pop up authorization" from "a real error".
     CHECK(tk_session_start(session, &error) == TK_ERR_PERMISSION);
     CHECK(std::strlen(error.message) > 0);
   }
@@ -419,7 +419,7 @@ TEST_CASE("会话接口对空指针一律安全") {
   CHECK(tk_session_stop(nullptr) == TK_ERR_INVALID_ARGUMENT);
   CHECK(tk_session_status_get(nullptr, nullptr) == TK_ERR_INVALID_ARGUMENT);
   CHECK(tk_session_poll_events(nullptr, nullptr, 4) == 0);
-  tk_session_destroy(nullptr);  // 不崩即通过
+  tk_session_destroy(nullptr);  // passing if it does not crash
   tk_session_config_init(nullptr);
 }
 
@@ -436,7 +436,7 @@ TEST_CASE("RunTool 收集子进程输出并带回退出码") {
 }
 
 TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
-  // sh -c 'echo boom >&2; exit 3'：验证 stderr 也被收进来、退出码原样带回。
+  // sh -c 'echo boom >&2; exit 3': verifies that stderr is also collected and the exit code is carried back as-is.
   const auto result =
       tetherkitnext::capi::RunTool("/bin/sh", {"-c", "echo boom >&2; exit 3"});
   REQUIRE(result.has_value());
@@ -446,8 +446,8 @@ TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
 }
 
 TEST_CASE("RunTool 读得下超过管道缓冲的大输出（不死锁）") {
-  // 管道缓冲是 64 KiB。必须先读空再 waitpid，否则子进程写满就阻塞、
-  // 我们等在 waitpid 上，双方僵住。这条用例就是钉住那个顺序的。
+  // The pipe buffer is 64 KiB. It must be drained first and then waitpid, otherwise once the child fills it it blocks,
+  // and we wait on waitpid, and both sides freeze. This test case pins that order.
   const auto result = tetherkitnext::capi::RunTool(
       "/bin/sh", {"-c", "for i in $(seq 1 20000); do echo 0123456789; done"});
   REQUIRE(result.has_value());
@@ -478,7 +478,7 @@ TEST_CASE("拒绝对非 feth 网卡下手") {
   tk_ip_config_init(&config);
   tk_error_t error{};
 
-  // 这是本模块最重要的一条防线：误传 en0 会把用户的 Wi-Fi 配置冲掉。
+  // This is the most important line of defense of this module: mistakenly passing en0 would wipe out the user's Wi-Fi configuration.
   CHECK(tk_net_apply("en0", &config, &error) == TK_ERR_INVALID_ARGUMENT);
   CHECK(std::string{error.message}.find("en0") != std::string::npos);
 
@@ -506,8 +506,8 @@ TEST_CASE("非 root 下写操作返回 TK_ERR_PERMISSION") {
 }
 
 TEST_CASE("查询不存在的 feth 网卡是成功且全空，而不是报错") {
-  // GUI 在会话没起来时也会刷新网络状态，那时网卡还不存在 —— 这种情况必须是
-  // 「没有地址」而不是「查询失败」，否则界面上会一直挂着一个假的错误。
+  // The GUI also refreshes network state when a session has not started, and the NIC does not exist then -- this case must be
+  // "no address" rather than "query failed", otherwise a false error would hang on the UI forever.
   tk_net_state_t state{};
   tk_error_t error{};
   CHECK(tk_net_query("feth99", &state, &error) == TK_OK);

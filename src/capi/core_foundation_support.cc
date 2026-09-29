@@ -16,8 +16,8 @@ std::string CopyToStdString(CFStringRef text) {
     return {};
   }
 
-  // 先试零拷贝的快路径：CFStringGetCStringPtr 在内部本来就是 UTF-8 时直接给
-  // 指针，绝大多数情况（我们读的都是网卡名、IP 这类 ASCII）都能命中。
+  // Try the zero-copy fast path first: CFStringGetCStringPtr gives the pointer directly when the string is internally UTF-8 already,
+  // which hits in the vast majority of cases (what we read are ASCII things like NIC names and IPs).
   if (const char* direct = ::CFStringGetCStringPtr(text, kCFStringEncodingUTF8);
       direct != nullptr) {
     return std::string{direct};
@@ -33,10 +33,10 @@ std::string CopyToStdString(CFStringRef text) {
 }
 
 SCDynamicStoreRef SharedDynamicStore() {
-  // 函数内静态量：首次调用时创建，进程退出前不释放。理由见头文件。
+  // Function-local static: created on the first call and not released before process exit. See the header for the reason.
   //
-  // 不加锁是安全的 —— C++11 起，函数内静态量的初始化由编译器保证线程安全
-  // （magic static），并发首次调用只会有一个线程真正执行初始化。
+  // Not locking is safe -- since C++11, the initialization of a function-local static is guaranteed thread-safe by the compiler
+  // (magic static), and on concurrent first calls only one thread actually runs the initialization.
   static SCDynamicStoreRef store = ::SCDynamicStoreCreate(
       kCFAllocatorDefault, CFSTR("TetherKitNext"), /*callout=*/nullptr, /*context=*/nullptr);
   return store;

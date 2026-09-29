@@ -1,8 +1,8 @@
-// 内存版 RNDIS 控制通道，用于离线驱动状态机。
+// In-memory RNDIS control channel, for driving the state machine offline.
 //
-// 它扮演「设备」这一侧：收下主机发来的请求，按脚本回复响应，还能主动插入
-// INDICATE_STATUS 与设备发起的 KEEPALIVE —— 这些正是真机上极难复现、
-// 却最容易写错的路径。
+// It plays the "device" side: accepts requests sent by the host, replies with responses according to a script, and can also proactively insert
+// INDICATE_STATUS and device-initiated KEEPALIVE -- exactly the paths that are extremely hard to reproduce on real hardware
+// yet the easiest to get wrong.
 #pragma once
 
 #include <cstddef>
@@ -23,13 +23,13 @@
 
 namespace tetherkitnext::testing {
 
-/// 模拟设备行为的控制通道。
+/// A control channel that simulates device behavior.
 class MockControlChannel final : public rndis::ControlChannel {
  public:
   MockControlChannel() = default;
 
   // ---------------------------------------------------------------------------
-  // ControlChannel 实现
+  // ControlChannel implementation
   // ---------------------------------------------------------------------------
 
   [[nodiscard]] Status SendMessage(std::span<const std::byte> message) override {
@@ -41,7 +41,7 @@ class MockControlChannel final : public rndis::ControlChannel {
     }
     sent_messages_.emplace_back(message.begin(), message.end());
 
-    // 让「设备」根据收到的请求决定怎么回复。
+    // Let the "device" decide how to reply based on the request received.
     if (request_handler_) {
       request_handler_(message, *this);
     }
@@ -57,7 +57,7 @@ class MockControlChannel final : public rndis::ControlChannel {
       }
     }
     if (pending_responses_.empty()) {
-      // 与真实设备一致：没有响应时返回空（真机上是 1 字节 0x00）。
+      // Consistent with a real device: return empty when there is no response (on real hardware it is 1 byte of 0x00).
       return std::span<const std::byte>{};
     }
     current_response_ = std::move(pending_responses_.front());
@@ -68,8 +68,8 @@ class MockControlChannel final : public rndis::ControlChannel {
   [[nodiscard]] rndis::NotificationResult WaitForNotification(
       std::uint32_t timeout_millis) override {
     ++notification_call_count_;
-    // 记录下来供回归测试断言：**任何一次传 0 都是 bug** ——
-    // libusb 在 darwin 上 timeout=0 表示无限等待，会把控制线程永久卡死。
+    // Record it for regression tests to assert: **any pass of 0 is a bug** --
+    // on darwin libusb a timeout=0 means wait forever, which would hang the control thread permanently.
     notification_timeouts_.push_back(timeout_millis);
     if (!has_interrupt_endpoint_) {
       return rndis::NotificationResult::kNotSupported;
@@ -83,42 +83,42 @@ class MockControlChannel final : public rndis::ControlChannel {
   [[nodiscard]] std::string_view Describe() const noexcept override { return description_; }
 
   // ---------------------------------------------------------------------------
-  // 测试注入
+  // Test injection
   // ---------------------------------------------------------------------------
 
-  /// 设置「设备」的请求处理逻辑。
+  /// Sets the "device"'s request handling logic.
   using RequestHandler =
       std::function<void(std::span<const std::byte> request, MockControlChannel& channel)>;
 
   void SetRequestHandler(RequestHandler handler) { request_handler_ = std::move(handler); }
 
-  /// 排入一条设备 → 主机的消息。
+  /// Queues one device -> host message.
   void EnqueueResponse(std::vector<std::byte> message) {
     pending_responses_.push_back(std::move(message));
   }
 
-  /// 模拟设备没有中断端点（Linux 的 host 驱动就完全忽略它）。
+  /// Simulates a device with no interrupt endpoint (Linux's host driver ignores it entirely).
   void SetHasInterruptEndpoint(bool has) noexcept { has_interrupt_endpoint_ = has; }
 
-  /// 让第 N 次 SendMessage 失败（N 从 1 计）。
+  /// Makes the Nth SendMessage fail (N counted from 1).
   void FailSendOnCall(std::uint32_t call_index) noexcept {
     send_failure_countdown_ = call_index;
   }
 
-  /// 让第 N 次 ReceiveMessage 失败。
+  /// Makes the Nth ReceiveMessage fail.
   void FailReceiveOnCall(std::uint32_t call_index) noexcept {
     receive_failure_countdown_ = call_index;
   }
 
   // ---------------------------------------------------------------------------
-  // 观测
+  // Observation
   // ---------------------------------------------------------------------------
 
   [[nodiscard]] const std::vector<std::vector<std::byte>>& SentMessages() const noexcept {
     return sent_messages_;
   }
 
-  /// 主机发出的第 index 条消息的类型码。
+  /// The type code of the index-th message sent by the host.
   [[nodiscard]] std::uint32_t SentMessageType(std::size_t index) const {
     if (index >= sent_messages_.size() ||
         sent_messages_[index].size() < rndis::kMessageHeaderBytes) {
@@ -127,7 +127,7 @@ class MockControlChannel final : public rndis::ControlChannel {
     return LoadLe32(sent_messages_[index].data() + rndis::kMessageTypeOffset);
   }
 
-  /// 统计主机一共发了多少条指定类型的消息。
+  /// Counts how many messages of a given type the host sent in total.
   [[nodiscard]] std::size_t CountSent(rndis::MessageType type) const {
     std::size_t count = 0;
     for (std::size_t i = 0; i < sent_messages_.size(); ++i) {
@@ -138,7 +138,7 @@ class MockControlChannel final : public rndis::ControlChannel {
     return count;
   }
 
-  /// 找出主机发的第一条 SET 消息，其 OID 等于给定值；返回它的 LE32 负载。
+  /// Finds the first SET message the host sent whose OID equals the given value; returns its LE32 payload.
   [[nodiscard]] bool FindSetUint32(rndis::Oid oid, std::uint32_t& out_value,
                                    std::size_t skip = 0) const {
     for (const std::vector<std::byte>& message : sent_messages_) {
@@ -164,7 +164,7 @@ class MockControlChannel final : public rndis::ControlChannel {
 
   [[nodiscard]] std::uint32_t ReceiveCallCount() const noexcept { return receive_call_count_; }
 
-  /// 历次 WaitForNotification 收到的超时值。用于断言从不传 0。
+  /// The timeout values received by all WaitForNotification calls so far. Used to assert that 0 is never passed.
   [[nodiscard]] const std::vector<std::uint32_t>& NotificationTimeouts() const noexcept {
     return notification_timeouts_;
   }
@@ -192,10 +192,10 @@ class MockControlChannel final : public rndis::ControlChannel {
 };
 
 // =============================================================================
-// 构造设备回复的便捷函数
+// Convenience functions for constructing device replies
 // =============================================================================
 
-/// 造一条 INITIALIZE_CMPLT。
+/// Builds an INITIALIZE_CMPLT.
 [[nodiscard]] inline std::vector<std::byte> MakeInitializeComplete(
     std::uint32_t request_id, std::uint32_t max_transfer_size = 2048,
     std::uint32_t max_packets = 1, std::uint32_t alignment_factor = 0,
@@ -219,7 +219,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条 QUERY_CMPLT，负载是任意字节。
+/// Builds a QUERY_CMPLT whose payload is arbitrary bytes.
 [[nodiscard]] inline std::vector<std::byte> MakeQueryComplete(
     std::uint32_t request_id, std::span<const std::byte> payload, std::uint32_t status = 0) {
   const auto payload_length = static_cast<std::uint32_t>(payload.size());
@@ -239,7 +239,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条 QUERY_CMPLT，负载是一个 LE32。
+/// Builds a QUERY_CMPLT whose payload is one LE32.
 [[nodiscard]] inline std::vector<std::byte> MakeQueryCompleteUint32(std::uint32_t request_id,
                                                                    std::uint32_t value) {
   std::array<std::byte, 4> payload{};
@@ -247,7 +247,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return MakeQueryComplete(request_id, payload);
 }
 
-/// 造一条 QUERY_CMPLT，负载是 6 字节 MAC。
+/// Builds a QUERY_CMPLT whose payload is a 6-byte MAC.
 [[nodiscard]] inline std::vector<std::byte> MakeQueryCompleteMac(std::uint32_t request_id,
                                                                 const rndis::MacAddress& mac) {
   std::array<std::byte, 6> payload{};
@@ -255,7 +255,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return MakeQueryComplete(request_id, payload);
 }
 
-/// 造一条 SET_CMPLT。
+/// Builds a SET_CMPLT.
 [[nodiscard]] inline std::vector<std::byte> MakeSetComplete(std::uint32_t request_id,
                                                            std::uint32_t status = 0) {
   std::vector<std::byte> message(rndis::kSetCmpltBytes);
@@ -267,7 +267,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条 KEEPALIVE_CMPLT。
+/// Builds a KEEPALIVE_CMPLT.
 [[nodiscard]] inline std::vector<std::byte> MakeKeepAliveComplete(std::uint32_t request_id,
                                                                  std::uint32_t status = 0) {
   std::vector<std::byte> message(rndis::kKeepAliveCmpltBytes);
@@ -280,7 +280,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条**设备主动发起**的 KEEPALIVE_MSG（主机必须回 CMPLT）。
+/// Builds a KEEPALIVE_MSG **proactively initiated by the device** (the host must reply CMPLT).
 [[nodiscard]] inline std::vector<std::byte> MakeDeviceKeepAlive(std::uint32_t request_id) {
   std::vector<std::byte> message(rndis::kKeepAliveMsgBytes);
   std::byte* base = message.data();
@@ -290,7 +290,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条 RESET_CMPLT。注意它**没有 RequestId**，Status 在 offset 8。
+/// Builds a RESET_CMPLT. Note that it **has no RequestId**, and Status is at offset 8.
 [[nodiscard]] inline std::vector<std::byte> MakeResetComplete(bool addressing_reset,
                                                              std::uint32_t status = 0) {
   std::vector<std::byte> message(rndis::kResetCmpltBytes);
@@ -302,7 +302,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 造一条 INDICATE_STATUS（无负载）。
+/// Builds an INDICATE_STATUS (no payload).
 [[nodiscard]] inline std::vector<std::byte> MakeIndicateStatus(rndis::StatusCode status) {
   std::vector<std::byte> message(rndis::kIndicateStatusHeaderBytes);
   std::byte* base = message.data();
@@ -314,7 +314,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return message;
 }
 
-/// 从主机发来的请求里取 RequestId（QUERY/SET/INITIALIZE/KEEPALIVE 都在 offset 8）。
+/// Takes the RequestId from a request sent by the host (QUERY/SET/INITIALIZE/KEEPALIVE all have it at offset 8).
 [[nodiscard]] inline std::uint32_t RequestIdOf(std::span<const std::byte> request) {
   if (request.size() < 12) {
     return 0;
@@ -322,7 +322,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   return LoadLe32(request.data() + 8);
 }
 
-/// 从主机发来的 QUERY/SET 请求里取 OID。
+/// Takes the OID from a QUERY/SET request sent by the host.
 [[nodiscard]] inline std::uint32_t OidOf(std::span<const std::byte> request) {
   if (request.size() < rndis::kQuerySetHeaderBytes) {
     return 0;
@@ -330,9 +330,9 @@ class MockControlChannel final : public rndis::ControlChannel {
   return LoadLe32(request.data() + rndis::kQuerySetOidOffset);
 }
 
-/// 一个「行为正常的 Android 设备」的请求处理逻辑。
+/// The request handling logic of a "well-behaved Android device".
 ///
-/// 覆盖启动序列需要的全部 OID，未知的 OID 一律回 NOT_SUPPORTED（真机也是这样）。
+/// Covers all OIDs the startup sequence needs, and replies NOT_SUPPORTED to any unknown OID (as real hardware does too).
 [[nodiscard]] inline MockControlChannel::RequestHandler MakeWellBehavedDevice(
     const rndis::MacAddress& mac, std::uint32_t max_transfer_size = 2048,
     std::uint32_t max_packets = 1, std::uint32_t alignment_factor = 0) {
@@ -357,16 +357,16 @@ class MockControlChannel final : public rndis::ControlChannel {
       } else if (oid == rndis::ToRaw(rndis::Oid::kGenMaximumFrameSize)) {
         channel.EnqueueResponse(MakeQueryCompleteUint32(request_id, 1500));
       } else if (oid == rndis::ToRaw(rndis::Oid::kGenLinkSpeed)) {
-        // 单位是 100 bps：4800000 → 480 Mbps
+        // Unit is 100 bps: 4800000 -> 480 Mbps
         channel.EnqueueResponse(MakeQueryCompleteUint32(request_id, 4'800'000));
       } else if (oid == rndis::ToRaw(rndis::Oid::kGenMediaConnectStatus)) {
-        // 0 = 已连接
+        // 0 = connected
         channel.EnqueueResponse(MakeQueryCompleteUint32(
             request_id, static_cast<std::uint32_t>(rndis::MediaState::kConnected)));
       } else if (oid == rndis::ToRaw(rndis::Oid::kGenVendorId)) {
         channel.EnqueueResponse(MakeQueryCompleteUint32(request_id, 0x0018D1));
       } else {
-        // 未知 / 可选 OID：回不支持。主线 Linux gadget 也是这样。
+        // Unknown / optional OID: reply unsupported. Mainline Linux gadget does the same.
         channel.EnqueueResponse(MakeQueryComplete(request_id, {},
                                                   rndis::ToRaw(rndis::StatusCode::kNotSupported)));
       }
@@ -384,11 +384,11 @@ class MockControlChannel final : public rndis::ControlChannel {
       channel.EnqueueResponse(MakeResetComplete(/*addressing_reset=*/true));
       return;
     }
-    // HALT_MSG 设备不回复。
+    // The device does not reply to HALT_MSG.
   };
 }
 
-/// 记录状态机事件的观察者。
+/// An observer that records state machine events.
 class RecordingObserver final : public rndis::StateMachineObserver {
  public:
   struct Transition {

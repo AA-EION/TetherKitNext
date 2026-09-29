@@ -2,30 +2,30 @@ import SwiftUI
 import TetherKitNextCore
 import TetherKitNextIPC
 
-/// 上网方式配置：DHCP 或静态 IP。
+/// Connectivity method configuration: DHCP or static IP.
 ///
-/// ★ 「当前生效」一栏为什么单独存在 ★
-///   它显示的是**从系统回读**的状态，不是我们下发的值。两者可能不同 ——
-///   最典型的是静态模式下的 DNS：IPConfiguration 只在 DHCP 模式发布 DNS，
-///   静态模式我们只能尽力而为地补一个键，能不能被系统采纳取决于 IPMonitor。
-///   与其向用户承诺一个可能不成立的结果，不如把真实状态摆出来。
+/// * Why the "currently in effect" column exists separately *
+///   It shows the state **read back from the system**, not the value we applied. The two may differ --
+///   the most typical is DNS in static mode: IPConfiguration publishes DNS only in DHCP mode,
+///   and in static mode all we can do is best-effort add a key, and whether the system adopts it depends on IPMonitor.
+///   Rather than promise the user a result that may not hold, it is better to lay out the real state.
 ///
-/// 这张卡的高度直接决定左栏能不能一屏放下（最高的状态是「静态表单 + 当前生效」
-/// 同时展开），所以输入格与回读值都排成两列，长解释一律进悬停提示。
+/// The height of this card directly determines whether the left column fits on one screen (the tallest state is "static form + currently in effect"
+/// both expanded), so the input cells and readback values are all arranged in two columns, and long explanations all go into hover tooltips.
 struct NetworkCard: View {
     @Bindable var model: AppModel
 
-    /// 网卡还没创建时整块禁用 —— 没有网卡可配，让用户填完再报错是最糟的顺序。
+    /// Disable the whole block when the NIC has not been created yet -- there is no NIC to configure, and letting the user fill in and then report an error is the worst order.
     private var interfaceReady: Bool { !model.status.systemInterface.isEmpty }
 
     private var canAddDNS: Bool {
-        // 上限与 C ABI 的 TK_DNS_MAX 一致，多填的会被丢弃，不如直接不让加。
+        // The upper limit matches the C ABI's TK_DNS_MAX; extra ones would be dropped, so it is better simply not to let them be added.
         model.networkConfiguration.dnsServers.count < 4
     }
 
-    /// 静态 DNS 的悬停说明。它属于「什么时候需要在意」级别的信息，
-    /// 不值得常驻一行。
-    /// 计算属性而非 `static let`：后者只求值一次，切换语言后就不再更新了。
+    /// The hover explanation of static DNS. It is information at the "when you need to care" level,
+    /// and does not deserve a permanent row.
+    /// A computed property rather than `static let`: the latter is evaluated only once and would no longer update after switching the language.
     private static var dnsHint: String { L(.dnsEffectivenessTooltip) }
 
     var body: some View {
@@ -74,8 +74,8 @@ struct NetworkCard: View {
 
     private var modePicker: some View {
         Picker(L(.ipModeLabel), selection: $model.networkConfiguration.mode) {
-            // 刻意不把「不配置」放进选择器：它是一个动作（撤销），不是一种上网
-            // 方式。混在一起会让人以为选中它就已经生效了。
+            // Deliberately not putting "do not configure" in the picker: it is an action (revoke), not a connectivity
+            // method. Mixing them would make people think choosing it already takes effect.
             Text(IPMode.dhcp.displayName).tag(IPMode.dhcp)
             Text(IPMode.manual.displayName).tag(IPMode.manual)
         }
@@ -94,8 +94,8 @@ struct NetworkCard: View {
         }
     }
 
-    /// 静态表单。四个地址格排成两列网格 —— IPv4 短，半栏宽度足够，
-    /// 而高度直接砍半。
+    /// The static form. The four address cells are arranged in a two-column grid -- IPv4 is short, half-column width is enough,
+    /// and the height is directly halved.
     private var manualForm: some View {
         Grid(alignment: .leading,
              horizontalSpacing: Design.Spacing.medium,
@@ -122,7 +122,7 @@ struct NetworkCard: View {
                     dnsField(at: 0)
                 }
             }
-            // 第 2 条起的 DNS 各占一行的右格，左格空着 —— 和上面的 DNS 对齐。
+            // DNS entries from the 2nd on each occupy the right cell of a row, with the left cell empty -- aligned with the DNS above.
             ForEach(Array(model.networkConfiguration.dnsServers.indices.dropFirst()),
                     id: \.self) { index in
                 GridRow {
@@ -133,7 +133,7 @@ struct NetworkCard: View {
         }
     }
 
-    /// 一条 DNS：输入格 + 删除，最后一条再带一个「添加」。
+    /// One DNS entry: input cell + delete, and the last one also carries an "Add".
     private func dnsField(at index: Int) -> some View {
         HStack(spacing: Design.Spacing.tight) {
             AddressField(label: index == 0 ? "DNS" : "",
@@ -163,7 +163,7 @@ struct NetworkCard: View {
         .help(Self.dnsHint)
     }
 
-    /// 一条 DNS 都没有时占住格子的「添加」。
+    /// The "Add" that holds the cell when there is not a single DNS entry.
     private var emptyDNSCell: some View {
         HStack(spacing: Design.Spacing.tight) {
             Text("DNS")
@@ -221,13 +221,13 @@ struct NetworkCard: View {
     }
 }
 
-/// 一个带即时校验反馈的紧凑地址输入框：标签在左，校验图标叠在输入框内侧
-/// （两列布局里每一点宽度都金贵）。
+/// A compact address input box with immediate validation feedback: the label on the left, and the validation icon overlaid on the inner side of the input box
+/// (every bit of width is precious in a two-column layout).
 ///
-/// 校验放在输入时而不是提交时：地址填错是最常见的操作失误，等点了「应用」再报错
-/// 会让用户来回猜是哪一格错了。
+/// Validation is done while typing rather than at submit: a wrongly entered address is the most common operation mistake, and reporting an error only after clicking "Apply"
+/// would make the user guess back and forth which cell is wrong.
 private struct AddressField: View {
-    /// 标签列宽。回读区的标签也用它，两块的竖向对齐线才是同一条。
+    /// Label column width. The labels of the readback area use it too, so the vertical alignment lines of the two blocks are the same one.
     static let labelWidth: CGFloat = 56
 
     let label: String
@@ -246,7 +246,7 @@ private struct AddressField: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.callout, design: .monospaced))
                 .overlay(alignment: .trailing) {
-                    // 空输入不标红：还没填完不算错。
+                    // Empty input is not marked red: not finished filling in yet does not count as wrong.
                     if !text.isEmpty {
                         Image(systemName: isValid ? "checkmark.circle.fill"
                                                   : "exclamationmark.circle.fill")
@@ -260,7 +260,7 @@ private struct AddressField: View {
     }
 }
 
-/// 从系统回读的真实生效状态。
+/// The real in-effect state read back from the system.
 private struct EffectiveStateView: View {
     let state: NetworkState
     let interface: String
@@ -283,8 +283,8 @@ private struct EffectiveStateView: View {
             }
 
             if state.hasAddress {
-                // 两列四格而不是四行：这是纯展示区，紧凑优先。放不下的值
-                // （多条 DNS）中截显示，悬停能看全，也能选中复制。
+                // Two columns of four cells rather than four rows: this is a pure display area, and compactness comes first. Values that do not fit
+                // (multiple DNS) are truncated in the middle for display, and hovering shows the whole, and can also be selected and copied.
                 Grid(alignment: .leading,
                      horizontalSpacing: Design.Spacing.medium,
                      verticalSpacing: Design.Spacing.tight) {

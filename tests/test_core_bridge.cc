@@ -1,9 +1,9 @@
-// 桥接层的端到端测试。
+// End-to-end tests of the bridge layer.
 //
-// 用 MockDataChannel（USB 侧）+ LoopbackLink（网卡侧）把完整的数据路径跑起来，
-// 覆盖真实的多线程搬运、批处理、背压、暂停与优雅停机。
+// MockDataChannel (USB side) + LoopbackLink (NIC side) are used to run the complete data path,
+// covering real multi-threaded movement, batching, backpressure, pausing and graceful shutdown.
 //
-// 这些用例在 ThreadSanitizer 下跑才有完整意义：
+// These test cases are only fully meaningful when run under ThreadSanitizer:
 //   cmake -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R core
 #include <atomic>
 #include <chrono>
@@ -28,11 +28,11 @@ using tetherkitnext::testing::MockDataChannel;
 
 namespace {
 
-/// 造一帧内容可自校验的以太帧。
+/// Builds an Ethernet frame whose content is self-verifying.
 std::vector<std::byte> MakeFrame(std::uint32_t length, std::uint8_t tag) {
   std::vector<std::byte> frame(length);
   for (int i = 0; i < 6; ++i) {
-    frame[static_cast<std::size_t>(i)] = std::byte{0xFF};  // 广播目的 MAC
+    frame[static_cast<std::size_t>(i)] = std::byte{0xFF};  // broadcast destination MAC
   }
   frame[6] = std::byte{0x02};
   frame[11] = std::byte{tag};
@@ -53,10 +53,10 @@ std::vector<std::vector<std::byte>> MakeFrames(std::uint32_t count, std::uint32_
   return frames;
 }
 
-/// 轮询等待某个条件成立，最多等 `timeout`。
+/// Polls and waits for a condition to hold, for at most `timeout`.
 ///
-/// 数据路径是异步的，不能用 sleep 一个固定时长来「等它跑完」—— 那样在慢机器上
-/// 会偶发失败。这里等条件而不是等时间。
+/// The data path is asynchronous, and one cannot "wait for it to finish" by sleeping a fixed duration -- that would
+/// fail intermittently on slow machines. Here we wait for the condition rather than for time.
 template <typename Predicate>
 bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -69,7 +69,7 @@ bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = std::chron
   return predicate();
 }
 
-/// 测试用的桥接配置：小队列、小批次，让边界更容易被触发。
+/// The bridge configuration used by tests: small queues and small batches, making boundaries easier to trigger.
 [[nodiscard]] BridgeConfig TestConfig() {
   BridgeConfig config;
   config.rx_ring_frames = 256;
@@ -94,14 +94,14 @@ TEST_CASE("启动与停止：线程正常起停，停机时通道被关闭") {
   CHECK(bridge.Running());
   CHECK(channel.Receiving());
 
-  // 重复 Start 应被拒绝。
+  // A repeated Start should be rejected.
   CHECK_FALSE(bridge.Start().has_value());
 
   bridge.Stop();
   CHECK_FALSE(bridge.Running());
   CHECK(channel.ShutdownCalled());
 
-  // Stop 是幂等的。
+  // Stop is idempotent.
   bridge.Stop();
 }
 
@@ -119,7 +119,7 @@ TEST_CASE("RX 方向：设备发来的帧被搬到链路上，内容完整") {
 
   const auto received = link.DrainSent();
   REQUIRE(received.size() == kCount);
-  // FIFO 顺序与内容都必须保持。
+  // FIFO order and content must both be preserved.
   for (std::size_t i = 0; i < kCount; ++i) {
     CHECK(received[i] == frames[i]);
   }
@@ -167,7 +167,7 @@ TEST_CASE("双向同时跑，互不干扰") {
   constexpr std::uint32_t kCount = 500;
   const auto tx_frames = MakeFrames(kCount, 700);
 
-  // TX 侧：主机往设备发。
+  // TX side: the host sends to the device.
   std::thread pusher([&] {
     for (const std::vector<std::byte>& frame : tx_frames) {
       while (!link.PushInbound(frame)) {
@@ -176,7 +176,7 @@ TEST_CASE("双向同时跑，互不干扰") {
     }
   });
 
-  // RX 侧：设备往主机发。分批注入，队列满时重试。
+  // RX side: the device sends to the host. Inject in batches, retrying when the queue is full.
   std::uint32_t injected = 0;
   while (injected < kCount) {
     const auto chunk = MakeFrames(std::min<std::uint32_t>(32, kCount - injected), 1000);
@@ -200,37 +200,37 @@ TEST_CASE("双向同时跑，互不干扰") {
 
 TEST_CASE("RX 队列满时丢弃并计数，不阻塞生产者") {
   MockDataChannel channel;
-  // 链路的写出容量设很小，让 RX 注入线程写不出去，队列很快堆满。
+  // The link's write capacity is set very small, so the RX injection thread cannot write out and the queue fills up quickly.
   LoopbackLink link(LoopbackConfig{.sent_capacity = 8});
   auto config = TestConfig();
   config.rx_ring_frames = 16;
   Bridge bridge(channel, link, config);
   REQUIRE(bridge.Start().has_value());
 
-  // 注入远超队列容量的帧。
+  // Inject far more frames than the queue capacity.
   std::uint32_t total_accepted = 0;
   for (int round = 0; round < 20; ++round) {
     total_accepted += channel.InjectFromDevice(MakeFrames(64, 1514));
   }
 
-  // 关键断言：InjectFromDevice 从不阻塞，而且被拒的帧被计入丢弃。
+  // Key assertion: InjectFromDevice never blocks, and rejected frames are counted as drops.
   const BridgeStats stats = bridge.Snapshot();
-  CHECK(total_accepted < 20 * 64);  // 确实发生了拒收
+  CHECK(total_accepted < 20 * 64);  // rejection really occurred
   CHECK(stats.rx.TotalDropped() > 0);
 
   bridge.Stop();
 }
 
 TEST_CASE("TX 背压：传输池占满时等待而不丢弃，容量恢复后全部送达") {
-  // 这是真机丢帧根因的回归测试：旧实现在 SendFrames 返回 0 时立即丢弃批次
-  // 剩余帧（bridge.cc 曾有一条「等待会变成不可见的内核丢包」的错误论证），
-  // 高负载下把 30%+ 的 TX 流量丢在了传输池门口。正确行为是等槽位空出来再重
-  // 试 —— 突发由上游的内核 BPF 缓冲吸收。
+  // This is a regression test for the root cause of dropped frames on real hardware: the old implementation immediately dropped the batch's remaining frames when SendFrames returned 0
+  // (bridge.cc once had a wrong argument that "waiting turns into invisible kernel drops"),
+  // dropping 30%+ of TX traffic at the door of the transfer pool under high load. The correct behavior is to wait for a slot to free up and then retry
+  // -- bursts are absorbed by the upstream kernel BPF buffer.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
 
-  // 让 mock 通道一帧都不收 —— 模拟传输池完全占满。
+  // Make the mock channel accept not a single frame -- simulating the transfer pool being completely full.
   channel.SetAcceptLimit(0);
   REQUIRE(bridge.Start().has_value());
 
@@ -239,18 +239,18 @@ TEST_CASE("TX 背压：传输池占满时等待而不丢弃，容量恢复后全
     REQUIRE(link.PushInbound(frame));
   }
 
-  // 桥接层应转入等待：背压事件在涨、WaitForSendCapacity 被调用，
-  // 但一帧都没有丢、也一帧都没有发出。
+  // The bridge layer should go into waiting: backpressure events rise and WaitForSendCapacity gets called,
+  // but not a single frame is dropped, and not a single frame is sent out.
   REQUIRE(WaitFor([&] { return bridge.Snapshot().tx_backpressure_events > 0; }));
   REQUIRE(WaitFor([&] { return channel.WaitCalls() > 0; }));
   CHECK(bridge.Snapshot().tx.TotalDropped() == 0);
   CHECK(channel.SentFrameCount() == 0);
 
-  // 容量恢复（相当于在飞传输完成、槽位归还）：先前顶在门口的帧必须
-  // **一帧不少**地送达，且顺序不变。
-  // 等待条件必须同时覆盖 mock 计数与桥接层计数：mock 在 SendFrames 内部先递增、
-  // 桥接层在返回后才 AddBatch，两者之间没有 happens-before —— 只等 mock 计数就
-  // 断言桥接层计数，会在慢机器上偶发读到差一个分片的旧值。
+  // Capacity is restored (equivalent to an in-flight transfer completing and the slot being returned): the frames that had been stuck at the door must
+  // be delivered **without losing a single frame**, and in the same order.
+  // The wait condition must cover both the mock count and the bridge-layer count: the mock increments inside SendFrames first,
+  // and the bridge layer only does AddBatch after returning, with no happens-before between the two -- waiting only on the mock count and
+  // then asserting the bridge-layer count would intermittently read an old value one slice behind on slow machines.
   channel.SetAcceptLimit(0xFFFF'FFFFU);
   REQUIRE(WaitFor([&] {
     return channel.SentFrameCount() >= kFrameCount &&
@@ -273,8 +273,8 @@ TEST_CASE("TX 背压：传输池占满时等待而不丢弃，容量恢复后全
 }
 
 TEST_CASE("TX 背压：部分接纳时剩余帧重试送达，不丢不乱序") {
-  // 池没满但一次装不下整个分片（SendFrames 部分接纳）：剩余帧必须原地重试。
-  // 每次最多吃 7 帧、分片 32 帧，逼出「多次部分接纳拼完一个分片」的路径。
+  // The pool is not full but cannot fit a whole slice at once (SendFrames partially accepts): the remaining frames must be retried in place.
+  // At most 7 frames each time and a slice of 32 frames, forcing out the path of "multiple partial accepts completing one slice".
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -301,8 +301,8 @@ TEST_CASE("TX 背压：部分接纳时剩余帧重试送达，不丢不乱序") 
 }
 
 TEST_CASE("TX 背压：等待期间 Stop() 能及时返回") {
-  // 背压等待引入了新的阻塞点，停机不能被它卡住：TX 线程每次醒来（至多约
-  // 50 ms）都要重查停机标志。
+  // The backpressure wait introduces a new blocking point, and shutdown must not be stuck by it: the TX thread must re-check the shutdown flag on every wakeup (at most about
+  // 50 ms).
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -320,15 +320,15 @@ TEST_CASE("TX 背压：等待期间 Stop() 能及时返回") {
   const auto stop_elapsed = std::chrono::steady_clock::now() - stop_begin;
 
   CHECK_FALSE(bridge.Running());
-  // 上界取「等待超时 + BPF 读超时 + 富余」。真实约束是几十毫秒量级，
-  // 这里放宽到 2 秒只为不在慢 CI 上闪断。
+  // The upper bound is "wait timeout + BPF read timeout + slack". The real constraint is on the order of tens of milliseconds,
+  // and it is relaxed to 2 seconds here only to avoid flaky failures on slow CI.
   CHECK(stop_elapsed < std::chrono::seconds(2));
-  // 停机时未送出的帧计入丢弃 —— 账要能对上，不能凭空消失。
+  // Frames not sent out at shutdown are counted as drops -- the books must balance, and frames cannot vanish out of thin air.
   CHECK(bridge.Snapshot().tx.TotalDropped() > 0);
 }
 
 TEST_CASE("TX 背压：等待期间落下暂停，剩余帧被丢弃且线程存活") {
-  // 暂停（RNDIS 软复位）优先于等待：设备反正会丢弃未完成的包，攒着没有意义。
+  // Pausing (RNDIS soft reset) takes priority over waiting: the device will discard outstanding packets anyway, and hoarding them is meaningless.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -346,7 +346,7 @@ TEST_CASE("TX 背压：等待期间落下暂停，剩余帧被丢弃且线程存
   REQUIRE(WaitFor([&] { return bridge.Snapshot().tx.TotalDropped() > 0; }));
   CHECK(channel.SentFrameCount() == 0);
 
-  // 恢复后新的帧照常送达 —— 线程没有卡死在等待里。
+  // After resuming, new frames are delivered as usual -- the thread is not stuck in a wait.
   bridge.SetPaused(false);
   channel.SetAcceptLimit(0xFFFF'FFFFU);
   for (const std::vector<std::byte>& frame : MakeFrames(20, 512)) {
@@ -369,13 +369,13 @@ TEST_CASE("暂停期间不搬运，恢复后 RX 队列里的帧继续送出") {
   constexpr std::uint32_t kCount = 32;
   CHECK(channel.InjectFromDevice(MakeFrames(kCount, 256)) == kCount);
 
-  // 暂停期间不该有帧被写到链路上。给注入线程一点时间证明它确实没动。
+  // No frames should be written to the link during the pause. Give the injection thread a bit of time to prove it really did not move.
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   CHECK(link.TotalSentFrames() == 0);
-  // 帧还在队列里，没被丢弃。
+  // The frames are still in the queue and have not been dropped.
   CHECK(bridge.Snapshot().rx_queue_depth == kCount);
 
-  // 恢复后应全部送出 —— 暂停不丢帧。
+  // After resuming they should all be sent out -- pausing does not lose frames.
   bridge.SetPaused(false);
   REQUIRE(WaitFor([&] { return link.TotalSentFrames() >= kCount; }));
   CHECK(bridge.Snapshot().rx.TotalDropped() == 0);
@@ -384,30 +384,30 @@ TEST_CASE("暂停期间不搬运，恢复后 RX 队列里的帧继续送出") {
 }
 
 TEST_CASE("SetPaused 在任何生命周期阶段都不会挂死") {
-  // SetPaused(true) 会等 RX 注入线程确认它停住了。这个等待有两种挂死风险，
-  // 都比它要修的漏帧问题严重得多（挂的是控制路径：链路状态变化、设备软复位）：
-  //   * 线程压根没在跑时没人来置确认位；
-  //   * 确认位残留导致等待逻辑本身出错。
-  // 这里把三个阶段都走一遍，任何一处挂死都会让本用例超时而不是静默通过。
+  // SetPaused(true) waits for the RX injection thread to confirm it has stopped. This wait has two hang risks,
+  // both far more severe than the frame-leak problem it is meant to fix (what hangs is the control path: link state changes, device soft reset):
+  //   * when the thread is not running at all, nobody comes to set the acknowledgement bit;
+  //   * a leftover acknowledgement bit makes the wait logic itself go wrong.
+  // Here all three phases are walked through, and a hang at any point makes this test case time out rather than pass silently.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   Bridge bridge(channel, link, TestConfig());
 
-  // 阶段一：Start() 之前。
+  // Phase one: before Start().
   bridge.SetPaused(true);
   CHECK(bridge.Paused());
   bridge.SetPaused(false);
 
   REQUIRE(bridge.Start().has_value());
 
-  // 阶段二：运行中快速 toggle。确认位每轮循环开头清零，后一次 SetPaused(true)
-  // 才不会读到上一轮的残留值就提前返回 —— 提前返回等于保证失效。
+  // Phase two: rapid toggling while running. The acknowledgement bit is cleared at the start of every loop iteration, so that a later SetPaused(true)
+  // does not read the previous round's leftover value and return early -- returning early means the guarantee is void.
   for (int i = 0; i < 50; ++i) {
     bridge.SetPaused(true);
     bridge.SetPaused(false);
   }
 
-  // toggle 之后仍然拿得到真实的暂停保证。
+  // After toggling, the real pause guarantee is still obtainable.
   bridge.SetPaused(true);
   constexpr std::uint32_t kCount = 16;
   CHECK(channel.InjectFromDevice(MakeFrames(kCount, 256)) == kCount);
@@ -416,14 +416,14 @@ TEST_CASE("SetPaused 在任何生命周期阶段都不会挂死") {
 
   bridge.Stop();
 
-  // 阶段三：Stop() 之后。
+  // Phase three: after Stop().
   bridge.SetPaused(true);
   CHECK(bridge.Paused());
 }
 
 TEST_CASE("暂停期间 TX 方向的帧被丢弃并计数") {
-  // 与 RX 不同：TX 侧暂停时必须丢，因为 RNDIS 复位期间设备会丢弃所有未完成的
-  // 数据包，攒着只是浪费内存。
+  // Unlike RX: the TX side must drop while paused, because during an RNDIS reset the device discards all outstanding
+  // data packets, and hoarding them only wastes memory.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 512, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -443,17 +443,17 @@ TEST_CASE("暂停期间 TX 方向的帧被丢弃并计数") {
 TEST_CASE("链路写失败不会让线程退出，恢复后继续工作") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
-  link.FailWritesAfter(1);  // 第 2 次写起失败
+  link.FailWritesAfter(1);  // fail starting from the 2nd write
   Bridge bridge(channel, link, TestConfig());
   REQUIRE(bridge.Start().has_value());
 
   for (int round = 0; round < 5; ++round) {
-    // 这里不关心入队了几帧，只要制造出「反复写链路」的流量即可。
+    // Here we do not care how many frames were enqueued; it is enough to generate traffic that "writes the link repeatedly".
     (void)channel.InjectFromDevice(MakeFrames(16, 256));
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
-  // 关键：桥接层仍在运行，没有因为写失败而崩掉或退出。
+  // Key: the bridge layer is still running, and did not crash or exit because of write failures.
   CHECK(bridge.Running());
   CHECK(bridge.Snapshot().rx.io_errors > 0);
 
@@ -478,7 +478,7 @@ TEST_CASE("USB 提交失败被记为 I/O 错误，桥接层继续运行") {
 }
 
 TEST_CASE("统计行渲染出速率与丢包") {
-  // 统计行是面向用户的文案，下面按中文断言，先把语言钉死。
+  // The statistics line is user-facing text; the assertions below are in Chinese, so pin the language first.
   const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
@@ -508,7 +508,7 @@ TEST_CASE("停机时不丢已在队列里的统计，且能在有流量时安全
   Bridge bridge(channel, link, TestConfig());
   REQUIRE(bridge.Start().has_value());
 
-  // 一边有流量一边停机 —— 这是最容易暴露拆除顺序问题的场景。
+  // Shutting down while traffic flows -- this is the scenario that most easily exposes teardown-order problems.
   std::atomic<bool> keep_going{true};
   std::thread producer([&] {
     while (keep_going.load(std::memory_order_acquire)) {
@@ -521,7 +521,7 @@ TEST_CASE("停机时不丢已在队列里的统计，且能在有流量时安全
   });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  bridge.Stop();  // 有流量时停机
+  bridge.Stop();  // shut down while there is traffic
   keep_going.store(false, std::memory_order_release);
   producer.join();
 

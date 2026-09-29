@@ -2,21 +2,21 @@ import XCTest
 
 @testable import TetherKitNextIPC
 
-/// 文案表的一致性检查。
+/// Consistency check of the message table.
 ///
-/// ★ 这些用例存在的唯一理由 ★
+/// * The sole reason these cases exist *
 ///
-///   `L(...)` 走 `String(format:)`，格式串来自运行期查表 —— 编译器管不到它。
-///   两种语言的占位符对不上时，`String(format:)` **不会报错**：它会安静地按
-///   自己读到的类型去解释一个根本不是那个类型的参数。`%@` 撞上一个整数就是
-///   把整数当指针解引用，直接崩；`%ld` 撞上字符串则打出一个地址。两种都是
-///   「翻译写错 → 运行期炸在用户机器上」，而且中文版好好的、英文版才炸。
+///   `L(...)` goes through `String(format:)`, and the format string comes from a runtime table lookup -- the compiler cannot manage it.
+///   When the placeholders of the two languages do not match, `String(format:)` **does not report an error**: it quietly interprets
+///   an argument that is not of that type at all by the type it reads. `%@` meeting an integer dereferences the integer
+///   as a pointer and crashes directly; `%ld` meeting a string prints an address. Both are
+///   "translation written wrong -> blows up at runtime on the user's machine", and moreover the Chinese version is fine while the English version blows up.
 ///
-///   所以这道保障必须在这里补回来。`L10nKey` 是 CaseIterable，新加的文案
-///   自动被覆盖，不需要手动登记。
+///   So this safeguard must be made up here. `L10nKey` is CaseIterable, so newly added messages
+///   are covered automatically, with no manual registration.
 final class LocalizationTests: XCTestCase {
 
-    /// 一个替换字段：位置（显式 `%1$` 的编号，隐式则按出现顺序）+ 转换类型。
+    /// One replacement field: the position (the number of an explicit `%1$`, or by order of appearance if implicit) + the conversion type.
     private struct Placeholder: Equatable, CustomStringConvertible {
         let position: Int
         let conversion: String
@@ -24,10 +24,10 @@ final class LocalizationTests: XCTestCase {
         var description: String { "#\(position):%\(conversion)" }
     }
 
-    /// 解析 printf 风格的格式串。
+    /// Parses a printf-style format string.
     ///
-    /// 只覆盖本表真正用到的子集：`%@`、`%ld`、`%lx`、`%f` 及其带宽度/精度/位置
-    /// 的形式，外加 `%%` 转义。
+    /// Covers only the subset this table really uses: `%@`, `%ld`, `%lx`, `%f` and their forms with width/precision/position,
+    /// plus the `%%` escape.
     private func placeholders(in text: String) -> [Placeholder] {
         var result: [Placeholder] = []
         var automatic = 0
@@ -41,12 +41,12 @@ final class LocalizationTests: XCTestCase {
             }
             index += 1
             guard index < characters.count else { break }
-            if characters[index] == "%" {  // `%%` 转义
+            if characters[index] == "%" {  // `%%` escape
                 index += 1
                 continue
             }
 
-            // 显式位置：`3$`
+            // Explicit position: `3$`
             var explicit: Int?
             var digits = ""
             var lookahead = index
@@ -59,12 +59,12 @@ final class LocalizationTests: XCTestCase {
                 index = lookahead + 1
             }
 
-            // 标志、宽度、精度 —— 一概跳过，它们不影响实参类型。
+            // Flags, width, precision -- all skipped, since they do not affect the argument type.
             while index < characters.count,
                   "0123456789.-+ #'".contains(characters[index]) {
                 index += 1
             }
-            // 长度修饰符（l / ll / h / z）属于类型的一部分，要留下。
+            // Length modifiers (l / ll / h / z) are part of the type and must be kept.
             var conversion = ""
             while index < characters.count, "lhzqjt".contains(characters[index]) {
                 conversion.append(characters[index])
@@ -88,7 +88,7 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    /// 本文件的核心用例。
+    /// The core case of this file.
     func testPlaceholdersMatchAcrossLanguages() {
         for key in L10nKey.allCases {
             let (chinese, english) = key.localizations
@@ -103,8 +103,8 @@ final class LocalizationTests: XCTestCase {
                   英文 \(englishPlaceholders) — \(english)
                 """)
 
-            // 位置必须是连续的 1...n。留空档时 String(format:) 照样能渲染，
-            // 但那说明有个实参被两种语言同时忽略了，几乎总是写错。
+            // Positions must be consecutive 1...n. With a gap String(format:) can still render,
+            // but that means some argument is ignored by both languages at once, which is almost always a mistake.
             for (offset, placeholder) in chinesePlaceholders.enumerated() {
                 XCTAssertEqual(placeholder.position, offset + 1,
                                "\(key.rawValue) 的占位符编号不连续：\(chinesePlaceholders)")
@@ -112,7 +112,7 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    /// 整数一律 `%ld`：`%d` 只取 64 位实参的低 32 位，Swift 侧传的是 `Int`。
+    /// Integers are always `%ld`: `%d` takes only the low 32 bits of a 64-bit argument, and the Swift side passes `Int`.
     func testIntegerPlaceholdersUseLongModifier() {
         for key in L10nKey.allCases {
             let (chinese, english) = key.localizations
@@ -138,7 +138,7 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(L10n.apply(.english), .english)
         XCTAssertEqual(L10n.text(.ok), "OK")
 
-        // `.system` 解析成两者之一，具体是哪个取决于运行测试的机器。
+        // `.system` resolves to one of the two, and which one depends on the machine running the tests.
         XCTAssertTrue([Language.chinese, .english].contains(L10n.apply(.system)))
     }
 
@@ -154,20 +154,20 @@ final class LocalizationTests: XCTestCase {
         XCTAssertTrue(english.contains("unreachable"))
         XCTAssertFalse(english.contains("%@"), "参数没被替换掉：\(english)")
 
-        // 换语序的那几条要真的按位置替换，而不是按出现顺序。
+        // The ones that change word order must really substitute by position, not by order of appearance.
         let failure = L(.cliLinkSystemError, in: .english, "symlink", "File exists")
         XCTAssertTrue(failure.hasPrefix("symlink"), failure)
         XCTAssertTrue(failure.hasSuffix("File exists"), failure)
     }
 
-    /// 语言标签与 C ABI 的 `tk_language_t` 对齐 —— 错位的话 GUI 是一种语言、
-    /// 库日志是另一种，而且没有任何报错。
+    /// The language tags are aligned with the C ABI's `tk_language_t` -- if misaligned the GUI would be in one language and
+    /// the library logs in another, with no error whatsoever.
     func testCValueMatchesCABI() {
         XCTAssertEqual(Language.english.cValue, 0)
         XCTAssertEqual(Language.chinese.cValue, 1)
     }
 
-    /// 语言菜单里的选项永远写母语名字，不跟随界面语言翻译。
+    /// The options in the language menu are always written as native-language names and are not translated with the UI language.
     func testLanguageNamesAreNotTranslated() {
         XCTAssertEqual(L10nKey.languageChinese.localizations.chinese,
                        L10nKey.languageChinese.localizations.english)

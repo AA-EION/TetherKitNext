@@ -1,20 +1,20 @@
-// REMOTE_NDIS_PACKET_MSG 的编解码 —— **数据热路径**。
+// Encoding and decoding of REMOTE_NDIS_PACKET_MSG -- **the data hot path**.
 //
-// 这是全项目唯一每帧都要执行的协议代码，因此：
-//   * 全部 inline 放在头文件里，让编译器能内联进桥接层的循环；
-//   * 不返回 std::expected（会分配 std::string）、不抛异常、不分配内存；
-//     错误通过枚举 + 计数器表达；
-//   * 全部 noexcept。
+// This is the only protocol code in the whole project that executes for every frame, therefore:
+//   * Everything is inline in the header, so the compiler can inline it into the bridge layer's loop;
+//   * It does not return std::expected (which would allocate a std::string), does not throw, and does not allocate memory;
+//     errors are expressed via enums + counters;
+//   * Everything is noexcept.
 //
-// 两个方向的形态不同，务必分清：
+// The two directions have different shapes; be sure to tell them apart:
 //
-//   device → host（PacketMessageReader）：
-//     一次 bulk IN 传输里串着 1~N 个 PACKET_MSG，按 MessageLength 步进遍历。
-//     必须容忍尾部垃圾（设备也会用「多补 1 字节」的手法规避 ZLP）。
+//   device -> host (PacketMessageReader):
+//     One bulk IN transfer strings together 1~N PACKET_MSGs, traversed by stepping by MessageLength.
+//     Trailing garbage must be tolerated (devices also use the trick of "padding one extra byte" to avoid a ZLP).
 //
-//   host → device（PacketMessageWriter）：
-//     把多帧聚合进一次 bulk OUT，受三重约束：设备的 MaxTransferSize、
-//     MaxPacketsPerMessage、以及 PacketAlignmentFactor 决定的每包对齐。
+//   host -> device (PacketMessageWriter):
+//     Aggregates multiple frames into one bulk OUT, subject to three constraints: the device's MaxTransferSize,
+//     MaxPacketsPerMessage, and the per-packet alignment determined by PacketAlignmentFactor.
 #pragma once
 
 #include <cstddef>
@@ -29,35 +29,35 @@
 namespace tetherkitnext::rndis {
 
 // =============================================================================
-// 解码：device → host
+// Decoding: device -> host
 // =============================================================================
 
-/// 遍历一次 bulk IN 传输的结果。
+/// Result of traversing one bulk IN transfer.
 enum class ReadOutcome : std::uint8_t {
-  kFrame,           ///< 成功取出一帧。
-  kEndOfTransfer,   ///< 正常结束（可能有被容忍的尾部填充）。
-  kMalformed,       ///< 遇到非法数据，必须停止解析本次传输。
+  kFrame,           ///< A frame was successfully taken out.
+  kEndOfTransfer,   ///< Normal end (there may be tolerated trailing padding).
+  kMalformed,       ///< Illegal data encountered; parsing of this transfer must stop.
 };
 
-/// 非法数据的具体原因，用于统计与排障。
+/// Specific reason for illegal data, for statistics and troubleshooting.
 enum class MalformedReason : std::uint8_t {
   kNone,
-  kNotPacketMessage,   ///< MessageType 不是 REMOTE_NDIS_PACKET_MSG。
-  kMessageTooShort,    ///< MessageLength < 44。
-  kMessageOverruns,    ///< MessageLength 超出剩余缓冲。
-  kDataOutOfBounds,    ///< DataOffset + DataLength 超出 MessageLength。
-  kFrameTooShort,      ///< DataLength < 14，装不下以太头。
-  kFrameTooLong,       ///< DataLength 超过本机允许的单帧上限。
+  kNotPacketMessage,   ///< MessageType is not REMOTE_NDIS_PACKET_MSG.
+  kMessageTooShort,    ///< MessageLength < 44.
+  kMessageOverruns,    ///< MessageLength exceeds the remaining buffer.
+  kDataOutOfBounds,    ///< DataOffset + DataLength exceeds MessageLength.
+  kFrameTooShort,      ///< DataLength < 14; cannot fit the Ethernet header.
+  kFrameTooLong,       ///< DataLength exceeds this machine's per-frame limit.
 };
 
-/// 从一次 bulk IN 传输缓冲里逐帧取出以太帧。
+/// Extracts Ethernet frames one by one from a bulk IN transfer buffer.
 ///
-/// 用法：
+/// Usage:
 /// ```
 /// PacketMessageReader reader(transfer_bytes, max_frame_bytes);
 /// std::span<const std::byte> frame;
 /// while (reader.Next(frame) == ReadOutcome::kFrame) {
-///   ... 处理 frame ...
+///   ... process frame ...
 /// }
 /// ```
 class PacketMessageReader {
@@ -65,15 +65,15 @@ class PacketMessageReader {
   PacketMessageReader(std::span<const std::byte> transfer, std::uint32_t max_frame_bytes) noexcept
       : transfer_(transfer), max_frame_bytes_(max_frame_bytes) {}
 
-  /// 取下一帧。返回 kFrame 时 `frame` 指向 transfer 内部，无拷贝。
+  /// Takes the next frame. When kFrame is returned, `frame` points into the transfer, with no copy.
   [[nodiscard]] ReadOutcome Next(std::span<const std::byte>& frame) noexcept {
     const std::size_t remaining = transfer_.size() - cursor_;
 
-    // 剩余不足一个完整头部：按尾部填充处理，正常结束。
+    // Remaining bytes are less than a complete header: treat as trailing padding, end normally.
     //
-    // 这是**必须**的容忍：RNDIS 规定 host 与 device 都不发 ZLP，而是在传输长度
-    // 恰为端点最大包长整数倍时多补 1 个字节使其变成短包。那个字节落在所有
-    // MessageLength 之外，若把它当错误就会在每 2048 字节的传输上误报一次。
+    // This tolerance is **required**: RNDIS specifies that neither host nor device sends a ZLP; instead, when the transfer length
+    // is exactly an integer multiple of the endpoint's max packet size, 1 extra byte is padded to make it a short packet. That byte falls outside all
+    // MessageLengths; treating it as an error would give a false report once on every 2048-byte transfer.
     if (remaining < kPacketMsgHeaderBytes) {
       trailing_padding_bytes_ = static_cast<std::uint32_t>(remaining);
       return ReadOutcome::kEndOfTransfer;
@@ -97,8 +97,8 @@ class PacketMessageReader {
     const std::uint32_t data_offset = LoadLe32(message + kPacketDataOffsetOffset);
     const std::uint32_t data_length = LoadLe32(message + kPacketDataLengthOffset);
 
-    // 绝对偏移 = 8 + DataOffset（protocol.h 规则 2）。
-    // 用 64 位运算避免设备汇报巨大值时溢出。
+    // Absolute offset = 8 + DataOffset (protocol.h rule 2).
+    // Use 64-bit arithmetic to avoid overflow when the device reports huge values.
     const std::uint64_t data_begin = static_cast<std::uint64_t>(kOffsetFieldBase) + data_offset;
     const std::uint64_t data_end = data_begin + data_length;
     if (data_end > message_length) [[unlikely]] {
@@ -121,12 +121,12 @@ class PacketMessageReader {
 
   [[nodiscard]] MalformedReason Reason() const noexcept { return reason_; }
 
-  /// 被当作填充忽略掉的尾部字节数（正常应为 0 或 1）。
+  /// Number of trailing bytes ignored as padding (normally 0 or 1).
   [[nodiscard]] std::uint32_t TrailingPaddingBytes() const noexcept {
     return trailing_padding_bytes_;
   }
 
-  /// 已消费的字节数，用于校验是否把整个传输都解析完了。
+  /// Number of bytes consumed, used to verify whether the whole transfer was parsed completely.
   [[nodiscard]] std::size_t BytesConsumed() const noexcept { return cursor_; }
 
  private:
@@ -143,10 +143,10 @@ class PacketMessageReader {
   MalformedReason reason_ = MalformedReason::kNone;
 };
 
-/// MalformedReason 对应的文案标识。
+/// Message identifier corresponding to MalformedReason.
 ///
-/// 返回标识而不是现成的字符串，是为了保住 constexpr —— 真正的文字要按用户当前
-/// 语言渲染，调用方用 `Text(MalformedReasonMessage(r))` 取。
+/// Returning an identifier rather than a ready-made string is to preserve constexpr -- the actual text must be rendered in the user's current
+/// language, and callers fetch it with `Text(MalformedReasonMessage(r))`.
 [[nodiscard]] constexpr Msg MalformedReasonMessage(MalformedReason reason) noexcept {
   switch (reason) {
     case MalformedReason::kNone:
@@ -167,31 +167,31 @@ class PacketMessageReader {
   return Msg::kRndisMalformedUnknown;
 }
 
-/// MalformedReason 的可读名字（按当前语言）。
+/// Readable name of MalformedReason (in the current language).
 [[nodiscard]] inline std::string_view MalformedReasonName(MalformedReason reason) noexcept {
   return Text(MalformedReasonMessage(reason));
 }
 
 // =============================================================================
-// 编码：host → device
+// Encoding: host -> device
 // =============================================================================
 
-/// 把多个以太帧聚合成一次 bulk OUT 传输。
+/// Aggregates multiple Ethernet frames into one bulk OUT transfer.
 ///
-/// 对齐处理的细节（这是最容易写错的地方）：
-///   RNDIS 规定「除最后一个之外，每个 PACKET_MSG 的 MessageLength 都包含尾部
-///   对齐填充；最后一个不含外部填充」。因此本实现在追加**下一个**消息时，才
-///   回头把**上一个**消息的 MessageLength 扩大以吞掉中间的填充字节 ——
-///   这样最后一个消息的 MessageLength 天然就是 44 + 帧长，完全符合规范。
+/// Details of alignment handling (this is the easiest place to get wrong):
+///   RNDIS specifies that "except for the last one, every PACKET_MSG's MessageLength includes the trailing
+///   alignment padding; the last one does not include external padding". So when appending the **next** message, this implementation
+///   goes back and enlarges the **previous** message's MessageLength to swallow the padding bytes in between --
+///   this way the last message's MessageLength is naturally 44 + frame length, fully conforming to the spec.
 class PacketMessageWriter {
  public:
-  /// @param transfer      输出缓冲（通常是一个 libusb 传输的 buffer）
-  /// @param limits        设备协商出的聚合上限
-  /// @param endpoint_max_packet  bulk OUT 端点的 wMaxPacketSize，用于规避 ZLP
+  /// @param transfer      Output buffer (usually the buffer of a libusb transfer)
+  /// @param limits        Aggregation limits negotiated with the device
+  /// @param endpoint_max_packet  wMaxPacketSize of the bulk OUT endpoint, used to avoid a ZLP
   struct Limits {
-    std::uint32_t max_transfer_bytes = 0;      ///< 设备的 MaxTransferSize。
-    std::uint32_t max_messages = 1;            ///< 设备的 MaxPacketsPerMessage。
-    std::uint32_t alignment_bytes = 1;         ///< 1 << PacketAlignmentFactor。
+    std::uint32_t max_transfer_bytes = 0;      ///< The device's MaxTransferSize.
+    std::uint32_t max_messages = 1;            ///< The device's MaxPacketsPerMessage.
+    std::uint32_t alignment_bytes = 1;         ///< 1 << PacketAlignmentFactor.
   };
 
   PacketMessageWriter(std::span<std::byte> transfer, const Limits& limits,
@@ -200,8 +200,8 @@ class PacketMessageWriter {
         endpoint_max_packet_(endpoint_max_packet),
         max_messages_(limits.max_messages == 0 ? 1 : limits.max_messages),
         alignment_bytes_(limits.alignment_bytes == 0 ? 1 : limits.alignment_bytes) {
-    // 有效容量取「缓冲区大小」与「设备 MaxTransferSize」的较小值，
-    // 再预留 1 字节给可能需要的 ZLP 规避填充。
+    // The effective capacity is the smaller of "buffer size" and the "device's MaxTransferSize",
+    // then 1 byte is reserved for the padding that may be needed to avoid a ZLP.
     const std::size_t device_limit = limits.max_transfer_bytes == 0
                                          ? transfer.size()
                                          : static_cast<std::size_t>(limits.max_transfer_bytes);
@@ -209,9 +209,9 @@ class PacketMessageWriter {
     capacity_ = usable > kZlpPadReserve ? usable - kZlpPadReserve : 0;
   }
 
-  /// 尝试追加一帧。返回 false 表示本批次已满，调用方应先提交再重试。
+  /// Tries to append a frame. Returning false means this batch is full; the caller should submit first and then retry.
   ///
-  /// 帧长必须 >= 14；调用方负责保证（BPF 读上来的帧一定满足）。
+  /// The frame length must be >= 14; the caller is responsible for guaranteeing this (frames read from BPF always satisfy it).
   [[nodiscard]] bool TryAppend(std::span<const std::byte> frame) noexcept {
     if (message_count_ >= max_messages_) [[unlikely]] {
       return false;
@@ -219,7 +219,7 @@ class PacketMessageWriter {
 
     const auto frame_length = static_cast<std::uint32_t>(frame.size());
 
-    // 若已有消息，先算出为满足对齐需要插入多少填充。
+    // If a message already exists, first compute how much padding must be inserted to satisfy alignment.
     const std::size_t aligned_cursor =
         message_count_ == 0 ? cursor_ : AlignUp<std::size_t>(cursor_, alignment_bytes_);
     const std::size_t needed = aligned_cursor + kPacketMsgHeaderBytes + frame_length;
@@ -227,7 +227,7 @@ class PacketMessageWriter {
       return false;
     }
 
-    // 把填充字节归入**上一个**消息的 MessageLength（见类文档注释）。
+    // Attribute the padding bytes to the **previous** message's MessageLength (see the class documentation comment).
     if (aligned_cursor != cursor_) {
       const auto padding = static_cast<std::uint32_t>(aligned_cursor - cursor_);
       std::memset(transfer_.data() + cursor_, 0, padding);
@@ -243,10 +243,10 @@ class PacketMessageWriter {
 
     StoreLe32(message + kMessageTypeOffset, ToRaw(MessageType::kPacket));
     StoreLe32(message + kMessageLengthOffset, message_length);
-    // DataOffset 是 36 而不是 44 —— 基准点是消息起始 +8。
+    // DataOffset is 36 rather than 44 -- the base point is message start + 8.
     StoreLe32(message + kPacketDataOffsetOffset, kPacketInlineDataOffset);
     StoreLe32(message + kPacketDataLengthOffset, frame_length);
-    // 其余字段（OOB、per-packet info、VcHandle、Reserved）本项目一律为 0。
+    // The remaining fields (OOB, per-packet info, VcHandle, Reserved) are always 0 in this project.
     std::memset(message + kPacketOobDataOffsetOffset, 0,
                 kPacketMsgHeaderBytes - kPacketOobDataOffsetOffset);
 
@@ -259,12 +259,12 @@ class PacketMessageWriter {
     return true;
   }
 
-  /// 结束本批次，返回应提交给 libusb 的字节数。
+  /// Finishes this batch, returning the number of bytes to submit to libusb.
   ///
-  /// 会在必要时追加 1 个 0x00 字节以规避 ZLP：RNDIS 明确要求 host **不得**发
-  /// 零长度包，而当传输长度恰为端点 wMaxPacketSize 的整数倍时，USB 主机控制器
-  /// 需要一个短包来标记传输结束。Linux 的 usbnet 就是这么做的 —— 多出的字节在
-  /// 所有 MessageLength 之外，设备必须容忍尾部垃圾。
+  /// Appends 1 byte of 0x00 when necessary to avoid a ZLP: RNDIS explicitly requires the host **not to** send
+  /// zero-length packets, and when the transfer length is exactly an integer multiple of the endpoint's wMaxPacketSize, the USB host controller
+  /// needs a short packet to mark the end of the transfer. Linux's usbnet does exactly this -- the extra byte is outside
+  /// all MessageLengths, and the device must tolerate trailing garbage.
   [[nodiscard]] std::uint32_t Finish() noexcept {
     if (cursor_ == 0) {
       return 0;
@@ -279,15 +279,15 @@ class PacketMessageWriter {
 
   [[nodiscard]] std::uint32_t MessageCount() const noexcept { return message_count_; }
 
-  /// 已聚合的以太帧净荷字节数（不含 RNDIS 头与填充），用于统计吞吐。
+  /// Number of Ethernet frame payload bytes aggregated so far (excluding RNDIS headers and padding), used to count throughput.
   [[nodiscard]] std::uint64_t PayloadBytes() const noexcept { return payload_bytes_; }
 
   [[nodiscard]] bool ZlpPaddingAdded() const noexcept { return zlp_padding_added_; }
 
   [[nodiscard]] bool Empty() const noexcept { return message_count_ == 0; }
 
-  /// 当前批次还能容纳的最大帧长（0 表示装不下任何帧了）。
-  /// 调用方可用它避免「取出一帧却发现放不进去」的回退逻辑。
+  /// The maximum frame length the current batch can still hold (0 means it cannot fit any frame).
+  /// The caller can use it to avoid the fallback logic of "took out a frame only to find it does not fit".
   [[nodiscard]] std::uint32_t RemainingFrameCapacity() const noexcept {
     if (message_count_ >= max_messages_) {
       return 0;
@@ -299,7 +299,7 @@ class PacketMessageWriter {
   }
 
  private:
-  /// 为 ZLP 规避预留的字节数。
+  /// Number of bytes reserved for ZLP avoidance.
   static constexpr std::size_t kZlpPadReserve = 1;
 
   std::span<std::byte> transfer_;

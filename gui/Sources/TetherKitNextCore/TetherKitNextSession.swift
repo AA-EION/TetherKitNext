@@ -2,11 +2,11 @@ import CTetherKitNext
 import Foundation
 import TetherKitNextIPC
 
-/// 一个 RNDIS 会话。**需要 root**，因此只在 helper 进程里使用。
+/// One RNDIS session. **Needs root**, so it is used only inside the helper process.
 ///
-/// 线程安全：C 侧的会话本身是线程安全的（状态快照与事件队列都有锁），但
-/// `start` / `stop` 的调用顺序需要调用方自己保证不并发。helper 用一个串行
-/// 队列串起所有生命周期调用来满足这一点。
+/// Thread safety: the C-side session itself is thread-safe (both the state snapshot and the event queue have locks), but
+/// the calling order of `start` / `stop` must be guaranteed non-concurrent by the caller. The helper strings all lifecycle calls
+/// together on one serial queue to satisfy this.
 /// `@unchecked Sendable`: the only state is the C handle, and the C ABI
 /// documents every tk_session_* call as thread-safe (status snapshots are
 /// taken under the runtime's own lock). The helper touches a session from its
@@ -14,12 +14,12 @@ import TetherKitNextIPC
 public final class TetherKitNextSession: @unchecked Sendable {
     private let handle: OpaquePointer
 
-    /// 一次最多取走多少条事件，与 C 侧环形缓冲容量（128）一致。
+    /// The maximum number of events taken away at once, consistent with the C-side ring buffer capacity (128).
     private static let eventCapacity = 128
 
     public init(configuration: SessionConfiguration) throws {
         var raw = tk_session_config_t()
-        // 必须先 init 再改：结构体里有一堆调优旋钮，全零初始化会得到无效配置。
+        // It must be init first and then modified: the struct has a pile of tuning knobs, and all-zero initialization would give an invalid configuration.
         tk_session_config_init(&raw)
         raw.vendor_id = configuration.vendorID
         raw.product_id = configuration.productID
@@ -36,23 +36,23 @@ public final class TetherKitNextSession: @unchecked Sendable {
     }
 
     deinit {
-        // tk_session_destroy 内部会先停机（幂等），所以这里不用先 stop。
+        // tk_session_destroy stops first internally (idempotent), so there is no need to stop first here.
         tk_session_destroy(handle)
     }
 
-    /// 启动。**非阻塞** —— 返回只表示请求已受理，成败要看后续的 status。
+    /// Starts. **Non-blocking** -- returning only means the request was accepted; success or failure must be checked via the subsequent status.
     public func start() throws {
         var error = tk_error_t()
         let result = tk_session_start(handle, &error)
         try check(result, error)
     }
 
-    /// 停机并等待全部拆除完成。幂等。
+    /// Stops and waits for all teardown to complete. Idempotent.
     public func stop() {
         _ = tk_session_stop(handle)
     }
 
-    /// 取一份状态快照。任意线程可调。
+    /// Takes a state snapshot. Callable from any thread.
     public func status() -> SessionStatus {
         var raw = tk_session_status_t()
         guard tk_session_status_get(handle, &raw) == TK_OK else {
@@ -83,17 +83,17 @@ public final class TetherKitNextSession: @unchecked Sendable {
             fatalMessage: String(fixedCArray: raw.fatal))
     }
 
-    /// 取走已排队的事件，渲染成给用户看的一句话。
+    /// Takes away the queued events, rendering them into one sentence for the user to read.
     ///
-    /// 只保留「用户会关心」的那几类：链路变化、设备复位、致命错误。RNDIS 内部
-    /// 的状态迁移与生命周期迁移界面已经通过 status 展示了，再刷成通知只是噪音。
+    /// Keeps only the categories that "users care about": link changes, device resets, fatal errors. The RNDIS internal
+    /// state transitions and lifecycle transitions are already shown by the UI via status, and flooding them again as notifications would be just noise.
     public func drainNotices() -> [String] {
         var buffer = [tk_event_t](repeating: tk_event_t(), count: Self.eventCapacity)
         let taken = tk_session_poll_events(handle, &buffer, Self.eventCapacity)
 
         return buffer.prefix(taken).compactMap { event -> String? in
-            // C 侧的 tk_event_kind 全是非负值，被 Swift 导入成 UInt32，而结构体
-            // 字段是 int32_t —— 两者不能直接比较，必须显式转一次。
+            // The C side's tk_event_kind values are all non-negative and are imported by Swift as UInt32, while the struct
+            // field is int32_t -- the two cannot be compared directly and must be converted explicitly once.
             switch event.kind {
             case Int32(TK_EVENT_LINK.rawValue):
                 return L(event.a == 1 ? .eventLinkUp : .eventLinkDown)

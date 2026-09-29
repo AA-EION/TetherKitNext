@@ -1,6 +1,6 @@
-// doctest 的 main() 实现单独占一个翻译单元。
+// doctest's main() implementation occupies a translation unit of its own.
 //
-// 这样修改任何测试文件都不必重编译 doctest 那 7000 行头文件的实现部分，
-// 显著缩短增量构建时间。
+// This way modifying any test file does not require recompiling the implementation part of doctest's 7000-line header,
+// noticeably shortening incremental build time.
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>

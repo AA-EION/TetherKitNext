@@ -1,26 +1,26 @@
-# Optimizations.cmake —— 数据路径优化选项
+# Optimizations.cmake -- data-path optimization options
 #
-# 提供 INTERFACE 目标 tetherkitnext_optimizations。
+# Provides the INTERFACE target tetherkitnext_optimizations.
 #
-# 设计取舍：
-#  * 默认不加 -march/-mcpu：Apple Silicon 的 baseline（armv8.4-a for M1）已经包含
-#    我们需要的一切（LSE 原子指令、NEON），额外的 -mcpu=native 收益很小却让产物
-#    绑定到具体芯片代次。需要时用 -DTETHERKITNEXT_NATIVE_ARCH=ON 打开。
-#  * 不用 -O3：本项目热路径以 memcpy 与系统调用为主，-O3 的激进循环展开与向量化
-#    对此几乎无收益，反而增大代码体积、恶化 I-cache 命中。-O2（RelWithDebInfo 默认）
-#    是更优选择。
-#  * -fno-plt / -fvisibility=hidden 减少间接跳转与符号表体积。
+# Design trade-offs:
+#  * -march/-mcpu are not added by default: the Apple Silicon baseline (armv8.4-a for M1) already contains
+#    everything we need (LSE atomics, NEON); an additional -mcpu=native gains little but ties the artifact
+#    to a specific chip generation. Turn it on when needed with -DTETHERKITNEXT_NATIVE_ARCH=ON.
+#  * -O3 is not used: this project's hot path is dominated by memcpy and system calls, for which -O3's aggressive loop unrolling and
+#    vectorization bring almost no benefit while increasing code size and worsening I-cache hit rate. -O2 (the RelWithDebInfo default)
+#    is the better choice.
+#  * -fno-plt / -fvisibility=hidden reduce indirect jumps and symbol table size.
 
 add_library(tetherkitnext_optimizations INTERFACE)
 
 target_compile_options(
   tetherkitnext_optimizations
   INTERFACE
-    # 内部符号默认隐藏：本项目不导出稳定 ABI，可让优化器更自由地内联。
+    # Internal symbols are hidden by default: this project does not export a stable ABI, which lets the optimizer inline more freely.
     -fvisibility=hidden
     -fvisibility-inlines-hidden
-    # 严格别名对我们手写的线格式解析是危险的（大量 reinterpret_cast），关掉。
-    # 换来的代价很小：热路径的实际瓶颈是系统调用而非别名分析。
+    # Strict aliasing is dangerous for our hand-written wire-format parsing (lots of reinterpret_cast), so it is turned off.
+    # The cost is small: the real bottleneck on the hot path is system calls, not alias analysis.
     -fno-strict-aliasing)
 
 if(TETHERKITNEXT_NATIVE_ARCH)

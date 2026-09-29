@@ -1,28 +1,28 @@
-// 全部面向用户的文案。**本文件刻意没有 include guard**：它是 X-macro 清单，
-// 会被 i18n.h 与 i18n.cc 分别展开成枚举、中文表与英文表。
+// All user-facing messages. **This file deliberately has no include guard**: it is an X-macro list,
+// expanded by i18n.h and i18n.cc into the enum, the Chinese table and the English table respectively.
 //
-// 每行的三个参数：
+// The three arguments of each line:
 //
-//   TETHERKITNEXT_MESSAGE(标识, 中文, English)
+//   TETHERKITNEXT_MESSAGE(identifier, Chinese, English)
 //
-// ★ 加一条文案的规矩 ★
+// * Rules for adding a message *
 //
-//   1. 标识按所属模块加前缀：kCommon* / kRndis* / kNet* / kUsb* / kCore* /
-//      kCapi* / kCli*，后半段用 CamelCase 概括语义，**不要**照抄中文原文；
-//   2. 两种语言引用的**参数下标集合必须一致**。隐式的 `{}` 按出现先后依次算作
-//      0、1、2……，所以当译文需要换语序时，就把那一侧改成显式编号重排，例如
-//      中文 `"向 {} 写入 {} 字节"` 对应英文 `"write {1} bytes to {0}"`。
-//      注意同一个格式串里**不能**隐式与显式混用（std::format 的规矩），
-//      但两种语言各用各的没有问题；
-//   3. 新条目就近插进所属模块的段落里，段内大致按调用顺序排，方便对照代码;
-//   4. 英文不要逐字直译。中文里的「：」在英文里是 ": "，中文的破折号在英文里
-//      通常拆成两句。
+//   1. Prefix the identifier by its module: kCommon* / kRndis* / kNet* / kUsb* / kCore* /
+//      kCapi* / kCli*, and summarize the semantics in CamelCase for the second half; **do not** copy the Chinese text verbatim;
+//   2. The **set of argument indices referenced must be identical** in both languages. Implicit `{}` are counted in order of appearance as
+//      0, 1, 2..., so when a translation needs a different word order, switch that side to explicit numbering to reorder, for example
+//      Chinese `"向 {} 写入 {} 字节"` corresponds to English `"write {1} bytes to {0}"`.
+//      Note that implicit and explicit numbering **cannot** be mixed within the same format string (std::format's rule),
+//      but it is fine for each language to use its own;
+//   3. Insert a new entry into the paragraph of its module, roughly in call order within the paragraph, to ease comparison with the code;
+//   4. Do not translate English word for word. The Chinese "：" is ": " in English, and a Chinese em dash
+//      is usually split into two sentences in English.
 //
-//   规矩 2 由 tests/test_common_i18n.cc 逐条核对（占位符集合 + 试跑一次
-//   vformat），写错会在 `ctest -R common.i18n` 里当场红掉。
+//   Rule 2 is checked entry by entry by tests/test_common_i18n.cc (placeholder set + a trial run of
+//   vformat); a mistake turns `ctest -R common.i18n` red on the spot.
 
 // =============================================================================
-// common —— 基础设施层
+// common -- infrastructure layer
 // =============================================================================
 
 TETHERKITNEXT_MESSAGE(kCommonLogFormatFailed, "<日志格式化失败>", "<log formatting failed>")
@@ -32,20 +32,20 @@ TETHERKITNEXT_MESSAGE(kCommonThreadQosFailed,
                   "scheduling policy")
 
 // =============================================================================
-// net —— feth 虚拟网卡与 BPF 链路
+// net -- feth virtual NIC and BPF link
 // =============================================================================
 
 TETHERKITNEXT_MESSAGE(kNetLoopbackInjectedFailure, "loopback 后端按测试设置在第 {} 次写入时失败",
                   "loopback backend failed on write #{} as configured by the test")
 
-// --- 通用（feth 与 BPF 共用）---
+// --- Common (shared by feth and BPF) ---
 TETHERKITNEXT_MESSAGE(kNetInterfaceNameTooLong, "接口名 \"{}\" 过长", "interface name \"{}\" is too long")
 TETHERKITNEXT_MESSAGE(kNetInterfaceNameOverLimit, "接口名 \"{}\" 超过 {} 字节上限",
                   "interface name \"{}\" exceeds the {}-byte limit")
 TETHERKITNEXT_MESSAGE(kNetSysctlReadFailed, "读取 sysctl {} 失败", "failed to read sysctl {}")
 TETHERKITNEXT_MESSAGE(kNetUnknownValue, "未知", "unknown")
 
-// --- BPF 链路 ---
+// --- BPF link ---
 TETHERKITNEXT_MESSAGE(kNetOptionalIoctlUnavailable, "可选 ioctl {} 不可用（errno={}），已跳过",
                   "optional ioctl {} is unavailable (errno={}); skipped")
 TETHERKITNEXT_MESSAGE(kNetFrameLimitBelowMinimum, "max_frame_bytes={} 小于最小以太帧长 {}",
@@ -97,7 +97,7 @@ TETHERKITNEXT_MESSAGE(kNetBpfWriteFailed, "向 {} 写入 {} 字节的帧失败",
 TETHERKITNEXT_MESSAGE(kNetBpfBatchWriteFailed, "向 {} 批量写入 {} 帧（{} 字节）失败",
                   "failed to batch-write {1} frames ({2} bytes) to {0}")
 
-// --- feth 虚拟网卡 ---
+// --- feth virtual NIC ---
 TETHERKITNEXT_MESSAGE(kNetIoctlSocketFailed, "创建用于接口 ioctl 的套接字失败",
                   "failed to create the socket used for interface ioctls")
 TETHERKITNEXT_MESSAGE(kNetFethMaxMtuInvalid, "net.link.fake.max_mtu 返回了非法值 {}",
@@ -201,17 +201,17 @@ TETHERKITNEXT_MESSAGE(kNetFethPairReady, "虚拟网卡对就绪：系统侧 {} �
                   "virtual interface pair ready: system side {} <-> driver side {} (MTU {})")
 
 // =============================================================================
-// rndis —— 协议编解码与状态机
+// rndis -- protocol encoding/decoding and state machine
 // =============================================================================
 
-// --- 通用占位 ---
+// --- Generic placeholders ---
 TETHERKITNEXT_MESSAGE(kRndisUnknownStatus, "未知状态", "unknown status")
 TETHERKITNEXT_MESSAGE(kRndisUnknownMessage, "未知消息", "unknown message")
 TETHERKITNEXT_MESSAGE(kRndisUnknownMessageType, "未知消息类型", "unknown message type")
 TETHERKITNEXT_MESSAGE(kRndisUnknown, "未知", "unknown")
 TETHERKITNEXT_MESSAGE(kRndisResponse, "响应", "a response")
 
-// --- 状态名 ---
+// --- State names ---
 TETHERKITNEXT_MESSAGE(kRndisStateUninitialized, "未初始化", "uninitialized")
 TETHERKITNEXT_MESSAGE(kRndisStateInitializing, "初始化中", "initializing")
 TETHERKITNEXT_MESSAGE(kRndisStateInitialized, "已初始化", "initialized")
@@ -219,7 +219,7 @@ TETHERKITNEXT_MESSAGE(kRndisStateDataInitialized, "数据已就绪", "data ready
 TETHERKITNEXT_MESSAGE(kRndisStateHalting, "正在终止", "halting")
 TETHERKITNEXT_MESSAGE(kRndisStateUnknown, "未知状态", "unknown state")
 
-// --- 数据包解码的拒绝原因 ---
+// --- Reasons for rejecting packet decoding ---
 TETHERKITNEXT_MESSAGE(kRndisMalformedNone, "无", "none")
 TETHERKITNEXT_MESSAGE(kRndisMalformedNotPacketMessage, "MessageType 不是 PACKET_MSG",
                   "MessageType is not PACKET_MSG")
@@ -235,7 +235,7 @@ TETHERKITNEXT_MESSAGE(kRndisMalformedFrameTooLong, "DataLength 超过单帧上�
                   "DataLength exceeds the per-frame limit")
 TETHERKITNEXT_MESSAGE(kRndisMalformedUnknown, "未知", "unknown")
 
-// --- 控制消息编解码 ---
+// --- Control message encoding/decoding ---
 TETHERKITNEXT_MESSAGE(kRndisBufferTooShort, "{} 长度不足：需要 {} 字节，实际 {} 字节",
                   "{} is too short: need {} bytes, got {}")
 TETHERKITNEXT_MESSAGE(kRndisEncodeBufferTooSmall, "编码 {} 的缓冲区不足：需要 {} 字节，实际 {} 字节",
@@ -294,7 +294,7 @@ TETHERKITNEXT_MESSAGE(kRndisIndicateStatusBufferOutOfBounds,
                   "the StatusBufferOffset={} / Length={} of INDICATE_STATUS is out of bounds under "
                   "both base-point interpretations (MessageLength={}); ignoring the status buffer")
 
-// --- 状态机 ---
+// --- State machine ---
 TETHERKITNEXT_MESSAGE(kRndisStateTransition, "RNDIS 状态：{} → {}", "RNDIS state: {} -> {}")
 TETHERKITNEXT_MESSAGE(kRndisControlMessageReceived, "控制通道收到 {}（{:#010x}），{} 字节",
                   "control channel received {} ({:#010x}), {} bytes")
@@ -374,10 +374,10 @@ TETHERKITNEXT_MESSAGE(kRndisClearPacketFilterFailed, "清零包过滤失败（�
                   "failed to clear the packet filter (sending HALT anyway): {}")
 
 // =============================================================================
-// usb —— 上下文、设备发现与传输通道
+// usb -- context, device discovery and transfer channels
 // =============================================================================
 
-// --- 上下文 ---
+// --- Context ---
 TETHERKITNEXT_MESSAGE(kUsbInitFailed, "libusb_init 失败", "libusb_init failed")
 TETHERKITNEXT_MESSAGE(kUsbInitialized, "libusb 已初始化：{}（热插拔 {}）",
                   "libusb initialized: {} (hotplug {})")
@@ -392,7 +392,7 @@ TETHERKITNEXT_MESSAGE(kUsbHandleEventsFailed, "libusb_handle_events 返回 {}（
                   "libusb_handle_events returned {} ({}); the event thread is exiting")
 TETHERKITNEXT_MESSAGE(kUsbEventThreadExited, "libusb 事件线程已退出", "libusb event thread exited")
 
-// --- 设备发现与声明 ---
+// --- Device discovery and claiming ---
 TETHERKITNEXT_MESSAGE(kUsbGetDeviceListFailed, "libusb_get_device_list 失败",
                   "libusb_get_device_list failed")
 TETHERKITNEXT_MESSAGE(kUsbSkippedAcmModem,
@@ -443,7 +443,7 @@ TETHERKITNEXT_MESSAGE(kUsbUnknownSpeed, "未知速度", "unknown speed")
 TETHERKITNEXT_MESSAGE(kUsbClearHaltFailed, "清除端点 0x{:02x} 的 halt 状态失败",
                   "failed to clear the halt condition on endpoint 0x{:02x}")
 
-// --- 中断通知 ---
+// --- Interrupt notifications ---
 TETHERKITNEXT_MESSAGE(kUsbNoInterruptEndpoint, "设备没有中断端点，通知监听跳过（将退化为轮询控制端点）",
                   "the device has no interrupt endpoint; skipping the notification listener and "
                   "falling back to polling the control endpoint")
@@ -469,7 +469,7 @@ TETHERKITNEXT_MESSAGE(kUsbInterruptHaltClearFailed, "清除中断端点 halt 失
 TETHERKITNEXT_MESSAGE(kUsbInterruptTransferStatus, "中断通知传输 status={}，继续监听",
                   "interrupt notification transfer status={}; continuing to listen")
 
-// --- 控制通道 ---
+// --- Control channel ---
 TETHERKITNEXT_MESSAGE(kUsbControlMessageLengthInvalid, "控制消息长度 {} 非法",
                   "invalid control message length {}")
 TETHERKITNEXT_MESSAGE(kUsbSendEncapsulatedFailed, "SEND_ENCAPSULATED_COMMAND 失败",
@@ -479,7 +479,7 @@ TETHERKITNEXT_MESSAGE(kUsbSendEncapsulatedShort, "SEND_ENCAPSULATED_COMMAND 只�
 TETHERKITNEXT_MESSAGE(kUsbGetEncapsulatedFailed, "GET_ENCAPSULATED_RESPONSE 失败",
                   "GET_ENCAPSULATED_RESPONSE failed")
 
-// --- 数据通道 ---
+// --- Data channel ---
 TETHERKITNEXT_MESSAGE(kUsbTxBufferTooSmall, "TX 传输缓冲 {} 字节装不下一个满帧（需要 {} 字节）",
                   "the {}-byte TX transfer buffer cannot hold a full frame ({} bytes needed)")
 TETHERKITNEXT_MESSAGE(kUsbTxSlotQueueInitFailed, "初始化 TX 空闲槽位队列失败",
@@ -537,10 +537,10 @@ TETHERKITNEXT_MESSAGE(kUsbTransferReclaimTimeout,
 TETHERKITNEXT_MESSAGE(kUsbDataChannelStopped, "数据通道已停机", "data channel stopped")
 
 // =============================================================================
-// core —— 数据路径桥接与运行时编排
+// core -- data-path bridge and runtime orchestration
 // =============================================================================
 
-// --- 桥接层 ---
+// --- Bridge layer ---
 TETHERKITNEXT_MESSAGE(kCoreBridgeAlreadyRunning, "桥接层已在运行", "the bridge is already running")
 TETHERKITNEXT_MESSAGE(kCoreDataPathStarted,
                   "数据路径已启动：RX 队列 {} 帧（{} KiB），RX 写批 {} 帧，TX 提交批 {} 帧，"
@@ -568,7 +568,7 @@ TETHERKITNEXT_MESSAGE(kCoreStatsLine,
                   "TX {:>8.0f} pps / {:>8.2f} Mbps (dropped {})  |  "
                   "queue depth {}  kernel drops {}  backpressure {}")
 
-// --- 运行时状态名 ---
+// --- Runtime state names ---
 TETHERKITNEXT_MESSAGE(kCoreRunStateIdle, "空闲", "idle")
 TETHERKITNEXT_MESSAGE(kCoreRunStateStarting, "启动中", "starting")
 TETHERKITNEXT_MESSAGE(kCoreRunStateRunning, "运行中", "running")
@@ -577,7 +577,7 @@ TETHERKITNEXT_MESSAGE(kCoreRunStateStopped, "已停机", "stopped")
 TETHERKITNEXT_MESSAGE(kCoreRunStateFailed, "已失败", "failed")
 TETHERKITNEXT_MESSAGE(kCoreRunStateUnknown, "未知", "unknown")
 
-// --- 运行时编排 ---
+// --- Runtime orchestration ---
 TETHERKITNEXT_MESSAGE(kCoreRuntimeAlreadyStarted, "运行时已启动", "the runtime is already started")
 TETHERKITNEXT_MESSAGE(kCoreNeedsRoot,
                   "TetherKitNext 需要 root 权限才能创建 feth 虚拟网卡并打开 /dev/bpf*。\n"
@@ -632,29 +632,29 @@ TETHERKITNEXT_MESSAGE(kCoreAddressingKept, "保持", "was preserved")
 TETHERKITNEXT_MESSAGE(kCoreLinkUnrecoverable, "链路不可恢复", "the link is unrecoverable")
 
 // =============================================================================
-// capi —— C ABI 层（网卡配置、会话、孤儿清理、子进程）
+// capi -- C ABI layer (NIC configuration, sessions, orphan cleanup, child processes)
 // =============================================================================
 
-// --- 子进程 ---
+// --- Child processes ---
 TETHERKITNEXT_MESSAGE(kCapiPipeFailed, "创建管道失败", "failed to create a pipe")
 TETHERKITNEXT_MESSAGE(kCapiSpawnFileActionsFailed, "posix_spawn_file_actions_init 失败",
                   "posix_spawn_file_actions_init failed")
 TETHERKITNEXT_MESSAGE(kCapiExecFailed, "无法执行 {}", "cannot execute {}")
 TETHERKITNEXT_MESSAGE(kCapiWaitFailed, "等待 {} 结束失败", "failed to wait for {} to finish")
 
-// --- 会话 ---
+// --- Sessions ---
 TETHERKITNEXT_MESSAGE(kCapiSessionConfigNull, "tk_session_create：config 不能为空",
                   "tk_session_create: config must not be null")
 TETHERKITNEXT_MESSAGE(kCapiSessionOutOfMemory, "内存不足，无法创建会话",
                   "out of memory; cannot create the session")
 
-// --- 孤儿网卡清理 ---
+// --- Orphan NIC cleanup ---
 TETHERKITNEXT_MESSAGE(kCapiCleanupNeedsRoot, "清理残留虚拟网卡需要 root 权限",
                   "cleaning up leftover virtual interfaces requires root")
 TETHERKITNEXT_MESSAGE(kCapiOrphanAlreadyGone, "残留网卡 {} 已不存在或无法销毁",
                   "leftover interface {} is already gone, or cannot be destroyed")
 
-// --- 网卡 IP 配置 ---
+// --- NIC IP configuration ---
 TETHERKITNEXT_MESSAGE(kCapiInterfaceNameNull, "网卡名不能为空", "the interface name must not be empty")
 TETHERKITNEXT_MESSAGE(kCapiInterfaceNotOurs,
                   "拒绝操作网卡 \"{}\"：只接受 TetherKitNext 自己创建的 feth<数字> 接口。\n"
@@ -719,11 +719,11 @@ TETHERKITNEXT_MESSAGE(kCapiClearNeedsRoot, "撤销网卡配置需要 root 权限
                   "clearing an interface configuration requires root")
 
 // =============================================================================
-// cli —— 命令行 tetherkitnext-cli
+// cli -- command-line tetherkitnext-cli
 // =============================================================================
 
-// 帮助文本整条一句话地放在这里而不是逐行拆开：它要对齐排版，拆成几十条小文案
-// 反而没法保证译文的列宽一致。
+// The help text is placed here as a single whole rather than split line by line: it needs aligned layout, and splitting it into dozens of small messages
+// would make it impossible to guarantee consistent column widths across the translations.
 TETHERKITNEXT_MESSAGE(
     kCliUsage,
     "用法：sudo tetherkitnext-cli [选项]\n"

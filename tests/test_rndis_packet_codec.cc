@@ -1,12 +1,12 @@
-// REMOTE_NDIS_PACKET_MSG 编解码的单元测试 —— 数据热路径的正确性防线。
+// Unit tests of REMOTE_NDIS_PACKET_MSG encoding/decoding -- the line of defense for data hot path correctness.
 //
-// 重点覆盖：
-//   1. DataOffset 基准点是消息起始 +8（编码写 36，解码按 8+36 定位）；
-//   2. 多包聚合的对齐规则：填充归入**上一个**消息的 MessageLength，
-//      最后一个消息不含外部填充；
-//   3. ZLP 规避：传输长度恰为端点最大包长整数倍时补 1 字节；
-//   4. 解码必须容忍尾部填充（否则每个满传输都会误报一次）；
-//   5. 全部畸形输入都被识别为 kMalformed 且不读越界。
+// Key coverage:
+//   1. The DataOffset base point is message start +8 (encoding writes 36, decoding locates by 8+36);
+//   2. Alignment rules for multi-packet aggregation: padding is attributed to the **previous** message's MessageLength,
+//      and the last message has no external padding;
+//   3. ZLP avoidance: pad 1 byte when the transfer length is exactly an integer multiple of the endpoint's max packet size;
+//   4. Decoding must tolerate trailing padding (otherwise every full transfer would give a false report once);
+//   5. All malformed inputs are recognized as kMalformed without reading out of bounds.
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +28,7 @@ namespace {
 
 constexpr std::uint32_t kMaxFrame = 2048;
 
-/// 造一帧内容可自校验的以太帧。
+/// Builds an Ethernet frame whose content is self-verifying.
 std::vector<std::byte> MakeFrame(std::uint32_t length, std::uint8_t tag) {
   std::vector<std::byte> frame(length);
   for (std::uint32_t i = 0; i < length; ++i) {
@@ -49,7 +49,7 @@ bool FrameMatches(std::span<const std::byte> frame, std::uint32_t length, std::u
   return true;
 }
 
-/// 手工构造一个 PACKET_MSG（用于测解码器，不依赖编码器）。
+/// Hand-builds a PACKET_MSG (for testing the decoder, independent of the encoder).
 void WritePacketMessage(std::span<std::byte> out, std::span<const std::byte> frame,
                         std::uint32_t data_offset_field, std::uint32_t message_length,
                         std::uint32_t data_length_field) {
@@ -66,7 +66,7 @@ void WritePacketMessage(std::span<std::byte> out, std::span<const std::byte> fra
   }
 }
 
-/// 收集一次传输里解出的所有帧（拷贝出来，便于断言）。
+/// Collects all frames decoded from one transfer (copied out, to ease assertions).
 struct DecodeSummary {
   std::vector<std::vector<std::byte>> frames;
   ReadOutcome final_outcome = ReadOutcome::kEndOfTransfer;
@@ -97,7 +97,7 @@ DecodeSummary DecodeAll(std::span<const std::byte> transfer,
 TEST_SUITE("rndis.packet_codec") {
 
 // ---------------------------------------------------------------------------
-// 编码
+// Encoding
 // ---------------------------------------------------------------------------
 
 TEST_CASE("编码单帧：DataOffset 必须写 36") {
@@ -116,10 +116,10 @@ TEST_CASE("编码单帧：DataOffset 必须写 36") {
 
   CHECK(LoadLe32(transfer.data() + kMessageTypeOffset) == ToRaw(MessageType::kPacket));
   CHECK(LoadLe32(transfer.data() + kMessageLengthOffset) == kPacketMsgHeaderBytes + 1514);
-  // ★ 关键断言：36，不是 44。
+  // * Key assertion: 36, not 44.
   CHECK(LoadLe32(transfer.data() + kPacketDataOffsetOffset) == 36);
   CHECK(LoadLe32(transfer.data() + kPacketDataLengthOffset) == 1514);
-  // OOB / per-packet info / VcHandle / Reserved 必须全零。
+  // OOB / per-packet info / VcHandle / Reserved must be all zero.
   CHECK(LoadLe32(transfer.data() + kPacketOobDataOffsetOffset) == 0);
   CHECK(LoadLe32(transfer.data() + kPacketOobDataLengthOffset) == 0);
   CHECK(LoadLe32(transfer.data() + kPacketNumOobDataElementsOffset) == 0);
@@ -128,7 +128,7 @@ TEST_CASE("编码单帧：DataOffset 必须写 36") {
   CHECK(LoadLe32(transfer.data() + kPacketVcHandleOffset) == 0);
   CHECK(LoadLe32(transfer.data() + kPacketReservedOffset) == 0);
 
-  // 帧数据落在绝对偏移 8 + 36 = 44 处。
+  // The frame data lands at absolute offset 8 + 36 = 44.
   CHECK(FrameMatches(std::span<const std::byte>{transfer}.subspan(44, 1514), 1514, 0x11));
 }
 
@@ -139,13 +139,13 @@ TEST_CASE("编码受 MaxPacketsPerMessage 限制") {
                              512);
   CHECK(writer.TryAppend(MakeFrame(64, 1)));
   CHECK(writer.TryAppend(MakeFrame(64, 2)));
-  CHECK_FALSE(writer.TryAppend(MakeFrame(64, 3)));  // 超出包数上限
+  CHECK_FALSE(writer.TryAppend(MakeFrame(64, 3)));  // exceeds the packet count limit
   CHECK(writer.MessageCount() == 2);
 }
 
 TEST_CASE("编码受设备 MaxTransferSize 限制") {
   std::array<std::byte, 8192> transfer{};
-  // 只够放一个 44+64=108 字节的消息（再留 1 字节 ZLP 余量）。
+  // Only enough room for one 44+64=108-byte message (leaving 1 byte of ZLP margin).
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 150, .max_messages = 10, .alignment_bytes = 1},
                              512);
@@ -163,29 +163,29 @@ TEST_CASE("编码空批次 Finish 返回 0") {
 
 TEST_CASE("多包聚合：填充归入上一个消息，最后一个不含外部填充") {
   std::array<std::byte, 8192> transfer{};
-  // 对齐 8 字节（PacketAlignmentFactor = 3）。
+  // Align to 8 bytes (PacketAlignmentFactor = 3).
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 8192, .max_messages = 3, .alignment_bytes = 8},
                              512);
 
-  // 帧长 61 → 消息长 44+61 = 105。105 不是 8 的倍数，向上对齐到 112（14×8），
-  // 所以下一个消息前需要 7 字节填充，且这 7 字节要被吞进**第一个**消息的
-  // MessageLength。
+  // Frame length 61 -> message length 44+61 = 105. 105 is not a multiple of 8, and rounds up to 112 (14x8),
+  // so 7 bytes of padding are needed before the next message, and those 7 bytes must be swallowed into the **first** message's
+  // MessageLength.
   REQUIRE(writer.TryAppend(MakeFrame(61, 0xA0)));
   REQUIRE(writer.TryAppend(MakeFrame(70, 0xB0)));
   REQUIRE(writer.TryAppend(MakeFrame(64, 0xC0)));
   const std::uint32_t total = writer.Finish();
 
-  // 第一个消息：105 → 被扩到 112（吞掉 7 字节填充）。
+  // The first message: 105 -> extended to 112 (swallowing 7 bytes of padding).
   CHECK(LoadLe32(transfer.data() + kMessageLengthOffset) == 112);
   CHECK(112 % 8 == 0);
 
-  // 第二个消息从 112 开始：44+70 = 114 → 累计 226，向上对齐到 232，
-  // 于是第二个消息的 MessageLength 被扩到 114 + 6 = 120。
+  // The second message starts at 112: 44+70 = 114 -> cumulative 226, rounded up to 232,
+  // so the second message's MessageLength is extended to 114 + 6 = 120.
   CHECK(LoadLe32(transfer.data() + 112 + kMessageLengthOffset) == 120);
   CHECK((112 + 120) % 8 == 0);
 
-  // 第三个（最后一个）消息从 232 开始：44+64 = 108，**不含**外部填充。
+  // The third (last) message starts at 232: 44+64 = 108, **without** external padding.
   CHECK(LoadLe32(transfer.data() + 232 + kMessageLengthOffset) == 108);
   CHECK(total == 232 + 108);
   CHECK(writer.PayloadBytes() == 61 + 70 + 64);
@@ -214,7 +214,7 @@ TEST_CASE("多包聚合：编码结果能被解码器完整还原") {
 TEST_CASE("ZLP 规避：长度恰为端点最大包长整数倍时补 1 字节") {
   std::array<std::byte, 4096> transfer{};
   constexpr std::uint32_t kEndpointMaxPacket = 512;
-  // 让总长恰好是 512：44 + 468 = 512。
+  // Make the total length exactly 512: 44 + 468 = 512.
   PacketMessageWriter writer(
       transfer, {.max_transfer_bytes = 4096, .max_messages = 1, .alignment_bytes = 1},
       kEndpointMaxPacket);
@@ -224,7 +224,7 @@ TEST_CASE("ZLP 规避：长度恰为端点最大包长整数倍时补 1 字节")
   CHECK(writer.ZlpPaddingAdded());
   CHECK(total == 513);
   CHECK(total % kEndpointMaxPacket != 0);
-  // 补的那个字节必须是 0，且在 MessageLength（512）之外。
+  // The padded byte must be 0, and outside the MessageLength (512).
   CHECK(transfer[512] == std::byte{0});
   CHECK(LoadLe32(transfer.data() + kMessageLengthOffset) == 512);
 }
@@ -245,12 +245,12 @@ TEST_CASE("RemainingFrameCapacity 报告准确，可避免取帧后回退") {
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 200, .max_messages = 5, .alignment_bytes = 1},
                              512);
-  // 容量 200 - 1（ZLP 余量）= 199；减去 44 字节头 → 155。
+  // Capacity 200 - 1 (ZLP margin) = 199; minus the 44-byte header -> 155.
   CHECK(writer.RemainingFrameCapacity() == 155);
   REQUIRE(writer.TryAppend(MakeFrame(100, 1)));
-  // 已用 144；剩 199 - 144 - 44 = 11。
+  // 144 used; 199 - 144 - 44 = 11 left.
   CHECK(writer.RemainingFrameCapacity() == 11);
-  // 报告说只能再放 11 字节，那么放 12 字节必须失败。
+  // The report says only 11 more bytes fit, so putting in 12 bytes must fail.
   CHECK_FALSE(writer.TryAppend(MakeFrame(12, 2)));
   CHECK(writer.TryAppend(MakeFrame(11, 2)));
   CHECK(writer.RemainingFrameCapacity() == 0);
@@ -266,7 +266,7 @@ TEST_CASE("包数用满后 RemainingFrameCapacity 归零") {
 }
 
 // ---------------------------------------------------------------------------
-// 解码
+// Decoding
 // ---------------------------------------------------------------------------
 
 TEST_CASE("解码单帧：按 8 + DataOffset 定位数据") {
@@ -282,7 +282,7 @@ TEST_CASE("解码单帧：按 8 + DataOffset 定位数据") {
 }
 
 TEST_CASE("解码：数据不紧跟头部（DataOffset 大于 36）") {
-  // 设备完全可以在头部与数据之间留空隙，解码器必须按 DataOffset 走。
+  // The device is entirely free to leave a gap between the header and the data; the decoder must follow DataOffset.
   constexpr std::uint32_t kGap = 16;
   constexpr std::uint32_t kFrameLength = 100;
   const std::uint32_t message_length = kPacketMsgHeaderBytes + kGap + kFrameLength;
@@ -296,7 +296,7 @@ TEST_CASE("解码：数据不紧跟头部（DataOffset 大于 36）") {
 }
 
 TEST_CASE("解码：容忍尾部 1 字节 ZLP 规避填充") {
-  // 这是必须的容忍 —— 否则每个满传输都会误报一次畸形。
+  // This tolerance is required -- otherwise every full transfer would falsely report one malformed message.
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64 + 1);
   WritePacketMessage(transfer, MakeFrame(64, 0x44), kPacketInlineDataOffset,
                      kPacketMsgHeaderBytes + 64, 64);
@@ -309,11 +309,11 @@ TEST_CASE("解码：容忍尾部 1 字节 ZLP 规避填充") {
 }
 
 TEST_CASE("解码：容忍最多 43 字节的尾部垃圾") {
-  // 少于一个完整头部（44 字节）的尾部一律当填充。
+  // A tail shorter than one complete header (44 bytes) is always treated as padding.
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64 + 43);
   WritePacketMessage(transfer, MakeFrame(64, 0x45), kPacketInlineDataOffset,
                      kPacketMsgHeaderBytes + 64, 64);
-  // 尾部填成非零垃圾。
+  // Fill the tail with non-zero garbage.
   for (std::size_t i = transfer.size() - 43; i < transfer.size(); ++i) {
     transfer[i] = std::byte{0xEE};
   }
@@ -392,7 +392,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
 }
 
 TEST_CASE("解码：前几帧有效、中途畸形时保留已解出的帧") {
-  // 真实设备出 bug 时的行为要求：不能因为第 3 个消息坏了就丢掉前 2 帧。
+  // Required behavior when a real device has a bug: the first 2 frames must not be dropped just because the 3rd message is bad.
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 8192, .max_messages = 3, .alignment_bytes = 1},
@@ -402,8 +402,8 @@ TEST_CASE("解码：前几帧有效、中途畸形时保留已解出的帧") {
   REQUIRE(writer.TryAppend(MakeFrame(64, 0x03)));
   const std::uint32_t total = writer.Finish();
 
-  // 破坏第三个消息的类型字段。
-  // 对齐 1 字节时消息紧邻排布，第三个消息的偏移就是前两个之和。
+  // Corrupt the type field of the third message.
+  // With 1-byte alignment messages are laid out back to back, and the third message's offset is the sum of the first two.
   const std::size_t third_offset = std::size_t{2} * (kPacketMsgHeaderBytes + 64);
   StoreLe32(transfer.data() + third_offset + kMessageTypeOffset, 0xDEAD'BEEFU);
 
@@ -423,14 +423,14 @@ TEST_CASE("解码：帧视图指向传输缓冲内部，无拷贝") {
   PacketMessageReader reader(transfer, kMaxFrame);
   std::span<const std::byte> frame;
   REQUIRE(reader.Next(frame) == ReadOutcome::kFrame);
-  // 零拷贝的证明：帧指针落在传输缓冲内部的绝对偏移 44 处。
+  // Proof of zero-copy: the frame pointer lands at absolute offset 44 inside the transfer buffer.
   CHECK(frame.data() == transfer.data() + 44);
   CHECK(reader.FramesDecoded() == 1);
   CHECK(reader.BytesConsumed() == kPacketMsgHeaderBytes + 100);
 }
 
 TEST_CASE("MalformedReason 名字完整") {
-  // 名字是面向用户的文案，会随语言变化，所以断言前先把语言钉死。
+  // The name is user-facing text that changes with language, so pin the language before asserting.
   const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
   CHECK(MalformedReasonName(MalformedReason::kNone) == "无");
   CHECK_FALSE(MalformedReasonName(MalformedReason::kNotPacketMessage).empty());
@@ -439,7 +439,7 @@ TEST_CASE("MalformedReason 名字完整") {
 }
 
 // ---------------------------------------------------------------------------
-// 往返性质测试
+// Round-trip property tests
 // ---------------------------------------------------------------------------
 
 TEST_CASE("往返：各种对齐因子与帧长组合都能无损还原") {

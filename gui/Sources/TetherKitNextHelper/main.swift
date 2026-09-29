@@ -1,10 +1,10 @@
-// tetherkitnext-helper —— 以 root 运行的特权 helper。
+// tetherkitnext-helper -- the privileged helper running as root.
 //
-// ★ 它的 root 从哪来 ★
-//   来自 launchd：App 内嵌的 com.tetherkitnext.helperd.plist（SMAppService 注册）声明了
-//   MachServices，App 一连上这个 Mach 服务，launchd 就按需把它拉起来，
-//   一启动就是 root。**跟用户按没按指纹毫无关系** —— 所以「谁在调用」必须由
-//   helper 自己每次复核，见 TetherKitNextIPC/Authorization.swift。
+// * Where its root comes from *
+//   From launchd: the com.tetherkitnext.helperd.plist embedded in the App (registered via SMAppService) declares
+//   MachServices, and as soon as the App connects to this Mach service, launchd launches it on demand,
+//   and it is root from the moment it starts. **It has nothing to do with whether the user pressed the fingerprint** -- so "who is calling" must be
+//   re-verified by the helper itself every time; see TetherKitNextIPC/Authorization.swift.
 //
 // ★ How it is installed ★
 //   Through SMAppService: the app registers Contents/Library/LaunchDaemons/
@@ -18,8 +18,8 @@ import Foundation
 import TetherKitNextCore
 import TetherKitNextIPC
 
-/// 往 stderr 写一行。helper 由 launchd 拉起，stderr 进的是 LaunchDaemon 的
-/// 日志文件 —— 排查「helper 起不来」这类问题时，那是唯一能看到东西的地方。
+/// Writes one line to stderr. The helper is launched by launchd, and stderr goes into the LaunchDaemon's
+/// log file -- when troubleshooting problems like "the helper will not start", that is the only place where anything can be seen.
 func writeToStandardError(_ message: String) {
     FileHandle.standardError.write(Data((message + "\n").utf8))
 }
@@ -37,9 +37,9 @@ if geteuid() != 0 || getppid() != 1 {
     exit(64)  // EX_USAGE
 }
 
-// ---- 日志 ----
+// ---- Logging ----
 //
-// 打开捕获，让 App 能在界面上看到库内部的日志。stderr 的输出不受影响。
+// Turns on capture so the App can see the library's internal logs on the UI. Output to stderr is unaffected.
 TetherKitNextLibrary.startLogCapture(level: .info)
 
 // ---- Legacy install ----
@@ -50,10 +50,10 @@ if LegacyHelper.removeIfPresent() {
     writeToStandardError("Removed the legacy com.tetherkit.helper LaunchDaemon")
 }
 
-// ---- 兜底清理 ----
+// ---- Backstop cleanup ----
 //
-// 上一次运行若被 SIGKILL，析构不会跑，feth 网卡还留在内核里。这是唯一能救回
-// 那种情况的地方 —— 信号处理器拦不住 SIGKILL。
+// If the last run was SIGKILLed, destructors do not run and the feth NIC is still left in the kernel. This is the only place that can rescue
+// that situation -- a signal handler cannot intercept SIGKILL.
 do {
     let removed = try TetherKitNextLibrary.cleanupOrphanInterfaces()
     if removed > 0 {
@@ -66,16 +66,16 @@ do {
 let service = HelperService()
 let delegate = HelperListenerDelegate(service: service)
 
-// ---- 优雅停机 ----
+// ---- Graceful shutdown ----
 //
-// `launchctl bootout` 发的是 SIGTERM，而 Swift 的 deinit 在进程被终止时不会跑。
-// 不接住它就会把网卡漏在内核里（虽然有落盘登记兜底，但能当场清干净更好）。
+// What `launchctl bootout` sends is SIGTERM, and Swift's deinit does not run when the process is terminated.
+// Without catching it the NIC would leak in the kernel (although the on-disk registration is a backstop, cleaning up on the spot is better).
 //
-// 用 DispatchSource 而不是 signal(2) 的处理函数：后者跑在信号上下文里，
-// 那里能做的事极其有限（不能加锁、不能分配内存），而我们要做的停机拆除
-// 恰恰两样都要。DispatchSource 把它转成普通队列上的回调，限制就没了。
+// DispatchSource is used rather than a signal(2) handler: the latter runs in signal context,
+// where what can be done is extremely limited (no locking, no memory allocation), while the shutdown teardown we have to do
+// needs both. DispatchSource turns it into a callback on an ordinary queue, and the restrictions vanish.
 //
-// 必须先 SIG_IGN：在 DispatchSource 接手之前，默认行为（终止进程）仍然生效。
+// SIG_IGN must come first: before DispatchSource takes over, the default behavior (terminating the process) is still in effect.
 signal(SIGTERM, SIG_IGN)
 let terminationSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 terminationSource.setEventHandler {
@@ -95,9 +95,9 @@ listener.resume()
 
 writeToStandardError(L(.helperReady, TetherKitNextLibrary.versionInfo.version))
 
-// 阻塞在主 runloop 上。
+// Block on the main runloop.
 //
-// 刻意**不**做「空闲一段时间就退出」：会话跑起来之后，helper 拥有 feth 网卡与
-// BPF 描述符，退出就等于把用户的网络断掉。LaunchDaemon 是按需拉起的，
-// 一直活着并不会在没人用时占资源 —— 因为那时根本没被拉起来。
+// Deliberately **not** doing "exit after being idle for a while": once a session is running, the helper owns the feth NIC and the
+// BPF descriptor, and exiting would cut off the user's network. The LaunchDaemon is launched on demand,
+// and staying alive does not occupy resources when nobody is using it -- because it was not launched at all then.
 dispatchMain()

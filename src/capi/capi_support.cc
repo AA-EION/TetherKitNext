@@ -15,8 +15,8 @@ std::int64_t WallNanos() noexcept {
 void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
                             std::span<const DeviceIdentity> present,
                             std::span<tk_device_info_t> infos) {
-  // 先淘汰已不在总线上的设备 —— 顺序重要：淘汰在回填之前，拔掉再插回
-  // 同一地址的「另一台」设备才不会拿到前一台的名字。
+  // First evict devices no longer on the bus -- the order matters: eviction comes before backfilling, so that "another" device
+  // that was unplugged and plugged back into the same address does not get the previous device's name.
   std::erase_if(memory, [present](const RememberedDeviceStrings& entry) {
     return std::ranges::find(present, entry.identity) == present.end();
   });
@@ -31,7 +31,7 @@ void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
         });
 
     if (read_succeeded) {
-      // 读到了 → 覆盖式记住（同身份重插时序列号也跟着最新一次读取走）。
+      // Read -> remember by overwriting (when re-plugged with the same identity, the serial number also follows the latest read).
       RememberedDeviceStrings& slot =
           entry != memory.end()
               ? *entry
@@ -40,8 +40,8 @@ void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
       CopyText(slot.product, info.product);
       CopyText(slot.serial, info.serial);
     } else if (entry != memory.end()) {
-      // 没读到但有记忆 → 回填。设备真的没提供字符串时记忆本来就不存在，
-      // 这里不会无中生有。
+      // Not read but there is a memory -> backfill. When a device truly provides no strings the memory never existed in the first place,
+      // so nothing is conjured out of thin air here.
       CopyText(info.manufacturer, entry->manufacturer);
       CopyText(info.product, entry->product);
       CopyText(info.serial, entry->serial);
@@ -51,7 +51,7 @@ void ReconcileDeviceStrings(std::vector<RememberedDeviceStrings>& memory,
 
 bool IsValidFethName(std::string_view name) noexcept {
   constexpr std::string_view kPrefix = "feth";
-  // 名字还要塞得进内核的 IFNAMSIZ 缓冲。
+  // The name must also fit into the kernel's IFNAMSIZ buffer.
   if (name.size() <= kPrefix.size() || name.size() >= TK_INTERFACE_NAME_CAPACITY) {
     return false;
   }

@@ -1,13 +1,13 @@
-// 链路层后端抽象。
+// Link-layer backend abstraction.
 //
-// 为什么需要抽象：BPF 需要 root 且需要真实的 feth 接口，开发机上跑不了。
-// 把「收发原始以太帧」抽象成一个窄接口后，端到端测试与吞吐基准就能用内存
-// loopback 后端在任何环境下跑。
+// Why an abstraction is needed: BPF needs root and a real feth interface, and cannot run on a development machine.
+// After abstracting "send and receive raw Ethernet frames" into a narrow interface, end-to-end tests and throughput benchmarks can run with an in-memory
+// loopback backend in any environment.
 //
-// 性能取舍：接口用**虚函数**，但虚调用**不在每帧的粒度上** ——
-// ReadFrames / WriteFrames 都是批量接口，一次虚调用处理几十上百帧，
-// 分摊到每帧的开销远小于 1 ns，完全可以忽略。
-// （如果做成每帧一次虚调用就不可接受了，那是刻意避开的设计。）
+// Performance trade-off: the interface uses **virtual functions**, but virtual calls are **not at per-frame granularity** --
+// ReadFrames / WriteFrames are both batch interfaces; one virtual call handles dozens to hundreds of frames,
+// and the overhead amortized per frame is far below 1 ns, entirely negligible.
+// (One virtual call per frame would be unacceptable; that is a design deliberately avoided.)
 #pragma once
 
 #include <cstddef>
@@ -19,26 +19,26 @@
 
 namespace tetherkitnext::net {
 
-/// 一批待发送的帧。
+/// A batch of frames to send.
 using FrameBatch = std::span<const FrameView>;
 
-/// 一次批量读取的结果。
+/// Result of one batch read.
 struct ReadBatch {
-  /// 本批解出的帧，视图指向后端内部缓冲，在下一次 ReadFrames 前有效。
+  /// Frames decoded in this batch; views point into the backend's internal buffer and are valid until the next ReadFrames.
   std::span<const FrameView> frames;
-  /// 内核侧累计丢包数（BPF 的 bs_drop）。用于背压告警。
+  /// Kernel-side cumulative drop count (BPF's bs_drop). Used for backpressure warnings.
   std::uint64_t kernel_drops = 0;
 };
 
-/// 一次批量写入的结果。
+/// Result of one batch write.
 struct WriteResult {
   std::uint32_t frames_written = 0;
   std::uint64_t bytes_written = 0;
-  /// 因单帧超长等原因被跳过的帧数。
+  /// Number of frames skipped for reasons such as a single frame being too long.
   std::uint32_t frames_skipped = 0;
 };
 
-/// 收发原始以太帧的后端。
+/// A backend that sends and receives raw Ethernet frames.
 class LinkBackend {
  public:
   LinkBackend() = default;
@@ -48,24 +48,24 @@ class LinkBackend {
   LinkBackend& operator=(LinkBackend&&) = delete;
   virtual ~LinkBackend() = default;
 
-  /// 阻塞读取一批帧。
+  /// Blocking read of a batch of frames.
   ///
-  /// 返回空批次是合法的（例如被信号打断），调用方应继续循环。
-  /// 只有真正的错误才返回 Error。
+  /// Returning an empty batch is legal (for example when interrupted by a signal); the caller should continue looping.
+  /// Only a real error returns Error.
   [[nodiscard]] virtual Result<ReadBatch> ReadFrames() = 0;
 
-  /// 写出一批帧。尽最大努力写完；超长帧被跳过并计数。
+  /// Writes out a batch of frames. Best effort to write them all; oversized frames are skipped and counted.
   [[nodiscard]] virtual Result<WriteResult> WriteFrames(FrameBatch frames) = 0;
 
-  /// 单帧长度上限（含 14 字节以太头）。
+  /// Per-frame length limit (including the 14-byte Ethernet header).
   [[nodiscard]] virtual std::uint32_t MaxFrameBytes() const noexcept = 0;
 
-  /// 是否支持一次系统调用写多帧。用于日志与基准报告。
+  /// Whether writing multiple frames per system call is supported. Used for logs and benchmark reports.
   [[nodiscard]] virtual bool SupportsBatchWrite() const noexcept = 0;
 
-  /// 唤醒阻塞在 ReadFrames 里的线程，用于优雅停机。
+  /// Wakes the thread blocked in ReadFrames, used for graceful shutdown.
   ///
-  /// 必须可以从**其它线程**安全调用。
+  /// Must be safe to call from **other threads**.
   virtual void Interrupt() noexcept = 0;
 };
 

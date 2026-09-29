@@ -1,8 +1,8 @@
-// feth / BPF 链路层基准的注册入口。
+// Registration entry point of the feth / BPF link-layer benchmarks.
 //
-// 与其余基准不同，这一组**需要 root**（要建 feth 网卡对、要开 /dev/bpf*）。
-// 非 root 时不注册任何项，并通过 skip_reason 说明原因 —— 报告里要能看见
-// 「这组没跑」，而不是让它静默消失。
+// Unlike the other benchmarks, this group **needs root** (it must create a feth pair and open /dev/bpf*).
+// Without root nothing is registered, and the reason is stated through skip_reason -- the report must make visible
+// that "this group did not run", rather than letting it vanish silently.
 #pragma once
 
 #include <string>
@@ -11,19 +11,19 @@ namespace tetherkitnext::bench {
 
 class Runner;
 
-/// 建立 feth + BPF 夹具并注册链路层基准。
+/// Builds the feth + BPF fixture and registers the link-layer benchmarks.
 ///
-/// @param skip_reason 返回 false 时写入跳过原因。
-/// @return 是否成功注册。夹具的生命周期由本模块的静态对象持有，
-///         一直存活到进程退出。
+/// @param skip_reason The skip reason written when false is returned.
+/// @return Whether registration succeeded. The fixture's lifetime is held by this module's static object,
+///         and it lives until process exit.
 bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason);
 
-/// 拆掉夹具（关 BPF 描述符、销毁 feth 网卡对）。
+/// Tears down the fixture (closes the BPF descriptor, destroys the feth pair).
 ///
-/// **必须在 main 返回之前显式调用。** 放任夹具活到静态析构阶段会崩：
-/// FethDevice 的析构函数会写日志，而那时日志模块的静态互斥量可能已经先一步
-/// 被销毁，于是抛出 `std::system_error: mutex lock failed`，进程以 134 退出 ——
-/// 基准明明全部跑完了，退出码却是失败。
+/// **Must be called explicitly before main returns.** Letting the fixture live into the static destruction phase crashes:
+/// FethDevice's destructor writes logs, and by then the logging module's static mutex may already have been
+/// destroyed first, so it throws `std::system_error: mutex lock failed` and the process exits with 134 --
+/// the benchmarks had clearly all finished, yet the exit code is a failure.
 void ShutdownNetBenchmarks() noexcept;
 
 }  // namespace tetherkitnext::bench

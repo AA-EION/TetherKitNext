@@ -1,6 +1,6 @@
-// byte_order.h 的单元测试。
+// Unit tests of byte_order.h.
 //
-// 重点验证：未对齐访问必须正确（RNDIS 消息在 USB 缓冲里的偏移不保证对齐）。
+// Key verification: unaligned access must be correct (the offset of an RNDIS message in the USB buffer is not guaranteed to be aligned).
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +22,7 @@ using tetherkitnext::StoreLe64;
 TEST_SUITE("common.byte_order") {
 
 TEST_CASE("小端读取按规范解释字节序") {
-  // 0x44332211 的小端表示是 11 22 33 44。
+  // The little-endian representation of 0x44332211 is 11 22 33 44.
   const std::array<std::byte, 8> bytes{std::byte{0x11}, std::byte{0x22}, std::byte{0x33},
                                        std::byte{0x44}, std::byte{0x55}, std::byte{0x66},
                                        std::byte{0x77}, std::byte{0x88}};
@@ -47,14 +47,14 @@ TEST_CASE("写入后读回保持一致") {
 
   StoreBe16(buffer.data() + 4, 0x86DDU);  // ETHERTYPE_IPV6
   CHECK(LoadBe16(buffer.data() + 4) == 0x86DDU);
-  // 大端写入的字节顺序必须是高位在前。
+  // The byte order of a big-endian write must be most-significant first.
   CHECK(buffer[4] == std::byte{0x86});
   CHECK(buffer[5] == std::byte{0xDD});
 }
 
 TEST_CASE("未对齐偏移上的读写同样正确") {
-  // 这是本项目最容易出错的场景：REMOTE_NDIS_PACKET_MSG 之后的以太帧
-  // 起始偏移由设备的 DataOffset 决定，可能是任意值。
+  // This is the scenario most prone to errors in this project: the start offset of the Ethernet frame after REMOTE_NDIS_PACKET_MSG
+  // is determined by the device's DataOffset and may be arbitrary.
   std::array<std::byte, 32> buffer{};
   for (std::size_t offset = 0; offset < 8; ++offset) {
     StoreLe32(buffer.data() + offset, 0xCAFEBABEU);
@@ -76,7 +76,7 @@ TEST_CASE("AlignUp 向上对齐到 2 的幂") {
   CHECK(AlignUp<std::uint32_t>(1, 4) == 4);
   CHECK(AlignUp<std::uint32_t>(4, 4) == 4);
   CHECK(AlignUp<std::uint32_t>(5, 4) == 8);
-  // RNDIS 多包聚合要求每条消息按 4 字节对齐。
+  // RNDIS multi-packet aggregation requires each message to be aligned to 4 bytes.
   CHECK(AlignUp<std::uint32_t>(1514 + 44, 4) == 1560);
   CHECK(AlignUp<std::uint32_t>(63, 64) == 64);
 }

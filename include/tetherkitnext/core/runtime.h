@@ -1,28 +1,28 @@
-// 运行时编排：把 USB、RNDIS 状态机、feth、BPF、桥接组装成一个可运行的驱动。
+// Runtime orchestration: assembles USB, the RNDIS state machine, feth, BPF and the bridge into a runnable driver.
 //
-// ★ 启动顺序（每一步都依赖前一步的产物，不能调换）★
+// * Startup order (each step depends on the product of the previous one; they cannot be swapped) *
 //
-//   1. 权限检查            —— 提前给出人话错误，而不是让后面一堆 EPERM 冒出来
-//   2. libusb 上下文 + 事件线程
-//   3. 发现并打开 RNDIS 设备（声明两个接口、解析端点）
-//   4. RNDIS 控制通道 + 状态机 Start()
-//        └→ 这一步才拿到：设备 MAC、协商出的 MTU、聚合上限、对齐要求
-//   5. 用第 4 步的结果创建 feth 网卡对（系统侧 MAC = 设备汇报的 MAC）
-//   6. 在驱动侧接口上打开 BPF
-//   7. 用第 4 步的协商参数创建 USB 数据通道
-//   8. 启动桥接层
-//   9. 控制线程进入循环：定期 Poll()（保活 + 排空设备推送）
+//   1. Permission check     -- give a plain-language error early, rather than letting a pile of EPERM pop up later
+//   2. libusb context + event thread
+//   3. Discover and open the RNDIS device (claim the two interfaces, parse the endpoints)
+//   4. RNDIS control channel + state machine Start()
+//        └→ Only this step yields: the device MAC, the negotiated MTU, the aggregation limit, the alignment requirement
+//   5. Use the result of step 4 to create the feth pair (system-side MAC = the MAC the device reported)
+//   6. Open BPF on the driver-side interface
+//   7. Use the negotiated parameters of step 4 to create the USB data channel
+//   8. Start the bridge layer
+//   9. The control thread enters its loop: periodic Poll() (keepalive + draining device pushes)
 //
-//   为什么 feth 必须在 RNDIS 协商**之后**创建：系统侧网卡的 MAC 要设成设备
-//   汇报的 OID_802_3_PERMANENT_ADDRESS，而 MTU 要用协商结果 —— 这两个值在第 4 步
-//   之前都拿不到。而 MAC 又必须在接口 IFF_UP 之前设好。
+//   Why feth must be created **after** RNDIS negotiation: the MAC of the system-side NIC must be set to
+//   the OID_802_3_PERMANENT_ADDRESS reported by the device, and the MTU must use the negotiation result -- neither value can be obtained
+//   before step 4. And the MAC must be set before the interface goes IFF_UP.
 //
-// ★ 停机顺序是启动顺序的严格逆序 ★
+// * Shutdown order is the strict reverse of startup order *
 //
-//   桥接层 → 数据通道（等在飞传输回收）→ BPF → feth → 状态机 HALT → 设备 → libusb
+//   Bridge layer -> data channel (wait for in-flight transfers to be reclaimed) -> BPF -> feth -> state machine HALT -> device -> libusb
 //
-//   其中「数据通道等在飞传输回收」这一步必须在销毁设备**之前**完成，
-//   否则就是 use-after-free（详见 usb/data_channel.h 的说明）。
+//   The step "data channel waits for in-flight transfers to be reclaimed" must complete **before** destroying the device,
+//   otherwise it is a use-after-free (see the explanation in usb/data_channel.h).
 #pragma once
 
 #include <atomic>
@@ -45,31 +45,31 @@
 
 namespace tetherkitnext::core {
 
-/// 运行时的生命周期状态。这是宿主（命令行 / GUI）唯一需要关心的状态维度。
+/// Lifecycle state of the runtime. This is the only state dimension the host (CLI / GUI) needs to care about.
 enum class RunState : std::uint8_t {
-  kIdle,      ///< 已创建，尚未 Start()。
-  kStarting,  ///< 控制线程正在走启动序列（枚举 → 握手 → 建网卡 → 开桥接）。
-  kRunning,   ///< 数据路径已跑起来。
-  kStopping,  ///< 正在按逆序拆除。
-  kStopped,   ///< 已正常停机。
-  kFailed,    ///< 启动失败或运行中遇到不可恢复错误，原因见 RuntimeSnapshot::fatal_message。
+  kIdle,      ///< Created, Start() not yet called.
+  kStarting,  ///< The control thread is running the startup sequence (enumerate -> handshake -> create NIC -> open bridge).
+  kRunning,   ///< The data path is up and running.
+  kStopping,  ///< Being torn down in reverse order.
+  kStopped,   ///< Stopped normally.
+  kFailed,    ///< Startup failed or an unrecoverable error occurred while running; see RuntimeSnapshot::fatal_message for the cause.
 };
 
 [[nodiscard]] std::string_view RunStateName(RunState state) noexcept;
 
-/// 运行时对外通报的一条事件。
+/// An event the runtime reports outward.
 ///
-/// 用「事件 + 宿主自己排队」而不是让宿主直接实现 StateMachineObserver：
-/// 后者的五个回调语义各异、参数是 C++ 引用，跨语言宿主没法用；而且宿主在回调里
-/// 很容易不小心调回运行时（比如「收到致命错误就停机」），那是自等死锁。
+/// "Events + the host queues them itself" is used instead of having the host implement StateMachineObserver directly:
+/// the latter's five callbacks have varied semantics and take C++ references, which cross-language hosts cannot use; and in a callback the host
+/// can easily call back into the runtime by accident (e.g. "stop on receiving a fatal error"), which is a self-wait deadlock.
 struct RuntimeEvent {
   enum class Kind : std::uint8_t {
-    kRndisState,   ///< a = 迁移前 rndis::State，b = 迁移后。
-    kNegotiated,   ///< a = 最终 MTU，b = 链路速率（Mbps）。
-    kLink,         ///< a = 1 表示链路已连接。
-    kDeviceReset,  ///< a = 1 表示寻址信息丢失、已重放。
-    kFatal,        ///< text = 不可恢复错误的原因。
-    kRunState,     ///< a = 迁移前 RunState，b = 迁移后。
+    kRndisState,   ///< a = rndis::State before the transition, b = after.
+    kNegotiated,   ///< a = final MTU, b = link speed (Mbps).
+    kLink,         ///< a = 1 means the link is connected.
+    kDeviceReset,  ///< a = 1 means addressing information was lost and has been replayed.
+    kFatal,        ///< text = the cause of the unrecoverable error.
+    kRunState,     ///< a = RunState before the transition, b = after.
   };
 
   Kind kind = Kind::kRunState;
@@ -78,13 +78,13 @@ struct RuntimeEvent {
   std::string text;
 };
 
-/// 事件汇：宿主实现它来接收运行时事件。
+/// Event sink: the host implements it to receive runtime events.
 ///
-/// ★ 两条硬约束 ★
-///   1. 回调**永远在控制线程上**发生（所有事件源都在那条线程），但宿主自己的
-///      线程可能同时在调 Snapshot() —— 实现里该加的锁一个都不能省。
-///   2. **实现里绝不能调用 Runtime 的任何方法。** Stop() 要 join 控制线程，
-///      从事件里调它就是自等死锁。正确做法是把事件排进队列，由宿主线程处理。
+/// * Two hard constraints *
+///   1. Callbacks **always occur on the control thread** (all event sources are on that one thread), but the host's own
+///      thread may be calling Snapshot() at the same time -- not a single lock that should be added in the implementation may be omitted.
+///   2. **The implementation must never call any Runtime method.** Stop() has to join the control thread,
+///      and calling it from an event is a self-wait deadlock. The correct approach is to queue the event and let the host thread handle it.
 class RuntimeEventSink {
  public:
   RuntimeEventSink() = default;
@@ -97,51 +97,51 @@ class RuntimeEventSink {
   virtual void OnRuntimeEvent(const RuntimeEvent& event) = 0;
 };
 
-/// 运行时的完整可观测快照。
+/// A complete observable snapshot of the runtime.
 ///
-/// 为什么整块拷贝而不是提供一堆逐项访问器：宿主需要的是**一致的**一组数值
-/// （状态与网卡名不匹配的界面很难看懂），逐项读会读到撕裂的组合。一次拷贝
-/// 几百字节，对 2 Hz 的刷新频率完全不是问题。
+/// Why copy the whole block rather than provide a bunch of per-item accessors: what the host needs is a **consistent** set of values
+/// (a UI whose state does not match the NIC name is hard to make sense of), and per-item reads would give torn combinations. One copy is
+/// a few hundred bytes, which is no problem at all for a 2 Hz refresh rate.
 struct RuntimeSnapshot {
   RunState run_state = RunState::kIdle;
   rndis::State rndis_state = rndis::State::kUninitialized;
   bool link_up = false;
-  /// 数据搬运是否处于暂停（链路 down 或设备软复位期间）。
+  /// Whether data movement is paused (during link down or a device soft reset).
   bool paused = false;
 
-  /// 系统侧网卡名（主机在这张上配 IP）。未创建时为空。
+  /// System-side NIC name (the host configures IP on this one). Empty when not created.
   std::string system_interface;
-  /// 驱动侧网卡名（BPF 挂在这张上）。仅用于排障展示。
+  /// Driver-side NIC name (BPF attaches to this one). For troubleshooting display only.
   std::string driver_interface;
-  /// 形如 "Bus 020 Device 003: 18d1:4ee4"。未打开设备时为空。
+  /// In the form "Bus 020 Device 003: 18d1:4ee4". Empty when no device is open.
   std::string device_description;
 
   rndis::DeviceInfo device_info;
   rndis::NegotiatedParameters parameters;
   BridgeStats bridge;
 
-  /// run_state == kFailed 时的原因；否则为空。
+  /// The cause when run_state == kFailed; otherwise empty.
   std::string fatal_message;
 };
 
-/// 运行时配置。默认值都在各自字段的注释里说明了推导依据。
+/// Runtime configuration. The derivation of the default values is explained in each field's comment.
 struct RuntimeConfig {
-  /// 设备筛选。全为 0 表示用第一个找到的 RNDIS 设备。
+  /// Device filter. All 0 means use the first RNDIS device found.
   usb::DeviceFilter device_filter;
 
-  /// 希望使用的 MTU。设备装不下时会被协商下调。
+  /// The desired MTU. Lowered by negotiation when the device cannot fit it.
   ///
-  /// 上限受 feth 的 sysctl net.link.fake.max_mtu 约束（本机 2048）。
+  /// The upper limit is constrained by feth's sysctl net.link.fake.max_mtu (2048 on this machine).
   std::uint32_t mtu = rndis::kDefaultMtu;
 
-  /// 指定 feth 接口名（如 "feth7"）；留空表示让内核自动选编号。
+  /// Specifies the feth interface name (such as "feth7"); empty means let the kernel choose the number automatically.
   std::string system_interface_name;
   std::string driver_interface_name;
 
-  /// 是否把系统侧网卡的 MAC 设为设备汇报的地址。
+  /// Whether to set the system-side NIC's MAC to the address the device reported.
   ///
-  /// 默认开：RNDIS 语义下设备就是这块网卡，对端的 ARP 表与 DHCP 租约都按这个
-  /// MAC 建立。关掉只在排查 MAC 冲突时有用。
+  /// On by default: under RNDIS semantics the device is this NIC, and the peer's ARP table and DHCP lease are both built on this
+  /// MAC. Turning it off is only useful when investigating MAC conflicts.
   bool adopt_device_mac = true;
 
   rndis::StateMachineConfig rndis;
@@ -149,38 +149,38 @@ struct RuntimeConfig {
   net::BpfConfig bpf;
   BridgeConfig bridge;
 
-  /// 统计报告周期（毫秒）；0 表示不报告。
+  /// Statistics report period (milliseconds); 0 means no reports.
   std::uint32_t stats_interval_millis = 5'000;
 
-  /// 事件汇。为 nullptr 表示不需要事件通报（命令行就不需要，它看日志）。
+  /// Event sink. nullptr means no event reports are needed (the CLI does not need them; it reads the logs).
   ///
-  /// 生命周期由调用方负责，必须活得比 Runtime 久。
+  /// The lifetime is the caller's responsibility; it must outlive the Runtime.
   RuntimeEventSink* event_sink = nullptr;
 };
 
-/// 组装并运行整个驱动。
+/// Assembles and runs the whole driver.
 ///
-/// ★ 线程模型：Start() 是**非阻塞**的 ★
+/// * Threading model: Start() is **non-blocking** *
 ///
-///   Runtime 自己拥有一条控制线程，启动序列、保活循环、停机拆除**全部**在它
-///   上面跑。宿主线程只负责发号施令与读快照。
+///   Runtime owns a control thread itself, and the startup sequence, the keepalive loop and the shutdown teardown all
+///   run on it **entirely**. The host thread is only responsible for issuing commands and reading snapshots.
 ///
-///   为什么必须这样：
-///     * 启动序列包含 USB 握手，慢设备上要几百毫秒到数秒，阻塞 GUI 主线程不行；
-///     * 控制通道用 libusb 的同步 API，而同步 API 在 libusb 事件线程上会返回
-///       LIBUSB_ERROR_BUSY —— 由 Runtime 自己建线程，就不用再要求宿主「必须
-///       从某个特定线程调用」这种极易违反的约定；
-///     * 拆除顺序里夹着 RNDIS 的优雅停机（要发控制消息），把它也放在同一条
-///       线程上，`StateMachine` 的「所有方法同线程调用」约束就自然满足了。
+///   Why it must be this way:
+///     * The startup sequence includes the USB handshake, which takes hundreds of milliseconds to several seconds on slow devices; blocking the GUI main thread is not acceptable;
+///     * The control channel uses libusb's synchronous API, and the synchronous API returns
+///       LIBUSB_ERROR_BUSY on the libusb event thread -- having Runtime create its own thread removes the need to require that the host "must
+///       call from some specific thread", a convention that is very easy to violate;
+///     * The teardown order includes RNDIS's graceful shutdown (control messages must be sent); putting it on the same
+///       thread as well naturally satisfies `StateMachine`'s constraint that "all methods are called on the same thread".
 ///
-/// 用法：
+/// Usage:
 /// ```
 /// TETHERKITNEXT_ASSIGN_OR_RETURN(auto runtime, Runtime::Create(config));
-/// TETHERKITNEXT_RETURN_IF_ERROR(runtime->Start());   // 立刻返回
-/// runtime->WaitUntilStopped();                   // 命令行：把主线程挂起
-/// runtime->Stop();                               // 幂等
+/// TETHERKITNEXT_RETURN_IF_ERROR(runtime->Start());   // returns immediately
+/// runtime->WaitUntilStopped();                   // CLI: park the main thread
+/// runtime->Stop();                               // idempotent
 /// ```
-/// GUI 则不调 WaitUntilStopped，而是定时 Snapshot() 刷界面。
+/// The GUI does not call WaitUntilStopped; instead it calls Snapshot() periodically to refresh the UI.
 class Runtime final : public rndis::StateMachineObserver {
  public:
   [[nodiscard]] static Result<std::unique_ptr<Runtime>> Create(const RuntimeConfig& config);
@@ -192,34 +192,34 @@ class Runtime final : public rndis::StateMachineObserver {
 
   ~Runtime() override;
 
-  /// 起控制线程并立刻返回。
+  /// Starts the control thread and returns immediately.
   ///
-  /// 返回成功只表示「启动请求已受理」，真正的成败要看 Snapshot().run_state。
-  /// 唯一会**同步**返回失败的是 root 检查 —— 它不需要 I/O，且提前报出来能让
-  /// 命令行给出即时的人话提示。
+  /// A successful return only means "the start request has been accepted"; real success or failure must be checked via Snapshot().run_state.
+  /// The only thing that returns failure **synchronously** is the root check -- it needs no I/O, and reporting it early lets the
+  /// command line give an immediate plain-language hint.
   [[nodiscard]] Status Start();
 
-  /// 阻塞直到运行时停止（正常停机或致命错误）。命令行用它把主线程挂起。
+  /// Blocks until the runtime stops (normal shutdown or fatal error). The command line uses it to park the main thread.
   void WaitUntilStopped();
 
-  /// 请求停机。可从信号处理器或任意线程调用，异步信号安全（只写一个原子）。
+  /// Requests shutdown. May be called from a signal handler or any thread; async-signal-safe (only writes an atomic).
   ///
-  /// 代价是控制线程最多要过一个循环周期（≤250 ms）才看得到。要立刻停就用
-  /// Stop()，它会额外唤醒控制线程 —— 但 Stop() 会加锁，**不是**异步信号安全的。
+  /// The cost is that the control thread takes up to one loop period (<=250 ms) to see it. To stop immediately use
+  /// Stop(), which additionally wakes the control thread -- but Stop() takes a lock and is **not** async-signal-safe.
   void RequestStop() noexcept { stop_requested_.store(true, std::memory_order_release); }
 
-  /// 请求停机并等控制线程完成全部拆除。幂等。
+  /// Requests shutdown and waits for the control thread to finish all teardown. Idempotent.
   ///
-  /// ⚠️ 不可从事件汇（RuntimeEventSink）里调用 —— 那是控制线程自己，会自等死锁。
+  /// WARNING: Must not be called from the event sink (RuntimeEventSink) -- that is the control thread itself, a self-wait deadlock.
   void Stop();
 
-  /// 取一份一致的状态快照。**任意线程可调**。
+  /// Takes a consistent state snapshot. **Callable from any thread**.
   [[nodiscard]] RuntimeSnapshot Snapshot() const;
 
-  /// 系统侧网卡名，用于给用户打印「接下来该做什么」。
+  /// System-side NIC name, used to print "what to do next" for the user.
   [[nodiscard]] std::string SystemInterfaceName() const;
 
-  // ---- StateMachineObserver（均在控制线程上被调用）----
+  // ---- StateMachineObserver (all invoked on the control thread) ----
   void OnStateChanged(rndis::State from, rndis::State to) override;
   void OnNegotiated(const rndis::NegotiatedParameters& parameters,
                     const rndis::DeviceInfo& info) override;
@@ -230,39 +230,39 @@ class Runtime final : public rndis::StateMachineObserver {
  private:
   Runtime() = default;
 
-  /// 控制线程主体：启动序列 → 控制循环 → 拆除。
+  /// Control thread body: startup sequence -> control loop -> teardown.
   void RunControlThread() noexcept;
 
-  /// 完整的启动序列（原 Start() 的主体）。只在控制线程上跑。
+  /// The complete startup sequence (the body of the original Start()). Runs only on the control thread.
   [[nodiscard]] Status RunStartSequence();
 
-  /// 保活 + 统计 + 停机检查的循环。只在控制线程上跑。
+  /// The loop of keepalive + statistics + shutdown checks. Runs only on the control thread.
   void RunControlLoop();
 
-  /// 按启动顺序的严格逆序拆除。只在控制线程上跑。
+  /// Tears down in the strict reverse of the startup order. Runs only on the control thread.
   void Teardown();
 
-  /// 迁移生命周期状态并通报事件。
+  /// Transitions the lifecycle state and reports the event.
   void SetRunState(RunState next);
 
-  /// 记录致命错误：写进快照、置 kFailed 标志、通报事件。
+  /// Records a fatal error: writes it into the snapshot, sets the kFailed flag, reports the event.
   void RecordFatal(const Error& error);
 
-  /// 把各组件的当前状况刷进快照。只在控制线程上调用。
+  /// Refreshes the current state of each component into the snapshot. Called only on the control thread.
   void RefreshSnapshot();
 
-  /// 把一条事件交给宿主。sink 为空时是空操作。
+  /// Hands an event to the host. A no-op when the sink is null.
   void Emit(const RuntimeEvent& event) const;
 
-  /// 打印「网卡已就绪，接下来该怎么配 IP」的提示。
+  /// Prints the hint "the NIC is ready; here is how to configure the IP next".
   void PrintNextSteps() const;
 
   RuntimeConfig config_;
 
-  // ---- 以下组件全部**只由控制线程**创建、访问与销毁 ----
+  // ---- The following components are **created, accessed and destroyed only by the control thread** ----
   //
-  // 宿主线程一律通过 snapshot_ 读状态，绝不碰这些指针 —— 否则 Stop() 里的
-  // reset() 与宿主的读会构成数据竞争，而那种竞争在真机上表现为随机崩溃。
+  // The host thread always reads state through snapshot_ and never touches these pointers -- otherwise the reset() in Stop()
+  // and the host's reads would constitute a data race, which on real hardware shows up as random crashes.
   std::unique_ptr<usb::Context> usb_context_;
   std::unique_ptr<usb::Device> device_;
   std::unique_ptr<usb::UsbControlChannel> control_channel_;
@@ -274,19 +274,19 @@ class Runtime final : public rndis::StateMachineObserver {
 
   std::thread control_thread_;
 
-  /// 保护 snapshot_。读侧是宿主线程（GUI 每 500 ms 一次），写侧是控制线程，
-  /// 竞争极轻，普通互斥锁足够。
+  /// Protects snapshot_. The reading side is the host thread (the GUI, once every 500 ms), the writing side is the control thread,
+  /// contention is extremely light, and an ordinary mutex suffices.
   mutable std::mutex snapshot_mutex_;
   RuntimeSnapshot snapshot_;
 
-  /// 让 Stop() 能立刻唤醒正在睡的控制线程，而不用等满一个循环周期。
+  /// Lets Stop() immediately wake a sleeping control thread, without waiting for a full loop period.
   std::mutex stop_mutex_;
   std::condition_variable stop_condition_;
 
   std::atomic<bool> stop_requested_{false};
   std::atomic<bool> fatal_error_{false};
 
-  /// 只在宿主线程上读写（Start / Stop / 析构），不需要同步。
+  /// Read and written only on the host thread (Start / Stop / destructor); no synchronization needed.
   bool started_ = false;
   bool stopped_ = false;
 };

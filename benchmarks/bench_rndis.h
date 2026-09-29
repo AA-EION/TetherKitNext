@@ -1,11 +1,11 @@
-// RNDIS 编解码微基准的注册入口。
+// Registration entry point of the RNDIS codec microbenchmarks.
 #pragma once
 
 namespace tetherkitnext::bench {
 
 class Runner;
 
-/// 把 RNDIS 编解码的微基准注册到 runner 上。
+/// Registers the RNDIS codec microbenchmarks with the runner.
 void RegisterRndisBenchmarks(Runner& runner);
 
 }  // namespace tetherkitnext::bench

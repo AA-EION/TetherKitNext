@@ -1,13 +1,13 @@
-# Sanitizers.cmake —— 消毒器开关
+# Sanitizers.cmake -- sanitizer switches
 #
-# 提供 INTERFACE 目标 tetherkitnext_sanitizers。
+# Provides the INTERFACE target tetherkitnext_sanitizers.
 #
-# 注意：
-#  * ASan 与 TSan 互斥，不能同时开。
-#  * TSan 是本项目最重要的消毒器 —— 无锁 SPSC 环形队列、libusb 事件线程与
-#    BPF 读写线程之间的内存序正确性只能靠它验证。建议至少跑一遍：
+# Notes:
+#  * ASan and TSan are mutually exclusive and cannot be enabled together.
+#  * TSan is this project's most important sanitizer -- the memory-ordering correctness among the lock-free SPSC rings, the libusb event thread and
+#    the BPF read/write threads can only be verified with it. It is recommended to run at least once:
 #      cmake -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && ctest --test-dir build-tsan
-#  * sanitizer 会显著降低吞吐，性能基准务必在未开消毒器的 Release 构建上跑。
+#  * Sanitizers significantly reduce throughput; benchmarks must be run on a Release build without sanitizers.
 
 add_library(tetherkitnext_sanitizers INTERFACE)
 
@@ -27,8 +27,8 @@ endif()
 
 if(TETHERKITNEXT_ENABLE_UBSAN)
   list(APPEND _tk_san_list undefined)
-  # 手写线格式结构体上会做未对齐访问吗？不会 —— 我们全部走逐字节读取，
-  # 因此 alignment 检查保持开启，用来抓真正的 bug。
+  # Would hand-written wire-format structs cause unaligned accesses? No -- we read everything byte by byte,
+  # so the alignment check stays on, to catch real bugs.
 endif()
 
 if(_tk_san_list)

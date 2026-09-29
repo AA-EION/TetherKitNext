@@ -7,31 +7,31 @@ project(
   LANGUAGES CXX)
 
 # ------------------------------------------------------------------------------
-# 平台前置检查
+# Platform prerequisite check
 #
-# 本项目依赖 macOS 私有的 feth(if_fake) 虚拟网卡与 Darwin BPF，无法跨平台。
+# This project depends on macOS-private feth (if_fake) virtual NICs and Darwin BPF, so it cannot be cross-platform.
 # ------------------------------------------------------------------------------
 if(NOT APPLE)
   message(FATAL_ERROR "TetherKitNext 仅支持 macOS：依赖 feth(if_fake) 与 Darwin BPF。")
 endif()
 
 # ------------------------------------------------------------------------------
-# 全局语言标准
+# Global language standard
 #
-# 选 C++23 的理由（实测于 Apple clang 21 / macOS 26.5）：
-#   * std::expected —— 初始化路径的错误传播主力，避免异常与错误码混用。
-#   * std::byteswap —— RNDIS 线格式是小端，跨端序时需要显式转换。
+# Why C++23 (verified on Apple clang 21 / macOS 26.5):
+#   * std::expected -- the main vehicle for error propagation on the initialization path, avoiding a mix of exceptions and error codes.
+#   * std::byteswap -- the RNDIS wire format is little-endian, so explicit conversion is needed on other endiannesses.
 # ------------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 部署目标：
-#   * 不主动设置，让 CMake 取宿主 macOS 版本 —— 否则会和 Homebrew 的 libusb
-#     （按宿主版本构建）产生 "building for macOS-13.3, but linking with dylib
-#     which was built for newer version" 链接告警。
-#   * 但必须校验下限 13.3：libc++ 的 std::to_chars（std::format 浮点格式化的
-#     底层实现）带 availability 标注，更低的部署目标会直接编译失败。
+# Deployment target:
+#   * Not set explicitly; let CMake take the host macOS version -- otherwise it would produce the linker warning "building for
+#     macOS-13.3, but linking with dylib which was built for newer version" against Homebrew's libusb
+#     (built for the host version).
+#   * But the lower bound of 13.3 must be validated: libc++'s std::to_chars (the underlying implementation of
+#     std::format floating-point formatting) carries an availability annotation, and a lower deployment target fails to compile.
 set(TETHERKITNEXT_MIN_MACOS_VERSION "13.3")
 
 if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS
@@ -48,17 +48,17 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
       CACHE STRING "构建类型" FORCE)
 endif()
 
-# 始终导出 compile_commands.json，供 clangd / clang-tidy 使用。
+# Always export compile_commands.json for clangd / clang-tidy.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 全局开启位置无关代码。
+# Enable position-independent code globally.
 #
-# 各功能模块都是静态库，但它们最终要被链进共享库 libtetherkitnext —— 非 PIC 的目标
-# 文件链不进 dylib。macOS/clang 上 PIC 本来就是默认，这里显式写出来是为了让
-# 「为什么必须 PIC」这件事在构建脚本里有据可查。
+# Each feature module is a static library, but they are ultimately linked into the shared library libtetherkitnext -- non-PIC object
+# files cannot be linked into a dylib. PIC is already the default on macOS/clang; it is written out explicitly here so that
+# "why PIC is required" is documented in the build script.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# 可执行文件与库统一输出到 build/bin、build/lib，方便脚本引用。
+# Executables and libraries are all output to build/bin and build/lib, which is convenient for scripts to reference.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
@@ -66,7 +66,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # ------------------------------------------------------------------------------
-# 构建选项
+# Build options
 # ------------------------------------------------------------------------------
 option(TETHERKITNEXT_BUILD_TESTS "构建单元测试" ON)
 option(TETHERKITNEXT_BUILD_BENCHMARKS "构建性能基准" ON)
@@ -83,14 +83,14 @@ include(Sanitizers)
 include(Optimizations)
 
 # ------------------------------------------------------------------------------
-# 依赖
+# Dependencies
 # ------------------------------------------------------------------------------
 find_package(LibUSB REQUIRED)
 
 # ------------------------------------------------------------------------------
-# 子目录
+# Subdirectories
 #
-# 依赖方向严格单向：common <- rndis/net <- usb <- core <- app
+# Dependency direction is strictly one-way: common <- rndis/net <- usb <- core <- app
 # ------------------------------------------------------------------------------
 add_subdirectory(third_party)
 add_subdirectory(src)
@@ -105,19 +105,19 @@ if(TETHERKITNEXT_BUILD_BENCHMARKS)
 endif()
 
 # ------------------------------------------------------------------------------
-# 图形界面
+# Graphical interface
 #
-# Swift 部分由 SwiftPM 构建（见 gui/Package.swift 里为什么不用 CMake 的 Swift
-# 支持），这里只提供一个方便的入口，把「先建 C++ 再建 Swift」串起来：
+# The Swift part is built by SwiftPM (see gui/Package.swift for why CMake's Swift support is not used); here we only
+# provide a convenient entry point that chains "build C++ first, then Swift":
 #
 #   cmake --build build --target gui
 #
-# 刻意做成**手动触发**的目标（EXCLUDE_FROM_ALL 的效果）：GUI 需要 Xcode 工具链，
-# 而只想要命令行的人不该被迫装它。
+# Deliberately made a **manually triggered** target (the effect of EXCLUDE_FROM_ALL): the GUI needs the Xcode toolchain,
+# and people who only want the command line should not be forced to install it.
 # ------------------------------------------------------------------------------
 if(TETHERKITNEXT_BUILD_SHARED_LIB AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gui/Package.swift")
-  # 显式把当前构建目录传给脚本（它默认找 <repo>/build），这样在
-  # build-rel / build-tsan 之类的非默认目录里也能正确找到 libtetherkitnext。
+  # Explicitly pass the current build directory to the script (it defaults to <repo>/build), so libtetherkitnext is also
+  # found correctly in non-default directories such as build-rel / build-tsan.
   add_custom_target(
     gui
     COMMAND "${CMAKE_COMMAND}" -E env "TETHERKITNEXT_BUILD_DIR=${CMAKE_BINARY_DIR}"
@@ -133,7 +133,7 @@ if(TETHERKITNEXT_BUILD_SHARED_LIB AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gui/Pa
 endif()
 
 # ------------------------------------------------------------------------------
-# 构建配置摘要
+# Build configuration summary
 # ------------------------------------------------------------------------------
 message(STATUS "")
 message(STATUS "==== TetherKitNext ${PROJECT_VERSION} 构建配置 ====")

@@ -1,8 +1,8 @@
-// CoreFoundation / SystemConfiguration 的最小 RAII 封装。
+// Minimal RAII wrappers for CoreFoundation / SystemConfiguration.
 //
-// 只封到「够用」为止：项目里唯一需要碰 CF 的地方是读写 SCDynamicStore，
-// 引入一个完整的 CF 智能指针库不划算，但手写 CFRelease 又太容易在提前 return
-// 的分支上漏掉。
+// Wrapped only to the point of "enough": the only place in the project that needs to touch CF is reading and writing SCDynamicStore,
+// so introducing a full CF smart-pointer library is not worthwhile, yet hand-written CFRelease is too easy to miss
+// on early-return branches.
 #pragma once
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -14,10 +14,10 @@
 
 namespace tetherkitnext::capi {
 
-/// 持有一个 CF 对象的所有权，析构时 CFRelease。
+/// Owns a CF object, calling CFRelease on destruction.
 ///
-/// 只用于 Create/Copy 规则下**我们拥有**的引用。CFDictionaryGetValue 这类
-/// Get 规则返回的引用不拥有所有权，绝不能塞进来 —— 会造成过度释放。
+/// Used only for references **we own** under the Create/Copy rule. References returned under the Get rule, such as by CFDictionaryGetValue,
+/// are not owned and must never be put in here -- that would cause an over-release.
 template <typename T>
 class ScopedCFRef {
  public:
@@ -55,23 +55,23 @@ class ScopedCFRef {
   T reference_ = nullptr;
 };
 
-/// UTF-8 字符串 → CFString。
+/// UTF-8 string -> CFString.
 [[nodiscard]] ScopedCFRef<CFStringRef> MakeCFString(std::string_view text);
 
-/// CFString → UTF-8 std::string。传 nullptr 得到空串。
+/// CFString -> UTF-8 std::string. Passing nullptr yields an empty string.
 [[nodiscard]] std::string CopyToStdString(CFStringRef text);
 
-/// 进程级共享的 SCDynamicStore 句柄。首次调用时创建，之后一直复用；失败返回
-/// nullptr。
+/// The process-wide shared SCDynamicStore handle. Created on the first call and reused ever after; returns
+/// nullptr on failure.
 ///
-/// ★ 为什么必须是进程级长命的 ★
-///   SCDynamicStore 里由某个会话**设置**的值，会在那个会话释放时被一并删除。
-///   我们要往动态存储写 DNS 键，如果用临时创建、用完就 release 的 store，
-///   刚写进去的值转眼就没了 —— 而且现象是「写入返回成功、读回来是空」，
-///   非常难查。
+/// * Why it must be process-wide and long-lived *
+///   A value **set** in an SCDynamicStore by some session is deleted together when that session is released.
+///   We need to write DNS keys into the dynamic store; if we used a store that is created temporarily and released after use,
+///   the value we just wrote would vanish in an instant -- and the symptom is "the write returns success, the readback is empty",
+///   which is very hard to track down.
 ///
-///   代价是这个句柄直到进程退出都不释放，这正是我们要的：helper 退出时
-///   由它写的动态存储条目自动清理，不留垃圾。
+///   The cost is that this handle is not released until the process exits, which is exactly what we want: when the helper exits,
+///   the dynamic store entries it wrote are cleaned up automatically, leaving no garbage.
 [[nodiscard]] SCDynamicStoreRef SharedDynamicStore();
 
 }  // namespace tetherkitnext::capi

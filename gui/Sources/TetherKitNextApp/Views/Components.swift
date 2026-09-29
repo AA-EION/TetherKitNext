@@ -43,7 +43,7 @@ struct CopyableCommand: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(command, forType: .string)
                 copied = true
-                // 2 秒后复原。给的是「已复制」这个确认，不是一个需要用户操作的状态。
+                // Restore after 2 seconds. What is given is the confirmation "copied", not a state that requires user action.
                 Task {
                     try? await Task.sleep(for: .seconds(2))
                     copied = false
