@@ -1,18 +1,18 @@
-// feth / BPF 链路层的基准 —— **需要 root**。
+// Benchmarks of the feth / BPF link layer -- **needs root**.
 //
-// 这一组补的是 docs/BENCHMARKS.md 末节里长期挂着的那几项：BPF 写入的真实成本、
-// BIOCSBATCHWRITE 相对逐帧写的提速倍数、批量读取的每帧成本、以及 feth 数据路径的
-// 往返延迟。在此之前这些数字全部来自调研推算（那个 ~700 ns 的 write 成本来自
-// `write(/dev/null)`，**不是**真实 BPF 描述符上的测量）。
+// This group fills in the items that had been long left hanging in the last section of docs/BENCHMARKS.md: the real cost of a BPF write,
+// the speedup factor of BIOCSBATCHWRITE relative to per-frame writes, the per-frame cost of batch reads, and the
+// round-trip latency of the feth data path. Before this, these numbers all came from research estimates (that ~700 ns write cost came from
+// `write(/dev/null)`, **not** a measurement on a real BPF descriptor).
 //
-// 夹具的搭法：
-//   feth0（系统侧，配 10.99.99.1）←→ feth1（驱动侧）
-//   * driver_perframe / driver_batched：两个都挂在 feth1 上的 BPF 描述符，
-//     分别关掉与打开 BIOCSBATCHWRITE，用来做逐帧写 vs 批量写的 A/B；
-//   * system_link：挂在 feth0 上，用来往 feth1 方向灌流量以测读取成本。
+// How the fixture is set up:
+//   feth0 (system side, configured with 10.99.99.1) <-> feth1 (driver side)
+//   * driver_perframe / driver_batched: two BPF descriptors both attached to feth1,
+//     with BIOCSBATCHWRITE turned off and on respectively, for the A/B of per-frame writes vs batch writes;
+//   * system_link: attached to feth0, used to pour traffic toward feth1 to measure read cost.
 //
-// ⚠️ 写入成本天然包含「对侧 IP 栈把帧收下并丢弃」的开销 —— 那正是真实 RX 路径
-// 每帧都要付的代价，所以这么测才对，不该刻意绕开。
+// WARNING: The write cost naturally includes the overhead of "the peer's IP stack receiving the frame and discarding it" -- which is exactly the price the real RX path
+// pays for every frame, so measuring this way is correct, and it should not be deliberately bypassed.
 #include "bench_net.h"
 
 #include <array>
@@ -42,11 +42,11 @@ namespace {
 constexpr std::uint32_t kFullFrameBytes = 1514;
 constexpr std::uint32_t kSmallFrameBytes = 64;
 
-/// 夹具用的地址。10.99.99/24 几乎不会与真实网络冲突。
+/// Addresses used by the fixture. 10.99.99/24 almost never conflicts with a real network.
 constexpr const char* kSystemIp = "10.99.99.1";
 constexpr const char* kProbeIp = "10.99.99.2";
 
-/// ARP 帧内的字段偏移（帧首起算）。
+/// Field offsets inside the ARP frame (counted from the start of the frame).
 constexpr std::size_t kEtherTypeOffset = 12;
 constexpr std::size_t kArpOperationOffset = 20;
 constexpr std::size_t kArpSenderIpOffset = 28;
@@ -54,8 +54,8 @@ constexpr std::size_t kArpFrameBytes = 42;
 
 std::vector<std::byte> MakeFrame(std::uint32_t length) {
   std::vector<std::byte> frame(length, std::byte{0});
-  // 广播目的 MAC + 本地管理源 MAC，EtherType 填 0x0800。内容本身不重要，
-  // 重要的是它是一帧结构合法、对侧会真的收下再丢掉的以太帧。
+  // Broadcast destination MAC + locally administered source MAC, with EtherType 0x0800. The content itself is unimportant;
+  // what matters is that it is a structurally legal Ethernet frame that the peer will actually accept and then discard.
   for (int i = 0; i < 6; ++i) {
     frame[static_cast<std::size_t>(i)] = std::byte{0xFF};
   }
@@ -67,7 +67,7 @@ std::vector<std::byte> MakeFrame(std::uint32_t length) {
   return frame;
 }
 
-/// 造一个「谁是 kSystemIp」的 ARP 请求，用来测往返延迟。
+/// Builds an ARP request for "who has kSystemIp", used to measure round-trip latency.
 std::vector<std::byte> MakeArpRequest() {
   std::vector<std::byte> frame(kArpFrameBytes, std::byte{0});
   const auto put = [&frame](std::size_t offset, std::initializer_list<std::uint8_t> bytes) {
@@ -108,7 +108,7 @@ std::vector<std::byte> MakeArpRequest() {
   return std::memcmp(view.data + kArpSenderIpOffset, &expected, sizeof(expected)) == 0;
 }
 
-/// 给接口配 IPv4 地址（SIOCAIFADDR）。成功返回空串。
+/// Configures an IPv4 address on an interface (SIOCAIFADDR). Returns an empty string on success.
 [[nodiscard]] std::string AssignIpv4(std::string_view interface_name, const char* address) {
   const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
   if (fd < 0) {
@@ -138,20 +138,20 @@ std::vector<std::byte> MakeArpRequest() {
   return result == 0 ? std::string{} : Error::FromErrno(saved_errno, "ioctl(SIOCAIFADDR)").ToString();
 }
 
-/// 基准夹具。生命周期由 RegisterNetBenchmarks 里的静态对象持有。
+/// The benchmark fixture. Its lifetime is held by a static object in RegisterNetBenchmarks.
 struct Fixture {
   std::unique_ptr<net::FethPair> pair;
-  std::unique_ptr<net::BpfLink> driver_perframe;  ///< feth1，关掉批量写
-  std::unique_ptr<net::BpfLink> driver_batched;   ///< feth1，开启批量写
-  std::unique_ptr<net::BpfLink> system_link;      ///< feth0，用于灌入方向流量
+  std::unique_ptr<net::BpfLink> driver_perframe;  ///< feth1, batch writes turned off
+  std::unique_ptr<net::BpfLink> driver_batched;   ///< feth1, batch writes turned on
+  std::unique_ptr<net::BpfLink> system_link;      ///< feth0, used to pour in traffic in that direction
   bool batch_write_available = false;
 };
 
 Fixture* g_fixture = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
-/// 写入基准：把 `frames_per_write` 帧作为一批交给 WriteFrames。
+/// Write benchmark: hands `frames_per_write` frames as one batch to WriteFrames.
 ///
-/// 计量单位是**帧**，这样逐帧写与批量写的数字可以直接横向比较。
+/// The unit of measurement is the **frame**, so numbers of per-frame writes and batch writes can be compared directly side by side.
 std::uint64_t BenchWrite(net::BpfLink& link, std::uint64_t frame_iterations,
                          std::uint32_t frame_bytes, std::uint32_t frames_per_write) {
   const std::vector<std::byte> frame = MakeFrame(frame_bytes);
@@ -164,7 +164,7 @@ std::uint64_t BenchWrite(net::BpfLink& link, std::uint64_t frame_iterations,
   while (written < frame_iterations) {
     const auto result = link.WriteFrames(batch);
     if (!result) {
-      break;  // 对侧队列打满等情况：诚实地按实际写成的帧数计。
+      break;  // peer queue saturated and similar cases: honestly count by the number of frames actually written.
     }
     written += result->frames_written;
     DoNotOptimize(result->bytes_written);
@@ -172,10 +172,10 @@ std::uint64_t BenchWrite(net::BpfLink& link, std::uint64_t frame_iterations,
   return written;
 }
 
-/// 读取基准：从 feth0 灌 `burst` 帧，再从 feth1 上把它们读回来。
+/// Read benchmark: pours `burst` frames in from feth0, then reads them back from feth1.
 ///
-/// ⚠️ 这一项测的是**写 + 读**的合计成本，不是纯读取 —— harness 只能给整个
-/// 闭包计时。要拿纯读取成本，请减去同批大小下的写入基准值。
+/// WARNING: This item measures the combined cost of **write + read**, not pure reading -- the harness can only time the whole
+/// closure. To get the pure read cost, subtract the write benchmark value at the same batch size.
 std::uint64_t BenchWriteThenRead(std::uint64_t frame_iterations, std::uint32_t frame_bytes,
                                  std::uint32_t burst) {
   Fixture& fixture = *g_fixture;
@@ -192,7 +192,7 @@ std::uint64_t BenchWriteThenRead(std::uint64_t frame_iterations, std::uint32_t f
       break;
     }
     std::uint32_t drained = 0;
-    // 最多转几圈就放弃：feth 会因队列压力丢帧，等不到全部回来是正常的。
+    // Give up after a bounded number of spins: feth drops frames under queue pressure, so it is normal not to get them all back.
     for (int attempt = 0; attempt < 4 && drained < written->frames_written; ++attempt) {
       const auto received = fixture.driver_batched->ReadFrames();
       if (!received) {
@@ -206,9 +206,9 @@ std::uint64_t BenchWriteThenRead(std::uint64_t frame_iterations, std::uint32_t f
   return completed;
 }
 
-/// feth 数据路径往返延迟：从驱动侧写 ARP 请求，等系统侧 IP 栈的 reply 读回来。
+/// feth data-path round-trip latency: write an ARP request from the driver side, and wait for the system-side IP stack's reply to be read back.
 ///
-/// 这是唯一一项真正的**延迟**指标 —— 前面几项都是吞吐意义上的摊薄成本。
+/// This is the only true **latency** metric -- the previous items are all amortized costs in the throughput sense.
 std::uint64_t BenchArpRoundTrip(std::uint64_t iterations) {
   Fixture& fixture = *g_fixture;
   const std::vector<std::byte> request = MakeArpRequest();
@@ -234,7 +234,7 @@ std::uint64_t BenchArpRoundTrip(std::uint64_t iterations) {
       }
     }
     if (!answered) {
-      break;  // 邻居表已经有缓存时系统侧不再应答，就此打住而不是虚报。
+      break;  // when the neighbor table already has a cache the system side no longer answers; stop here rather than over-report.
     }
     ++completed;
   }
@@ -283,8 +283,8 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
   fixture.batch_write_available = fixture.driver_batched->SupportsBatchWrite();
   g_fixture = &fixture;
 
-  // 每轮的帧数：写入是系统调用级别的开销（百纳秒~微秒量级），几万帧足够稳定，
-  // 再多只是让整轮跑得更久。
+  // Frames per round: writing is system-call-level overhead (hundreds of nanoseconds to microseconds), and tens of thousands of frames are stable enough,
+  // and more would only make the whole round run longer.
   constexpr std::uint64_t kWriteOps = 20000;
   constexpr std::uint64_t kReadOps = 20000;
 
@@ -318,8 +318,8 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
              Config{.ops_per_round = kReadOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchWriteThenRead(n, kFullFrameBytes, 64); });
 
-  // 往返延迟只跑几百次：每次都要等对侧 IP 栈真的应答，是毫秒不到但远慢于
-  // 前面几项的操作，跑太多没有额外信息量。
+  // The round-trip latency is only run a few hundred times: each one has to wait for the peer IP stack to really answer, and is an operation under a millisecond yet far slower than
+  // the previous items; running too many gives no extra information.
   runner.Add("feth 往返延迟", "ARP 请求 → 系统侧 IP 栈应答", Config{.ops_per_round = 200},
              [](std::uint64_t n) { return BenchArpRoundTrip(n); });
 
@@ -330,8 +330,8 @@ void ShutdownNetBenchmarks() noexcept {
   if (g_fixture == nullptr) {
     return;
   }
-  // 顺序要紧：先关 BPF 描述符，再销毁 feth 网卡对。反过来的话
-  // BpfLink 析构时它挂着的接口已经没了。
+  // The order matters: close the BPF descriptor first, then destroy the feth pair. In the reverse order
+  // the interface it is attached to is already gone when BpfLink is destroyed.
   g_fixture->system_link.reset();
   g_fixture->driver_batched.reset();
   g_fixture->driver_perframe.reset();

@@ -34,7 +34,7 @@ std::string_view MessageTypeName(std::uint32_t message_type) noexcept {
       return "RNDIS_MSG_BUS";
   }
 
-  // CONDIS（面向连接）消息族：本项目不支持，但要能明确报出来。
+  // CONDIS (connection-oriented) message family: not supported by this project, but must be reportable explicitly.
   switch (static_cast<CondisMessageType>(message_type & ~kMessageCompletionFlag)) {
     case CondisMessageType::kCreateVc:
       return "RNDIS_MSG_MP_CREATE_VC";

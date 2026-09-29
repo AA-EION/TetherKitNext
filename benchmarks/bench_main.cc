@@ -1,11 +1,11 @@
-// 性能基准入口。
+// Performance benchmark entry point.
 //
-// 输出是一份完整的 Markdown 文档（标准输出），可以直接重定向进
-// docs/BENCHMARKS.md：
+// The output is a complete Markdown document (on standard output), which can be redirected directly into
+// docs/BENCHMARKS.md:
 //
 //   ./build-rel/bin/tetherkitnext_bench > docs/BENCHMARKS.md
 //
-// 进度信息走标准错误，不会污染报告。
+// Progress information goes to standard error and does not pollute the report.
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -18,8 +18,8 @@
 #include "tetherkitnext/version.h"
 
 int main() {
-  // 基准线程本身也按数据路径的 QoS 运行，否则可能被调度到效率核，
-  // 测出来的数字会比实际运行时更差。
+  // The benchmark thread itself also runs with the data path's QoS, otherwise it might be scheduled onto efficiency cores,
+  // and the measured numbers would be worse than at actual runtime.
   tetherkitnext::ConfigureCurrentThread("bench", tetherkitnext::ThreadRole::kDataPath);
 
   const std::string version{tetherkitnext::GetVersionString()};
@@ -43,13 +43,13 @@ int main() {
     tetherkitnext::bench::PrintMarkdownReport(runner.RunAll(), "RNDIS 编解码（tk_rndis）");
   }
   {
-    // 链路层需要 root。跳过时也要在报告里留痕 —— 否则读者无从判断这份报告
-    // 到底是「测过了没问题」还是「压根没测」。
+    // The link layer needs root. When skipped, a trace must also be left in the report -- otherwise the reader cannot tell whether this report
+    // means "tested and fine" or "not tested at all".
     tetherkitnext::bench::Runner runner;
     std::string skip_reason;
     if (tetherkitnext::bench::RegisterNetBenchmarks(runner, skip_reason)) {
       tetherkitnext::bench::PrintMarkdownReport(runner.RunAll(), "feth / BPF 链路层（tk_net，需 root）");
-      // 必须在这里拆，不能留给静态析构 —— 原因见 bench_net.h。
+      // It must be torn down here and cannot be left to static destruction -- see bench_net.h for the reason.
       tetherkitnext::bench::ShutdownNetBenchmarks();
     } else {
       std::printf("## feth / BPF 链路层（tk_net，需 root）\n\n");

@@ -1,12 +1,12 @@
-# TetherKitNext 静态检查配置
+# TetherKitNext static analysis configuration
 #
-# 取舍说明：
-#  * 本项目是与内核 ABI / USB 线格式打交道的底层驱动，必然出现大量 reinterpret_cast、
-#    C 风格数组、位运算与魔数常量，因此关掉一批对系统编程不适用的检查。
-#  * 数据路径要求零分配、无虚函数开销，因此保留 performance-* 组，但关掉
-#    performance-enum-size —— 本项目的协议枚举底层类型**必须**精确等于线格式
-#    的字段宽度（RNDIS 全是 LE32），按检查建议缩小会直接写坏线格式。
-#  * 并发正确性是本项目的核心风险，因此保留 concurrency-* 与 bugprone-* 全组。
+# Trade-offs:
+#  * This project is a low-level driver dealing with the kernel ABI / USB wire formats, so it inevitably has many reinterpret_cast,
+#    C-style arrays, bit operations and magic constants; a batch of checks that do not suit systems programming are therefore disabled.
+#  * The data path requires zero allocation and no virtual-function overhead, so the performance-* group is kept, but
+#    performance-enum-size is disabled -- the underlying type of this project's protocol enums **must** exactly equal the wire-format
+#    field width (RNDIS is all LE32); shrinking them as the check suggests would corrupt the wire format.
+#  * Concurrency correctness is this project's core risk, so the whole concurrency-* and bugprone-* groups are kept.
 ---
 Checks: >
   bugprone-*,
@@ -52,7 +52,7 @@ HeaderFilterRegex: 'tetherkitnext/.*'
 FormatStyle: file
 
 CheckOptions:
-  # 命名约定（与 docs/DESIGN.md「代码规范」一节一致）
+  # Naming conventions (consistent with the "Code Conventions" section of docs/DESIGN.md)
   - key: readability-identifier-naming.NamespaceCase
     value: lower_case
   - key: readability-identifier-naming.ClassCase
@@ -89,6 +89,6 @@ CheckOptions:
     value: CamelCase
   - key: readability-identifier-naming.MacroDefinitionCase
     value: UPPER_CASE
-  # 数据路径禁止隐式堆分配，放宽 else-after-return 便于早退风格
+  # The data path forbids implicit heap allocation; else-after-return is relaxed to allow an early-return style
   - key: readability-else-after-return.WarnOnUnfixable
     value: 'false'

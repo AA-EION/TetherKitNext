@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 import TetherKitNextIPC
 
-/// 菜单栏里的常驻标签：状态图标 + 实时速率。
+/// The resident label in the menu bar: status icon + real-time rate.
 ///
-/// 只在会话运行时显示速率文本 —— 空闲时一串 "0K" 只是噪音，图标本身已经把
-/// 状态说清楚了。数字用等宽，避免速率跳动时把右边的其它菜单栏项挤来挤去。
+/// The rate text is shown only while a session is running -- a string of "0K" when idle is just noise, and the icon itself already makes the
+/// state clear. Digits are monospaced, to avoid pushing other menu bar items on the right around when the rate jumps.
 struct MenuBarLabel: View {
     var model: AppModel
     @AppStorage(PreferenceKey.menuBarShowsSpeed) private var showsSpeed = true
@@ -28,10 +28,10 @@ struct MenuBarLabel: View {
     }
 }
 
-/// 点开菜单栏项后的小面板。
+/// The small panel after clicking open a menu bar item.
 ///
-/// 内容按「瞟一眼要知道什么」取舍：状态、速率、网卡与地址，再加两个动作
-/// （打开主窗口、退出）。配置、图表、日志一律留在主窗口 —— 面板不是第二个界面。
+/// Content is chosen by "what you need to know at a glance": status, rate, NIC and address, plus two actions
+/// (open the main window, quit). Configuration, charts and logs all stay in the main window -- the panel is not a second UI.
 struct MenuBarPanel: View {
     var model: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -66,10 +66,10 @@ struct MenuBarPanel: View {
         }
         .padding(Design.Spacing.medium)
         .frame(width: 280)
-        // 与主窗口同理：文案来自全局查表，改语言不会让任何 @Observable 属性
-        // 「看起来」变了，得靠显式 identity 强制重建。面板本身会随轮询刷新，
-        // 不加这行语言也会在下一个周期跟上 —— 但从面板里改语言时，用户盯着
-        // 的就是这块面板，慢半拍会被当成没生效。
+        // Same reason as the main window: messages come from a global table lookup, and changing the language will not make any @Observable property
+        // "appear" to change, so an explicit identity is needed to force a rebuild. The panel itself refreshes with polling,
+        // and without this line the language would also catch up in the next period -- but when changing the language from the panel, the user is staring at
+        // this very panel, and lagging a beat would be taken as not having taken effect.
         .id(model.languageRevision)
     }
 
@@ -127,9 +127,9 @@ struct MenuBarPanel: View {
 
                 Spacer()
 
-                // 仅菜单栏模式下这块面板是唯一入口，语言开关必须在这里也够得到 ——
-                // 否则一个看不懂界面的用户，得先知道「要去 App 菜单」才能改语言，
-                // 而在这个模式下 App 菜单只有把窗口开出来才看得见。
+                // In menu-bar-only mode this panel is the sole entry point, and the language switch must be reachable here too --
+                // otherwise a user who cannot understand the UI would first have to know "go to the App menu" to change the language,
+                // and in this mode the App menu is visible only when the window is opened.
                 languageMenu
 
                 Button(L(.quit)) {
@@ -139,8 +139,8 @@ struct MenuBarPanel: View {
             }
 
             if status.runState == .running {
-                // 会话属于 helper，App 退出不影响它 —— 这一点必须说出来，
-                // 否则用户会以为「退出 = 断网」而不敢点。
+                // The session belongs to the helper, and quitting the App does not affect it -- this must be said out loud,
+                // otherwise users would think "quit = disconnect" and not dare to click.
                 Text(L(.quitTooltip))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -149,7 +149,7 @@ struct MenuBarPanel: View {
         }
     }
 
-    /// 语言开关。选项写母语名字，不跟随界面语言翻译 —— 见 LanguageMenu 的说明。
+    /// The language switch. Options are written as native-language names and are not translated with the UI language -- see the explanation of LanguageMenu.
     private var languageMenu: some View {
         Menu {
             LanguagePicker(model: model)

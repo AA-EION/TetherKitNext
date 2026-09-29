@@ -1,5 +1,5 @@
-# TetherKitNext 代码格式配置
-# 以 Google 风格为基线，放宽行宽到 100 列以容纳协议常量表与长类型名。
+# TetherKitNext code formatting configuration
+# Google style as the baseline, with the column limit relaxed to 100 to fit protocol constant tables and long type names.
 ---
 Language: Cpp
 BasedOnStyle: Google
@@ -11,12 +11,12 @@ TabWidth: 2
 UseTab: Never
 AccessModifierOffset: -1
 
-# 指针/引用贴类型：TetherKitNext 统一写 `Foo* p` 而非 `Foo *p`
+# Pointers/references bind to the type: TetherKitNext consistently writes `Foo* p`, not `Foo *p`
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReferenceAlignment: Left
 
-# 大括号：函数与控制流的左括号不换行（Attach）
+# Braces: opening braces of functions and control flow do not break the line (Attach)
 BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
@@ -24,12 +24,12 @@ AllowShortLoopsOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
 InsertBraces: true
 
-# 构造函数初始化列表每行一个，便于 diff
+# One constructor initializer per line, to make diffs easier
 BreakConstructorInitializers: BeforeColon
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 PackConstructorInitializers: NextLine
 
-# 头文件分组：本项目头 > 第三方 > 系统/平台 > 标准库
+# Header grouping: this project's headers > third-party > system/platform > standard library
 SortIncludes: CaseSensitive
 IncludeBlocks: Regroup
 IncludeCategories:
@@ -46,7 +46,7 @@ IncludeCategories:
   - Regex: '.*'
     Priority: 5
 
-# 其它
+# Other
 AlwaysBreakTemplateDeclarations: Yes
 EmptyLineBeforeAccessModifier: LogicalBlock
 FixNamespaceComments: true

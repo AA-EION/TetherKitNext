@@ -1,10 +1,10 @@
 import Foundation
 
-/// App 与 helper 之间约定死的一组常量。
+/// A set of constants fixed by agreement between the App and the helper.
 ///
-/// 单独成文件是为了让「改一个名字要同步改哪些地方」这件事只有一个答案 ——
-/// 这些字符串同时出现在 LaunchDaemon 的 plist、安装脚本和两端代码里，
-/// 任何一处不同步的表现都是「连不上 helper」，且没有任何有用的报错。
+/// Made a separate file so that the question "when one name changes, where else must be changed in sync" has exactly one answer --
+/// these strings appear at once in the LaunchDaemon's plist, the install scripts, and the code on both ends,
+/// and any one out of sync manifests as "cannot connect to the helper", with no useful error whatsoever.
 public enum HelperConstants {
     /// Mach service name and launchd label of the privileged daemon.
     ///
@@ -44,36 +44,36 @@ public enum HelperConstants {
         public static let toolsDirectory = "/Library/PrivilegedHelperTools"
     }
 
-    /// 特权操作所要求的授权权利。
+    /// The authorization right required by privileged operations.
     ///
-    /// ★ 为什么用系统内置的 system.privilege.admin，而不是自定义权利 ★
-    ///   自定义权利要先用 AuthorizationRightSet 写进策略数据库，而那本身就需要
-    ///   管理员权限 —— 于是就有了「安装授权需要授权」的先有鸡还是先有蛋问题。
-    ///   system.privilege.admin 的规则是 authenticate-admin，弹的正是我们想要的
-    ///   密码 / Touch ID 框，语义也贴切：「这是一次需要管理员身份的操作」。
+    /// * Why use the system built-in system.privilege.admin rather than a custom right *
+    ///   A custom right must first be written into the policy database with AuthorizationRightSet, which itself needs
+    ///   administrator privileges -- hence the chicken-and-egg problem of "installing the authorization needs authorization".
+    ///   The rule of system.privilege.admin is authenticate-admin, popping up exactly the
+    ///   password / Touch ID dialog we want, and the semantics fit too: "this is an operation that needs administrator identity".
     public static let privilegedRightName = "system.privilege.admin"
 
-    /// XPC 接口的修订号。**每次改动 TetherKitNextHelperProtocol 都要加一。**
+    /// The revision number of the XPC interface. **Add one every time TetherKitNextHelperProtocol is changed.**
     ///
-    /// 为什么需要它：helper 是装在系统目录里的，升级 App 时如果忘了重装 helper，
-    /// 两端的方法签名就对不上 —— 表现是调用卡住或者直接崩，完全看不出是版本问题。
-    /// 有了这个号，App 一连上就能发现不匹配并明确告诉用户「请重新安装特权组件」。
+    /// Why it is needed: the helper is installed in a system directory, and if the helper is forgotten when upgrading the App,
+    /// the method signatures on the two ends will not match -- the symptom is a call hanging or a direct crash, with no hint that it is a version problem.
+    /// With this number, as soon as the App connects it can detect the mismatch and explicitly tell the user "please reinstall the privileged component".
     ///
-    /// 修订历史：
-    ///   1 —— 初版
-    ///   2 —— 特权方法的应答从 (String?) 改成 (String?, Bool)，区分授权失败
-    ///   3 —— 新增 setLanguage，让 helper 的提示与库日志跟随界面语言
+    /// Revision history:
+    ///   1 -- initial version
+    ///   2 -- the reply of privileged methods changed from (String?) to (String?, Bool), to distinguish authorization failures
+    ///   3 -- added setLanguage, so the helper's prompts and library logs follow the UI language
     ///   4 —— SMAppService daemon (new label); adds setCommandLineToolInstalled
     ///   5 —— privileged calls may carry an empty authorization: a team-signed
     ///        app has already confirmed the user with Touch ID / the login
     ///        password, and the daemon accepts it for admin users only
     public static let protocolRevision = 5
 
-    /// 把修订号编进版本串。
+    /// Encodes the revision number into the version string.
     ///
-    /// 刻意复用现成的 `helperVersion` 方法而不是新增一个 —— 新增方法本身就是
-    /// 一次协议变更，旧 helper 根本没有它，那就又回到了「对不上还查不出来」。
-    /// 用旧 helper 也一定会应答的这个方法，才能可靠地识别出旧 helper。
+    /// Deliberately reuses the existing `helperVersion` method rather than adding a new one -- adding a method is itself
+    /// a protocol change, and an old helper simply does not have it, which would bring us back to "mismatched and undetectable".
+    /// Only a method that even an old helper will certainly answer can reliably identify an old helper.
     ///
     /// Format: `revision|version|build`. The trailing build description (which
     /// starts with the git build ID) was added so builds that share a version
@@ -82,7 +82,7 @@ public enum HelperConstants {
         build.isEmpty ? "\(protocolRevision)|\(version)" : "\(protocolRevision)|\(version)|\(build)"
     }
 
-    /// 解析版本串。旧 helper 返回的串里没有分隔符，此时修订号记作 0。
+    /// Parses the version string. The string returned by an old helper has no separator, in which case the revision number is recorded as 0.
     public static func decodeVersion(_ encoded: String)
         -> (revision: Int, version: String, build: String) {
         guard let separator = encoded.firstIndex(of: "|"),
@@ -105,27 +105,27 @@ public enum HelperConstants {
         return id.isEmpty ? nil : String(id)
     }
 
-    /// 从库的版本串里取出语义化版本号：
-    /// `"TetherKitNext 0.1.4 (C++23, macOS 13.3+)"` → `"0.1.4"`。
+    /// Extracts the semantic version number from the library's version string:
+    /// `"TetherKitNext 0.1.4 (C++23, macOS 13.3+)"` -> `"0.1.4"`.
     ///
-    /// ★ 为什么不直接比整串 ★
-    ///   串里除了版本号还带着 C++ 标准与最低 macOS 版本 —— 那是**构建配置**，
-    ///   不是版本。拿整串当判据的话，换个编译选项重建一次就会冒出一个
-    ///   「组件该更新了」的假警报，而用户点下去什么也不会变。
+    /// * Why not compare the whole string directly *
+    ///   Besides the version number, the string also carries the C++ standard and the minimum macOS version -- those are the **build configuration**,
+    ///   not the version. If the whole string were the criterion, rebuilding once with different compile options would pop up a
+    ///   false alarm of "component needs updating", and clicking it would change nothing for the user.
     ///
-    /// 取不到（串里没有带点的数字）时退回整串：宁可误报也不要漏报 —— 漏报
-    /// 意味着用户一直在跑升级前的那份库，且毫不知情。
+    /// When it cannot be extracted (no dotted number in the string) fall back to the whole string: better a false alarm than a missed one -- a missed alarm
+    /// means the user keeps running the pre-upgrade library without knowing it.
     public static func semanticVersion(of text: String) -> String {
-        // 至少要有一个点，否则 "C++23" 这种也会被当成版本号。
+        // There must be at least one dot, otherwise something like "C++23" would also be taken as a version number.
         guard let range = text.range(of: "[0-9]+(\\.[0-9]+)+", options: .regularExpression) else {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return String(text[range])
     }
 
-    /// XPC 调用的超时（秒）。
+    /// Timeout of XPC calls (seconds).
     ///
-    /// 取 30 秒是因为最慢的一次调用是 DHCP 配置：库内部最多等 10 秒租约，
-    /// 加上 USB 握手与网卡创建，留 3 倍余量。
+    /// 30 seconds is used because the slowest call is the DHCP configuration: the library waits up to 10 seconds for a lease internally,
+    /// plus the USB handshake and NIC creation, leaving a 3x margin.
     public static let requestTimeout: TimeInterval = 30
 }

@@ -12,14 +12,14 @@
 namespace tetherkitnext::core {
 namespace {
 
-/// TX 背压时单次等待空闲传输槽位的上限（毫秒）。
+/// Upper limit of a single wait for a free transfer slot under TX backpressure (milliseconds).
 ///
-/// 取值只影响两件事的权衡：停机/暂停的响应延迟上界（每次醒来都会重查标志），
-/// 与等待期间的无谓唤醒频率。槽位实际的释放周期是几百微秒（一次 bulk OUT 的
-/// 完成时间），绝大多数等待都由完成回调的 notify 提前唤醒，几乎不会等满。
+/// The value only affects the trade-off between two things: the upper bound of shutdown/pause response latency (the flags are re-checked on every wakeup),
+/// and the frequency of needless wakeups during the wait. The slot's actual release period is a few hundred microseconds (the completion
+/// time of one bulk OUT), and the vast majority of waits are woken early by the completion callback's notify, almost never waiting the full time.
 constexpr std::uint32_t kTxCapacityWaitMillis = 50;
 
-/// 把字节数换算成 Mbps。
+/// Converts a byte count to Mbps.
 [[nodiscard]] double ToMegabitsPerSecond(std::uint64_t bytes, double seconds) {
   if (seconds <= 0.0) {
     return 0.0;
@@ -53,9 +53,9 @@ Status Bridge::Start() {
   }
   stop_requested_.store(false, std::memory_order_release);
 
-  // 先让数据通道开始接收 —— 它会把帧推进 rx_ring_。
-  // 顺序上必须在启动注入线程**之前**还是之后都可以（队列是有界的，满了会丢弃
-  // 并计数），但先开接收能让链路一就绪就开始收，少丢几帧。
+  // Let the data channel start receiving first -- it pushes frames into rx_ring_.
+  // Whether this comes **before** or after starting the injection thread does not matter for ordering (the queue is bounded, and drops
+  // and counts when full), but opening receiving first lets the link start receiving as soon as it is ready, dropping a few fewer frames.
   TETHERKITNEXT_RETURN_IF_ERROR(data_channel_->StartReceiving(*rx_ring_, counters_.rx));
 
   running_.store(true, std::memory_order_release);
@@ -72,23 +72,23 @@ Status Bridge::Start() {
 
 void Bridge::Stop() {
   if (!running_.exchange(false, std::memory_order_acq_rel)) {
-    return;  // 没在跑或已经停过
+    return;  // not running, or already stopped
   }
 
   // ---------------------------------------------------------------------------
-  // 拆除顺序（顺序错了会漏帧或死锁）
+  // Teardown order (a wrong order loses frames or deadlocks)
   //
-  //  1. 置停机标志 —— 两个线程的循环条件都看它；
-  //  2. 打断链路的阻塞 read() —— 否则 TX 抽取线程会一直卡在里面；
-  //  3. join 两个数据路径线程；
-  //  4. **最后**才停数据通道。
+  //  1. Set the shutdown flag -- the loop conditions of both threads look at it;
+  //  2. Interrupt the link's blocking read() -- otherwise the TX extractor thread would stay stuck in it;
+  //  3. Join the two data-path threads;
+  //  4. Stop the data channel **last**.
   //
-  // 第 4 步必须最后做，原因有两个：
-  //   * DataChannel::Shutdown() 要等在飞 USB 传输的回调全部回来，而那些回调会
-  //     往 rx_ring_ 里写 —— 如果先停通道再 join，倒也没错；但反过来若先销毁了
-  //     rx_ring_ 就是 use-after-free。这里的顺序保证 rx_ring_ 一直活着。
-  //   * Shutdown() 绝不能在 libusb 事件线程上调用（会自己等自己死锁），
-  //     而这里是调用 Stop() 的那个线程（主线程或控制线程），安全。
+  // Step 4 must come last, for two reasons:
+  //   * DataChannel::Shutdown() has to wait for all callbacks of in-flight USB transfers to come back, and those callbacks
+  //     write into rx_ring_ -- stopping the channel first and then joining would not be wrong; but conversely, if
+  //     rx_ring_ were destroyed first it would be a use-after-free. The order here guarantees rx_ring_ stays alive throughout.
+  //   * Shutdown() must never be called on the libusb event thread (it would deadlock waiting on itself),
+  //     and here is the thread that calls Stop() (the main thread or the control thread), so it is safe.
   // ---------------------------------------------------------------------------
   stop_requested_.store(true, std::memory_order_release);
 
@@ -109,7 +109,7 @@ void Bridge::Stop() {
 }
 
 // =============================================================================
-// RX 注入线程：FrameRing → 链路
+// RX injection thread: FrameRing -> link
 // =============================================================================
 
 void Bridge::SetPaused(bool paused) noexcept {
@@ -118,11 +118,11 @@ void Bridge::SetPaused(bool paused) noexcept {
     return;
   }
 
-  // 等 RX 注入线程确认它确实停住了。没有这一步，本函数返回之后 worker 仍可能
-  // 把一批已经取出的帧写到链路上：它可能刚过完上面那个标志检查。
+  // Wait for the RX injection thread to confirm it has really stopped. Without this step, after this function returns the worker may still
+  // write a batch of already-taken frames onto the link: it may have just passed the flag check above.
   //
-  // 只在线程确实在跑的时候等 —— Start() 之前或 Stop() 之后没人会来置位，
-  // 无条件等会永远不返回。
+  // Wait only when the thread is really running -- before Start() or after Stop() nobody will come to set it,
+  // and waiting unconditionally would never return.
   //
   // The injector may be parked on the ring's doorbell, so ring it first —
   // otherwise it would never loop around to observe paused_.
@@ -141,15 +141,15 @@ void Bridge::RunReceiveInjector() noexcept {
   std::uint32_t idle_spins = 0;
 
   while (!stop_requested_.load(std::memory_order_acquire)) {
-    // 先撤销确认位，再判断是否暂停。顺序不能反 —— 留着上一轮的 true 会让
-    // SetPaused(true) 误以为本线程已经停住，而它其实正要去取帧。
+    // Withdraw the acknowledgement bit first, then judge whether paused. The order must not be reversed -- leaving the previous round's true would make
+    // SetPaused(true) mistakenly think this thread has already stopped, when it is actually about to go take frames.
     rx_paused_ack_.store(false, std::memory_order_release);
 
     if (paused_.load(std::memory_order_acquire)) {
-      // 复位期间：不搬运，但也不丢弃 —— 队列里的帧等恢复后继续发。
+      // During a reset: do not move data, but do not drop it either -- frames in the queue continue to be sent after resuming.
       //
-      // 置确认位是给 SetPaused(true) 看的：从这里到下一轮看见 paused_ 变回
-      // false 之前，本线程不会碰 rx_ring_，所以这个确认是可信的。
+      // Setting the acknowledgement bit is for SetPaused(true) to see: from here until the next round sees paused_ change back to
+      // false, this thread will not touch rx_ring_, so this acknowledgement is trustworthy.
       rx_paused_ack_.store(true, std::memory_order_release);
       // Sleep, don't yield: yield() returns immediately when nothing else is
       // runnable and turns this branch into a 100% CPU spin. Pauses are rare
@@ -158,8 +158,8 @@ void Bridge::RunReceiveInjector() noexcept {
       continue;
     }
 
-    // 攒一批再写。批量会话在作用域结束时才一次性释放槽位，因此期间取出的
-    // 全部视图都保持有效 —— 这正是「零拷贝交给一次批量 write()」的前提。
+    // Gather a batch and then write. The batch session releases slots all at once only at the end of its scope, so all the views taken in the meantime
+    // remain valid -- this is precisely the precondition for "handing zero-copy to one batch write()".
     rx_batch_.clear();
     {
       auto batch = rx_ring_->BeginBatchRead();
@@ -195,29 +195,29 @@ void Bridge::RunReceiveInjector() noexcept {
         counters_.rx.AddIoError();
         TETHERKITNEXT_WARN_TR(Msg::kCoreLinkWriteFailed, rx_batch_.size(),
                           result.error().ToString());
-        // 写失败不退出线程 —— 可能只是接口暂时 down。批量会话照常释放槽位
-        // （帧已经没法送出去了，留着只会堵住队列）。
+        // A write failure does not exit the thread -- it may just be that the interface is temporarily down. The batch session releases the slots as usual
+        // (the frames can no longer be delivered, and keeping them would only clog the queue).
       } else {
         if (result->frames_skipped != 0) {
           counters_.rx.AddDroppedOversize(result->frames_skipped);
         }
         const auto written = result->frames_written;
         if (written < rx_batch_.size()) {
-          // 链路没吃下整批（内核发送队列满）。剩下的帧已经从队列里取出来了，
-          // 只能丢弃并计数 —— 这是真实的丢包，必须让运维看得见。
+          // The link did not take the whole batch (the kernel send queue is full). The remaining frames have already been taken out of the queue,
+          // so they can only be dropped and counted -- this is real packet loss and must be made visible to operators.
           counters_.rx.AddDroppedFull(rx_batch_.size() - written);
         }
-        // 注意：内核侧的 bs_drop 是**读**方向的统计，由 TX 抽取线程从
-        // ReadFrames 的结果里更新，这里不碰它。
+        // Note: the kernel-side bs_drop is a statistic for the **read** direction, updated by the TX extractor thread
+        // from the ReadFrames result, and is not touched here.
       }
-    }  // 批量会话析构 → 一次 PublishRead(n)
+    }  // batch session destructor -> one PublishRead(n)
   }
 
   TETHERKITNEXT_DEBUG_TR(Msg::kCoreRxInjectorExited);
 }
 
 // =============================================================================
-// TX 抽取线程：链路 → USB
+// TX extractor thread: link -> USB
 // =============================================================================
 
 void Bridge::RunTransmitExtractor() noexcept {
@@ -225,13 +225,13 @@ void Bridge::RunTransmitExtractor() noexcept {
   TETHERKITNEXT_DEBUG_TR(Msg::kCoreTxExtractorStarted);
 
   while (!stop_requested_.load(std::memory_order_acquire)) {
-    // 阻塞读。BPF 在 BIOCIMMEDIATE=1 下会自动把期间累积的包整批交付，
-    // 所以这里天然就是「低速低延迟、高速大批量」，不需要我们自己攒批。
+    // Blocking read. Under BIOCIMMEDIATE=1 BPF automatically delivers the packets accumulated in the meantime as a batch,
+    // so this is naturally "low latency at low rates, large batches at high rates", and we need not batch ourselves.
     const auto batch = link_->ReadFrames();
     if (!batch) {
       counters_.tx.AddIoError();
       TETHERKITNEXT_WARN_TR(Msg::kCoreLinkReadFailed, batch.error().ToString());
-      // 读失败可能是接口被拆了。稍等再试，避免忙循环刷日志。
+      // A read failure may mean the interface was torn down. Wait a bit and retry, to avoid a busy loop flooding the log.
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
@@ -239,21 +239,21 @@ void Bridge::RunTransmitExtractor() noexcept {
     link_kernel_drops_.store(batch->kernel_drops, std::memory_order_relaxed);
 
     if (batch->frames.empty()) {
-      continue;  // 读超时到期且期间无包，正常
+      continue;  // read timeout expired with no packets in the meantime; normal
     }
     if (paused_.load(std::memory_order_acquire)) {
-      // 复位期间设备会丢弃所有未完成的数据包，往它发只是浪费。
+      // During a reset the device discards all outstanding data packets, so sending to it is only a waste.
       counters_.tx.AddDroppedFull(batch->frames.size());
       continue;
     }
 
-    // 分批提交给 USB。
+    // Submit to USB in batches.
     std::size_t offset = 0;
     while (offset < batch->frames.size()) {
-      // 每个分片前重新查一次停机与暂停：下面的背压等待让这个循环可能长时间
-      // 驻留，不能只依赖外层的检查。暂停时丢弃剩余帧是刻意的（RNDIS 复位期间
-      // 设备会丢弃所有未完成的数据包）；TX 拿不到 RX 那样的强保证（它必须持续
-      // 把 BPF 读空，没法真的停下），但把漏发窗口收窄到「一个分片」是免费的。
+      // Re-check shutdown and pause before every slice: the backpressure wait below lets this loop
+      // dwell for a long time, so we cannot rely only on the outer check. Dropping the remaining frames while paused is deliberate (during an RNDIS reset
+      // the device discards all outstanding data packets); TX cannot get the strong guarantee RX has (it must keep
+      // draining BPF and cannot really stop), but narrowing the leak window to "one slice" is free.
       if (stop_requested_.load(std::memory_order_acquire) ||
           paused_.load(std::memory_order_acquire)) {
         counters_.tx.AddDroppedFull(batch->frames.size() - offset);
@@ -267,17 +267,17 @@ void Bridge::RunTransmitExtractor() noexcept {
       const auto sent = data_channel_->SendFrames(slice);
       if (!sent) {
         counters_.tx.AddIoError();
-        // 放弃的剩余帧必须计入丢弃 —— 曾经这里只 +1 个 io_error 就 break，
-        // 剩余帧不进任何计数器，统计上凭空消失。
+        // The abandoned remaining frames must be counted as drops -- this used to only +1 io_error and break,
+        // and the remaining frames entered no counter, vanishing from the statistics out of thin air.
         counters_.tx.AddDroppedFull(batch->frames.size() - offset);
         TETHERKITNEXT_WARN_TR(Msg::kCoreUsbSubmitFailed, chunk, sent.error().ToString());
         break;
       }
 
-      // 桥接层是 TX 计数器的**唯一写者**（DirectionCounters 用 relaxed
-      // load+store，靠单写者才安全）。数据通道那侧只统计异步完成回调里的错误，
-      // 由 Snapshot() 在读取时合并进来。发出帧数与字节数直接取自 SendOutcome，
-      // 被跳过的非法长度帧计入 oversize 丢弃而不是「已发出」。
+      // The bridge layer is the **sole writer** of the TX counters (DirectionCounters uses relaxed
+      // load+store, safe only thanks to a single writer). The data channel side only counts errors in the asynchronous completion callbacks,
+      // merged in by Snapshot() at read time. The sent frame and byte counts are taken directly from SendOutcome,
+      // and skipped illegal-length frames are counted into oversize drops rather than "sent".
       if (sent->sent_frames != 0) {
         counters_.tx.AddBatch(sent->sent_frames, sent->sent_bytes);
       }
@@ -286,19 +286,19 @@ void Bridge::RunTransmitExtractor() noexcept {
       }
 
       if (sent->consumed == 0) {
-        // 传输池没有空闲槽位 —— 这就是背压。**等待，不丢弃。**
+        // The transfer pool has no free slot -- this is backpressure. **Wait; do not drop.**
         //
-        // 旧实现在这里立即丢弃剩余帧，理由是「等待会让 BPF 内核缓冲堆积成
-        // 不可见的内核丢包」。这个前提是错的：内核缓冲默认 4 MiB（250 Mbps
-        // 下约 130 ms 的弹性），而且它的溢出计数 bs_drop 每次 ReadFrames 都
-        // 带回来、就显示在统计行的「内核丢包」里 —— 根本不是不可见的。
-        // 真机实测的后果：一个满帧分片需要约 26 个传输槽而池里只有 4 个，
-        // 槽位在几百微秒内就会释放，旧代码却一微秒都不等，高负载下把
-        // 30%+ 的 TX 流量丢在了这里（docs/BENCHMARKS.md「真机端到端实测」）。
+        // The old implementation dropped the remaining frames immediately here, on the grounds that "waiting would let the BPF kernel buffer pile up into
+        // invisible kernel drops". That premise was wrong: the kernel buffer is 4 MiB by default (about 130 ms of elasticity
+        // at 250 Mbps), and its overflow counter bs_drop is brought back on every ReadFrames
+        // and shown in the "kernel drops" of the statistics line -- it is not invisible at all.
+        // The consequence measured on real hardware: one full-frame slice needs about 26 transfer slots while the pool has only 4,
+        // and slots are released within a few hundred microseconds, yet the old code did not wait for even a microsecond, dropping
+        // 30%+ of TX traffic here under high load (docs/BENCHMARKS.md "real-device end-to-end measurements").
         //
-        // 等待用有限超时：每次醒来回到循环顶部重查停机/暂停标志，停机延迟
-        // 因此有上界。真正的溢出兜底仍然在内核缓冲 —— 它满了才该丢，
-        // 且丢在统计上可见。
+        // The wait uses a finite timeout: on every wakeup it returns to the top of the loop to re-check the shutdown/pause flags, so shutdown latency
+        // has an upper bound. The real overflow backstop is still the kernel buffer -- only when it is full should we drop,
+        // and the drop is then visible in the statistics.
         tx_backpressure_events_.fetch_add(1, std::memory_order_relaxed);
         (void)data_channel_->WaitForSendCapacity(kTxCapacityWaitMillis);
         continue;
@@ -311,13 +311,13 @@ void Bridge::RunTransmitExtractor() noexcept {
 }
 
 // =============================================================================
-// 观测
+// Observation
 // =============================================================================
 
 BridgeStats Bridge::Snapshot() const {
   DirectionSnapshot tx = tetherkitnext::Snapshot(counters_.tx);
-  // 合并数据通道在异步完成回调里累计的错误 —— 那部分由 libusb 事件线程递增，
-  // 刻意与桥接层的计数器分开以维持「每个计数器只有一个写者」的不变式。
+  // Merge the errors accumulated by the data channel in its asynchronous completion callbacks -- that part is incremented by the libusb event thread,
+  // deliberately kept separate from the bridge layer's counters to maintain the invariant "each counter has only one writer".
   tx.io_errors += data_channel_->AsyncSendErrors();
 
   return BridgeStats{

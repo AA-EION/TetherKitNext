@@ -1,23 +1,23 @@
 import Foundation
 import TetherKitNextIPC
 
-/// 到 GitHub Releases 查有没有更新的版本。
+/// Checks GitHub Releases for a newer version.
 ///
-/// ★ 只「检查 + 引导」，绝不自动下载替换 ★
-///   本项目免证书分发（ad-hoc 签名）。自更新（Sparkle 那类）要下载新 .app 替换
-///   自己，下载物带 quarantine，替换完的 App 会被 Gatekeeper 直接拦死 ——
-///   和不能走 Cask 是同一堵墙。真正的更新通道是 `brew upgrade` 或源码重编，
-///   App 只负责发现新版、把命令递到用户手边。
+/// * Only "check + guide", never automatically download and replace *
+///   This project is distributed without a certificate (ad-hoc signing). Self-updating (the Sparkle kind) has to download a new .app to replace
+///   itself, the download carries quarantine, and the replaced App would be blocked dead by Gatekeeper --
+///   the same wall as why Cask cannot be used. The real update channels are `brew upgrade` or a source rebuild,
+///   and the App is only responsible for discovering the new version and putting the command within the user's reach.
 ///
-/// ★ 隐私 ★
-///   只请求 GitHub 的公开 REST API（releases/latest），不携带任何本机信息。
-///   自动检查每天至多一次，失败静默；
-///   `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES` 可彻底关掉。
+/// * Privacy *
+///   Only GitHub's public REST API (releases/latest) is requested, carrying no local machine information.
+///   The automatic check runs at most once a day and fails silently;
+///   `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES` turns it off completely.
 enum UpdateChecker {
     struct Release: Equatable, Sendable {
-        /// 去掉 v 前缀后的版本号，如 "0.2.0"。
+        /// The version number with the v prefix removed, such as "0.2.0".
         let version: String
-        /// Release 页，引导用户去看更新说明 / 下载。
+        /// The Release page, guiding the user to read the release notes / download.
         let pageURL: URL
     }
 
@@ -38,13 +38,13 @@ enum UpdateChecker {
         }
     }
 
-    /// 当前 App 的版本号，来自 Info.plist（build-gui.sh 从 CMakeLists 注入）。
-    /// `swift run` 的裸可执行文件没有 bundle，返回 nil —— 开发构建不做检查。
+    /// The current App's version number, from Info.plist (injected by build-gui.sh from CMakeLists).
+    /// The bare executable of `swift run` has no bundle, so it returns nil -- development builds do no checking.
     static var currentVersion: String? {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }
 
-    /// 取最新发布。404 = 从未发布过；其余非 200 一律按失败处理。
+    /// Gets the latest release. 404 = never released; any other non-200 is treated as failure.
     static func fetchLatestRelease() async throws -> Release {
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 10
@@ -63,8 +63,8 @@ enum UpdateChecker {
         return Release(version: normalize(payload.tagName), pageURL: pageURL)
     }
 
-    /// candidate 是否比 current 新。逐段数值比较，缺位按 0，非数字段按 0 ——
-    /// 解析不了宁可判「不新」，也不要为一个畸形 tag 弹更新提示。
+    /// Whether candidate is newer than current. Compared segment by segment numerically, with missing segments as 0 and non-numeric segments as 0 --
+    /// if it cannot be parsed, better to judge "not newer" than to pop up an update hint for a malformed tag.
     static func isNewer(_ candidate: String, than current: String) -> Bool {
         let lhs = components(of: candidate)
         let rhs = components(of: current)
@@ -76,7 +76,7 @@ enum UpdateChecker {
         return false
     }
 
-    // MARK: - 实现
+    // MARK: - Implementation
 
     /// `owner/repo` whose GitHub releases carry the DMGs. Read from the
     /// `TetherKitNextUpdateRepository` Info.plist key so a fork publishes to (and
@@ -107,7 +107,7 @@ enum UpdateChecker {
         }
     }
 
-    /// 去掉 tag 常见的 v/V 前缀。
+    /// Strips the common v/V prefix of a tag.
     private static func normalize(_ tag: String) -> String {
         var tag = tag
         if tag.hasPrefix("v") || tag.hasPrefix("V") { tag.removeFirst() }

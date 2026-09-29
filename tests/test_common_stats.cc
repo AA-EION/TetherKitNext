@@ -1,4 +1,4 @@
-// stats.h 与 time.h 的单元测试。
+// Unit tests of stats.h and time.h.
 #include <chrono>
 #include <thread>
 
@@ -66,13 +66,13 @@ TEST_CASE("速率采样把字节数换算成 Mbps") {
   PathCounters counters;
   RateSampler sampler;
 
-  // 造 1 秒内 12.5 MB 的流量 = 100 Mbps。
+  // Build 12.5 MB of traffic in 1 second = 100 Mbps.
   counters.rx.AddBatch(8000, 12'500'000);
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   const auto report = sampler.Sample(counters);
 
   CHECK(report.seconds > 0.0);
-  // 只跑了约 20ms，所以速率会被放大约 50 倍；这里只校验换算关系是否自洽。
+  // It ran only about 20 ms, so the rate is amplified by about 50x; here we only verify whether the conversion relation is self-consistent.
   const double expected_mbps = 12'500'000.0 * 8.0 / 1'000'000.0 / report.seconds;
   CHECK(report.rx_mbps == doctest::Approx(expected_mbps).epsilon(0.01));
   CHECK(report.rx_avg_batch == doctest::Approx(8000.0));
@@ -90,7 +90,7 @@ TEST_CASE("秒表读数单调不减") {
 
 TEST_CASE("周期定时器的默认构造仍然是「构造即开始计时」") {
   PeriodicTimer timer(50 * kNanosPerMilli);
-  // 刚构造完不该到期。
+  // Should not be expired right after construction.
   CHECK_FALSE(timer.Expired());
   CHECK(timer.RemainingNanos(MonotonicNanos()) > 0);
   CHECK(timer.Period() == 50 * kNanosPerMilli);
@@ -98,18 +98,18 @@ TEST_CASE("周期定时器的默认构造仍然是「构造即开始计时」") 
 
 TEST_CASE("周期定时器按累加期限推进，不随调度延迟漂移") {
   const tetherkitnext::Nanos now = MonotonicNanos();
-  // 必须把 `now` 作为计时起点显式传进去。若让构造函数自己读时钟，它读到的时刻
-  // 会比这里的 `now` 略晚，于是「now + period」反而还没到期，断言就会随机失败。
+  // `now` must be passed in explicitly as the timing origin. If the constructor reads the clock itself, the moment it reads
+  // would be slightly later than `now` here, so "now + period" would not yet be expired, and the assertion would fail at random.
   PeriodicTimer timer(10 * kNanosPerMilli, now);
 
   CHECK_FALSE(timer.Expired(now));
   CHECK(timer.RemainingNanos(now) > 0);
 
-  // 恰好到期。
+  // Expires exactly.
   CHECK(timer.Expired(now + 10 * kNanosPerMilli));
-  // 刚触发过，立刻再问应为未到期。
+  // Just triggered; asking again immediately should give not expired.
   CHECK_FALSE(timer.Expired(now + 10 * kNanosPerMilli));
-  // 再过一个周期又到期。
+  // After another period it expires again.
   CHECK(timer.Expired(now + 20 * kNanosPerMilli));
 }
 
@@ -117,7 +117,7 @@ TEST_CASE("周期定时器落后超过一个周期时不补发一串触发") {
   const tetherkitnext::Nanos now = MonotonicNanos();
   PeriodicTimer timer(10 * kNanosPerMilli, now);
 
-  // 线程被挂起 1 秒后才醒来：应该只触发一次，然后对齐到当前时刻之后。
+  // The thread wakes only after being suspended for 1 second: it should trigger only once, then align to after the current moment.
   const tetherkitnext::Nanos late = now + 1000 * kNanosPerMilli;
   CHECK(timer.Expired(late));
   CHECK_FALSE(timer.Expired(late));

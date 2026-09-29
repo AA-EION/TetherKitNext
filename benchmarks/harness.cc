@@ -14,7 +14,7 @@
 namespace tetherkitnext::bench {
 namespace {
 
-/// 读取字符串型 sysctl；失败返回 "unknown"。
+/// Reads a string-type sysctl; returns "unknown" on failure.
 std::string SysctlString(const char* name) {
   std::size_t size = 0;
   if (::sysctlbyname(name, nullptr, &size, nullptr, 0) != 0 || size == 0) {
@@ -24,14 +24,14 @@ std::string SysctlString(const char* name) {
   if (::sysctlbyname(name, value.data(), &size, nullptr, 0) != 0) {
     return "unknown";
   }
-  // sysctl 返回的长度含终止符，去掉它。
+  // The length sysctl returns includes the terminator; strip it.
   while (!value.empty() && value.back() == '\0') {
     value.pop_back();
   }
   return value;
 }
 
-/// 读取整数型 sysctl；失败返回 -1。
+/// Reads an integer-type sysctl; returns -1 on failure.
 std::int64_t SysctlInt(const char* name) {
   std::int64_t value = 0;
   std::size_t size = sizeof(value);
@@ -41,7 +41,7 @@ std::int64_t SysctlInt(const char* name) {
   return value;
 }
 
-/// 按数量级选择合适的单位，避免表格里出现一长串零。
+/// Chooses a suitable unit by order of magnitude, avoiding a long string of zeros in the table.
 std::string FormatOpsPerSecond(double ops) {
   std::array<char, 32> buffer{};
   if (ops >= 1e9) {
@@ -65,7 +65,7 @@ std::string FormatThroughput(const Result& result) {
   return buffer.data();
 }
 
-/// 离散度超过 30% 时加感叹号，提示读者这次测量受了环境干扰。
+/// Adds an exclamation mark when dispersion exceeds 30%, hinting to the reader that this measurement was disturbed by the environment.
 std::string FormatSpread(const Result& result) {
   std::array<char, 32> buffer{};
   const double spread = result.Spread();
@@ -101,7 +101,7 @@ void PrintMarkdownReport(const std::vector<Result>& results, std::string_view ti
 
   std::string current_group;
   for (const Result& result : results) {
-    // 同组内只在第一行显示组名，表格更易读。
+    // Within the same group, show the group name only in the first row, which makes the table easier to read.
     const std::string group_cell = result.group == current_group ? "" : result.group;
     if (!group_cell.empty()) {
       current_group = result.group;

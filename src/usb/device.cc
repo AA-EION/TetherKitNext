@@ -13,38 +13,38 @@
 namespace tetherkitnext::usb {
 namespace {
 
-/// CDC 功能描述符类型（bDescriptorType = CS_INTERFACE）。
+/// CDC functional descriptor type (bDescriptorType = CS_INTERFACE).
 constexpr std::uint8_t kCsInterfaceDescriptorType = 0x24;
-/// CDC Union 功能描述符子类型。
+/// CDC Union functional descriptor subtype.
 constexpr std::uint8_t kUnionFunctionalSubtype = 0x06;
-/// CDC ACM 功能描述符子类型（用于识别真 cdc-acm 调制解调器）。
+/// CDC ACM functional descriptor subtype (used to recognize real cdc-acm modems).
 constexpr std::uint8_t kAcmFunctionalSubtype = 0x02;
 
-/// Android quirk 的硬编码接口号（与 Linux 的 android_rndis_quirk 一致）。
+/// The hard-coded interface numbers of the Android quirk (consistent with Linux's android_rndis_quirk).
 constexpr std::uint8_t kAndroidQuirkControlInterface = 0;
 constexpr std::uint8_t kAndroidQuirkDataInterface = 1;
 
-/// 取接口的 class/subclass/protocol 三元组。
+/// Gets the class/subclass/protocol triple of an interface.
 [[nodiscard]] rndis::InterfaceSignature SignatureOf(
     const ::libusb_interface_descriptor& descriptor) {
   return rndis::InterfaceSignature{descriptor.bInterfaceClass, descriptor.bInterfaceSubClass,
                                    descriptor.bInterfaceProtocol};
 }
 
-/// 在接口的 extra 描述符里找 CDC 功能描述符。
+/// Finds a CDC functional descriptor in the interface's extra descriptors.
 ///
-/// 返回 nullptr 表示没找到。`out_length` 输出该描述符的总长度。
+/// Returning nullptr means not found. `out_length` outputs the total length of that descriptor.
 [[nodiscard]] const std::uint8_t* FindCdcFunctional(const ::libusb_interface_descriptor& descriptor,
                                                     std::uint8_t subtype,
                                                     std::uint8_t& out_length) {
   const std::uint8_t* cursor = descriptor.extra;
   int remaining = descriptor.extra_length;
 
-  // CDC 功能描述符链的通用格式：[bLength][bDescriptorType][bDescriptorSubtype][...]
+  // The generic format of a CDC functional descriptor chain: [bLength][bDescriptorType][bDescriptorSubtype][...]
   while (remaining >= 3) {
     const std::uint8_t length = cursor[0];
     if (length < 3 || length > remaining) {
-      break;  // 描述符链损坏，停止解析
+      break;  // the descriptor chain is corrupted; stop parsing
     }
     if (cursor[1] == kCsInterfaceDescriptorType && cursor[2] == subtype) {
       out_length = length;
@@ -57,11 +57,11 @@ constexpr std::uint8_t kAndroidQuirkDataInterface = 1;
   return nullptr;
 }
 
-/// 判断是不是「伪 RNDIS」—— 真正的 CDC ACM 调制解调器。
+/// Judges whether it is a "fake RNDIS" -- a real CDC ACM modem.
 ///
-/// 判据：class == 0x02 且带**非零** bmCapabilities 的 ACM 功能描述符。
-/// **这条检查只能对 class == 0x02 生效** —— 无线类（0xE0）的 RNDIS function
-/// 会把 bmCapabilities 字段挪作自用，对它套这条规则会把真 RNDIS 误判掉。
+/// Criterion: class == 0x02 with an ACM functional descriptor carrying a **non-zero** bmCapabilities.
+/// **This check can only apply to class == 0x02** -- the RNDIS function of the wireless class (0xE0)
+/// repurposes the bmCapabilities field for its own use, and applying this rule to it would misjudge real RNDIS.
 [[nodiscard]] bool LooksLikeRealAcmModem(const ::libusb_interface_descriptor& descriptor) {
   if (descriptor.bInterfaceClass != 0x02) {
     return false;
@@ -71,13 +71,13 @@ constexpr std::uint8_t kAndroidQuirkDataInterface = 1;
   if (acm == nullptr || length < 4) {
     return false;
   }
-  // 布局：[bLength][CS_INTERFACE][ACM subtype][bmCapabilities]
+  // Layout: [bLength][CS_INTERFACE][ACM subtype][bmCapabilities]
   return acm[3] != 0;
 }
 
-/// 从 CDC Union 功能描述符里取第一个 slave 接口号。
+/// Gets the first slave interface number from a CDC Union functional descriptor.
 ///
-/// 布局：[bLength][CS_INTERFACE][UNION subtype][bMasterInterface][bSlaveInterface0]...
+/// Layout: [bLength][CS_INTERFACE][UNION subtype][bMasterInterface][bSlaveInterface0]...
 [[nodiscard]] bool TryReadUnionSlaveInterface(const ::libusb_interface_descriptor& descriptor,
                                              std::uint8_t& out_slave) {
   std::uint8_t length = 0;
@@ -89,7 +89,7 @@ constexpr std::uint8_t kAndroidQuirkDataInterface = 1;
   return true;
 }
 
-/// 某个配置里是否存在指定接口号，且它的签名是 RNDIS 数据接口。
+/// Whether a given interface number exists in a configuration and its signature is an RNDIS data interface.
 [[nodiscard]] bool HasDataInterface(const ::libusb_config_descriptor& config,
                                     std::uint8_t interface_number) {
   for (std::uint8_t i = 0; i < config.bNumInterfaces; ++i) {
@@ -115,7 +115,7 @@ std::string DeviceCandidate::Describe() const {
 }
 
 // =============================================================================
-// 设备发现
+// Device discovery
 // =============================================================================
 
 Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
@@ -126,7 +126,7 @@ Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
     return std::unexpected(
         Error::FromLibUsb(static_cast<int>(count), Tr(Msg::kUsbGetDeviceListFailed)));
   }
-  // RAII 释放设备列表（unref_devices = 1）。
+  // RAII releases the device list (unref_devices = 1).
   const std::unique_ptr<::libusb_device*, void (*)(::libusb_device**)> list_guard(
       raw_list, [](::libusb_device** list) { ::libusb_free_device_list(list, 1); });
 
@@ -152,7 +152,7 @@ Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
       continue;
     }
 
-    // 逐个配置找 RNDIS 通信接口。多数设备只有一个配置，但也有例外。
+    // Look for the RNDIS communications interface configuration by configuration. Most devices have only one configuration, but there are exceptions.
     for (std::uint8_t config_index = 0; config_index < device_descriptor.bNumConfigurations;
          ++config_index) {
       ::libusb_config_descriptor* config = nullptr;
@@ -185,7 +185,7 @@ Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
           candidate.control_interface = descriptor.bInterfaceNumber;
           candidate.signature = signature;
 
-          // 找配对的数据接口：优先 CDC Union 描述符。
+          // Find the paired data interface: prefer the CDC Union descriptor.
           std::uint8_t slave = 0;
           bool resolved = false;
           if (TryReadUnionSlaveInterface(descriptor, slave) &&
@@ -194,10 +194,10 @@ Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
             resolved = true;
           }
 
-          // Android quirk：许多 Android 设备的 CDC Union 指向不存在的接口号，
-          // 或者干脆没有 CDC 功能描述符。Linux 的 android_rndis_quirk 在这种
-          // 情况下硬编码「接口 0 = control、接口 1 = data」，并要求被 probe 的
-          // 通信接口确实是 0。这里照做。
+          // Android quirk: on many Android devices the CDC Union points to a nonexistent interface number,
+          // or there is no CDC functional descriptor at all. In this case Linux's android_rndis_quirk
+          // hard-codes "interface 0 = control, interface 1 = data", and requires that the probed
+          // communications interface really is 0. We do the same here.
           if (!resolved && candidate.control_interface == kAndroidQuirkControlInterface &&
               HasDataInterface(*config, kAndroidQuirkDataInterface)) {
             candidate.data_interface = kAndroidQuirkDataInterface;
@@ -211,16 +211,16 @@ Result<std::vector<DeviceCandidate>> FindRndisDevices(const Context& context,
             continue;
           }
 
-          // DEBUG 而不是 INFO：枚举是被周期性调用的（GUI 每 2 秒扫一次），
-          // 这句话在 INFO 级别会把日志刷成一整列重复。「发现了什么」由调用方
-          // 决定怎么呈现 —— CLI 自己打印列表，GUI 显示在设备卡里。
+          // DEBUG rather than INFO: enumeration is called periodically (the GUI scans every 2 seconds),
+          // and at INFO level this line would flood the log with a whole column of repeats. "What was found" is
+          // left to the caller to decide how to present -- the CLI prints the list itself, and the GUI shows it in the device card.
           TETHERKITNEXT_DEBUG_TR(
               Msg::kUsbDeviceFound, candidate.Describe(), candidate.control_interface,
               candidate.data_interface, signature.interface_class, signature.interface_subclass,
               signature.interface_protocol,
               candidate.used_android_quirk ? Text(Msg::kUsbViaAndroidQuirk) : std::string_view{});
           candidates.push_back(candidate);
-          // 一个设备只取第一个匹配的通信接口。
+          // Only the first matching communications interface is taken for a device.
           goto next_device;
         }
       }
@@ -246,7 +246,7 @@ Result<std::unique_ptr<Device>> Device::Open(const Context& context,
   const std::unique_ptr<::libusb_device*, void (*)(::libusb_device**)> list_guard(
       raw_list, [](::libusb_device** list) { ::libusb_free_device_list(list, 1); });
 
-  // 按总线 + 地址定位设备（比 VID:PID 精确，能区分同型号的多个设备）。
+  // Locate the device by bus + address (more precise than VID:PID, and can distinguish multiple devices of the same model).
   ::libusb_device* target = nullptr;
   for (ssize_t index = 0; index < count; ++index) {
     if (::libusb_get_bus_number(raw_list[index]) == candidate.bus_number &&
@@ -271,10 +271,10 @@ Result<std::unique_ptr<Device>> Device::Open(const Context& context,
         Error::FromLibUsb(open_rc, Tr(Msg::kUsbOpenFailed, device->description_)));
   }
 
-  // **刻意不调用 libusb_set_auto_detach_kernel_driver** —— 见头文件说明：
-  // 在 macOS 上它会触发破坏性的整设备重新枚举，而 RNDIS 接口本来就没人占。
+  // **Deliberately not calling libusb_set_auto_detach_kernel_driver** -- see the header explanation:
+  // on macOS it triggers a destructive re-enumeration of the whole device, while nobody occupies the RNDIS interface to begin with.
 
-  // 声明两个接口。通信接口在前，因为控制通道要用它。
+  // Claim the two interfaces. The communications interface comes first, because the control channel uses it.
   const auto claim = [&device](std::uint8_t interface_number, std::string_view role,
                                bool& claimed_flag) -> Status {
     const int rc = ::libusb_claim_interface(device->handle_, interface_number);
@@ -299,7 +299,7 @@ Result<std::unique_ptr<Device>> Device::Open(const Context& context,
       claim(candidate.data_interface, Text(Msg::kUsbDataInterface),
             device->data_interface_claimed_));
 
-  // 解析端点。
+  // Parse the endpoints.
   ::libusb_config_descriptor* config = nullptr;
   const int config_rc = ::libusb_get_active_config_descriptor(target, &config);
   if (config_rc != LIBUSB_SUCCESS) {
@@ -324,12 +324,12 @@ Device::~Device() {
   if (handle_ == nullptr) {
     return;
   }
-  // 顺序：释放接口 → 关闭句柄。
+  // Order: release interfaces -> close handle.
   //
-  // ⚠️ 前置条件：所有异步 transfer 必须已经全部回收。libusb_close **不会**帮你
-  // 回收在飞 transfer（只是把 dev_handle 置空并打日志），之后 IOKit 中止仍会让
-  // 回调在 libusb 内部线程上跑 —— 那时若 transfer 已被 free 就是 UAF。
-  // 保证这一点是 TransferPool 的责任，见它的 Shutdown()。
+  // WARNING: Precondition: all asynchronous transfers must already be fully reclaimed. libusb_close **will not** reclaim
+  // in-flight transfers for you (it just nulls dev_handle and prints a log), and afterwards IOKit aborts will still make
+  // callbacks run on libusb's internal thread -- if the transfer has been freed by then it is a UAF.
+  // Guaranteeing this is TransferPool's responsibility; see its Shutdown().
   if (data_interface_claimed_) {
     ::libusb_release_interface(handle_, candidate_.data_interface);
   }
@@ -386,7 +386,7 @@ Status Device::ResolveEndpoints(const ::libusb_config_descriptor& config) {
   if (bulk_max_packet_size_ == 0) {
     return std::unexpected(Error::Generic(Tr(Msg::kUsbBulkMaxPacketSizeZero)));
   }
-  // 中断端点缺失是合法的：Linux 的 host 驱动干脆完全忽略它，改为轮询控制端点。
+  // A missing interrupt endpoint is legal: Linux's host driver ignores it entirely and polls the control endpoint instead.
   return Ok();
 }
 
@@ -423,7 +423,7 @@ Status Device::ClearHalt(std::uint8_t endpoint) {
 UsbControlChannel::UsbControlChannel(Device& device, std::uint32_t timeout_millis)
     : device_(&device), timeout_millis_(timeout_millis) {
   response_buffer_.resize(rndis::kControlBufferBytes);
-  // 缓冲取端点实际的 wMaxPacketSize（RNDIS 通知是 8 字节，但别假死这个值）。
+  // The buffer takes the endpoint's actual wMaxPacketSize (RNDIS notifications are 8 bytes, but do not hard-code this value).
   notification_buffer_.resize(
       std::max<std::size_t>(rndis::kNotificationBytes, device.InterruptMaxPacketSize()));
 }
@@ -437,10 +437,10 @@ UsbControlChannel::~UsbControlChannel() {
 }
 
 // =============================================================================
-// 异步中断通知监听
+// Asynchronous interrupt notification listening
 //
-// 详见 device.h 里那段说明：同步中断传输在 macOS 上会永久阻塞，
-// 因为 darwin 用的是 ReadPipeAsync（无超时变体），timeout 参数不被遵守。
+// See the explanation in device.h: a synchronous interrupt transfer blocks forever on macOS,
+// because darwin uses ReadPipeAsync (the no-timeout variant), and the timeout parameter is not honored.
 // =============================================================================
 
 Status UsbControlChannel::StartNotificationListener() {
@@ -457,8 +457,8 @@ Status UsbControlChannel::StartNotificationListener() {
     return std::unexpected(Error::Generic(Tr(Msg::kUsbAllocInterruptTransferFailed)));
   }
 
-  // timeout 传 0：中断端点上本来就是「有事才来」，无限等待正是我们要的语义。
-  // 这里不会卡住任何线程 —— 完成回调跑在 libusb 事件线程上。
+  // Pass timeout 0: the interrupt endpoint is "only comes when something happens" anyway, and waiting forever is exactly the semantics we want.
+  // It will not hang any thread here -- the completion callback runs on the libusb event thread.
   ::libusb_fill_interrupt_transfer(
       notification_transfer_, device_->Handle(), device_->InterruptInEndpoint(),
       reinterpret_cast<unsigned char*>(notification_buffer_.data()),
@@ -488,8 +488,8 @@ void UsbControlChannel::StopNotificationListener() {
     }
   }
 
-  // 等回调回来。⚠️ 与数据通道同理：**不能从 libusb 事件线程调用本函数**，
-  // 否则就是自己等自己。超时后不释放 transfer（宁可泄漏也不 use-after-free）。
+  // Wait for the callback to come back. WARNING: same as for the data channel: **this function must not be called from the libusb event thread**,
+  // otherwise it is waiting on itself. After a timeout the transfer is not freed (better to leak than to use-after-free).
   constexpr int kMaxWaitMillis = 2000;
   for (int waited = 0;
        notification_in_flight_.load(std::memory_order_acquire) && waited < kMaxWaitMillis;
@@ -498,7 +498,7 @@ void UsbControlChannel::StopNotificationListener() {
   }
   if (notification_in_flight_.load(std::memory_order_acquire)) {
     TETHERKITNEXT_ERROR_TR(Msg::kUsbInterruptReclaimTimeout);
-    notification_transfer_ = nullptr;  // 故意泄漏
+    notification_transfer_ = nullptr;  // deliberate leak
   }
 }
 
@@ -507,7 +507,7 @@ void UsbControlChannel::NotificationCallbackTrampoline(::libusb_transfer* transf
 }
 
 void UsbControlChannel::OnNotificationComplete() noexcept {
-  // 本函数在 libusb 事件线程上执行，只做极轻的工作。
+  // This function runs on the libusb event thread and does only very light work.
   const ::libusb_transfer* transfer = notification_transfer_;
   bool resubmit = true;
 
@@ -530,8 +530,8 @@ void UsbControlChannel::OnNotificationComplete() noexcept {
       break;
 
     case LIBUSB_TRANSFER_STALL:
-      // 中断端点 STALL：清掉后继续。清不掉就放弃监听，退化为轮询控制端点
-      // （Linux 的 host 驱动本来就完全不用中断端点，所以这不致命）。
+      // Interrupt endpoint STALL: clear it and continue. If it cannot be cleared, give up listening and degrade to polling the control endpoint
+      // (Linux's host driver does not use the interrupt endpoint at all, so this is not fatal).
       if (const auto status = device_->ClearHalt(device_->InterruptInEndpoint()); !status) {
         TETHERKITNEXT_WARN_TR(Msg::kUsbInterruptHaltClearFailed, status.error().ToString());
         resubmit = false;
@@ -548,7 +548,7 @@ void UsbControlChannel::OnNotificationComplete() noexcept {
     resubmit = false;
   }
   if (resubmit && ::libusb_submit_transfer(notification_transfer_) == LIBUSB_SUCCESS) {
-    return;  // 仍在飞
+    return;  // still in flight
   }
   notification_in_flight_.store(false, std::memory_order_release);
 }
@@ -559,12 +559,12 @@ Status UsbControlChannel::SendMessage(std::span<const std::byte> message) {
         Error::Generic(Tr(Msg::kUsbControlMessageLengthInvalid, message.size())));
   }
 
-  // SEND_ENCAPSULATED_COMMAND：bmRequestType=0x21（OUT|Class|Interface）,
-  // bRequest=0x00, wValue=0, wIndex=通信类接口号, wLength=消息长度。
+  // SEND_ENCAPSULATED_COMMAND: bmRequestType=0x21 (OUT|Class|Interface),
+  // bRequest=0x00, wValue=0, wIndex=communications-class interface number, wLength=message length.
   const int transferred = ::libusb_control_transfer(
       device_->Handle(), rndis::kControlOutRequestType, rndis::kRequestSendEncapsulatedCommand,
       /*wValue=*/0, device_->Candidate().control_interface,
-      // libusb 的 C 接口要 unsigned char*，此处不修改内容。
+      // libusb's C interface wants unsigned char*; the content is not modified here.
       const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(message.data())),
       static_cast<std::uint16_t>(message.size()), timeout_millis_);
 
@@ -579,11 +579,11 @@ Status UsbControlChannel::SendMessage(std::span<const std::byte> message) {
 }
 
 Result<std::span<const std::byte>> UsbControlChannel::ReceiveMessage() {
-  // 每次读之前清零：设备可能只写一部分，残留的旧数据会让解析器读到幻影字段。
+  // Zero before every read: the device may write only part of it, and leftover old data would make the parser read phantom fields.
   std::memset(response_buffer_.data(), 0, response_buffer_.size());
 
-  // GET_ENCAPSULATED_RESPONSE：bmRequestType=0xA1（IN|Class|Interface）,
-  // bRequest=0x01, wValue=0, wIndex=通信类接口号。
+  // GET_ENCAPSULATED_RESPONSE: bmRequestType=0xA1 (IN|Class|Interface),
+  // bRequest=0x01, wValue=0, wIndex=communications-class interface number.
   const int transferred = ::libusb_control_transfer(
       device_->Handle(), rndis::kControlInRequestType, rndis::kRequestGetEncapsulatedResponse,
       /*wValue=*/0, device_->Candidate().control_interface,
@@ -595,9 +595,9 @@ Result<std::span<const std::byte>> UsbControlChannel::ReceiveMessage() {
         Error::FromLibUsb(transferred, Tr(Msg::kUsbGetEncapsulatedFailed)));
   }
 
-  // 规范：设备尚无有效响应时返回 **1 字节 0x00**，而不是 STALL。
-  // 因此不足一个 RNDIS 消息头（8 字节）的结果一律当作「还没准备好」，
-  // 返回空视图让调用方重试 —— 这**不是**错误。
+  // Spec: when the device has no valid response yet it returns **1 byte of 0x00**, rather than a STALL.
+  // So any result shorter than an RNDIS message header (8 bytes) is always treated as "not ready yet",
+  // and an empty view is returned for the caller to retry -- this is **not** an error.
   if (static_cast<std::uint32_t>(transferred) < rndis::kMessageHeaderBytes) {
     return std::span<const std::byte>{};
   }
@@ -610,8 +610,8 @@ rndis::NotificationResult UsbControlChannel::WaitForNotification(std::uint32_t t
     return rndis::NotificationResult::kNotSupported;
   }
 
-  // 只查（并消费）由事件线程置位的原子标志。**绝不进入 libusb 的等待路径** ——
-  // 那正是控制线程卡死的成因（详见 device.h 的说明）。
+  // Only check (and consume) the atomic flag set by the event thread. **Never enter libusb's wait path** --
+  // that is exactly the cause of the control thread hanging (see the explanation in device.h).
   if (notification_pending_.exchange(false, std::memory_order_acq_rel)) {
     return rndis::NotificationResult::kResponseAvailable;
   }
@@ -619,8 +619,8 @@ rndis::NotificationResult UsbControlChannel::WaitForNotification(std::uint32_t t
     return rndis::NotificationResult::kTimeout;
   }
 
-  // 需要等一会儿时，用自己的小步睡眠轮询这个标志，而不是让 libusb 去等。
-  // 这样最坏情况只是多等 1 ms，绝不会永久阻塞。
+  // When it needs to wait a while, poll this flag with our own small-step sleeps rather than letting libusb do the waiting.
+  // This way the worst case is only waiting an extra 1 ms, and it never blocks forever.
   for (std::uint32_t waited = 0; waited < timeout_millis; ++waited) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     if (notification_pending_.exchange(false, std::memory_order_acq_rel)) {

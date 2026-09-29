@@ -1,34 +1,34 @@
-// 面向用户的文案与运行期语言切换。
+// User-facing messages and runtime language switching.
 //
-// ★ 为什么不用 gettext ★
+// * Why not gettext *
 //
-//   gettext 要引入 libintl、要在构建期跑 msgfmt 生成 .mo、还要在运行期按路径
-//   查目录。本项目只需要两种语言、几百条固定文案，且要能同时服务命令行、
-//   共享库与 GUI（GUI 通过 C ABI 切换语言）。用一张编译进二进制的表最省事，
-//   也不会出现「装到别的机器上找不到 .mo 于是全变英文」这种运行期故障。
+//   gettext needs libintl, needs msgfmt to generate .mo files at build time, and needs a runtime lookup of
+//   directories by path. This project needs only two languages and a few hundred fixed messages, and must serve the command line,
+//   the shared library and the GUI at the same time (the GUI switches language through the C ABI). A table compiled into the binary is the simplest,
+//   and avoids runtime failures such as "installed on another machine, .mo not found, so everything turns English".
 //
-// ★ 文案表怎么组织 ★
+// * How the message table is organized *
 //
-//   全部文案集中在 messages.def 里，一条一行：
+//   All messages are centralized in messages.def, one per line:
 //
 //     TETHERKITNEXT_MESSAGE(kCliUnknownOption, "未知选项 \"{}\"", "unknown option \"{}\"")
 //
-//   这个文件被 X-macro 展开三次，分别生成 `Msg` 枚举、中文表与英文表。三者
-//   由同一份源头生成，**结构上不可能出现某种语言漏了一条**。剩下唯一会出错的
-//   地方是两种语言的占位符对不上，那由 tests/test_common_i18n.cc 逐条核对。
+//   This file is expanded three times by the X-macro, generating the `Msg` enum, the Chinese table and the English table. All three
+//   are generated from the same source, so it is **structurally impossible for one language to miss an entry**. The only remaining
+//   place where things can go wrong is placeholders that do not match between the two languages, which tests/test_common_i18n.cc checks entry by entry.
 //
-// ★ 怎么用 ★
+// * How to use *
 //
-//   * 普通文案：`Tr(Msg::kCliUnknownOption, argument)` —— 参数与 std::format
-//     完全一致，返回 std::string。
-//   * 日志：用 TETHERKITNEXT_INFO_TR 等宏（见 logging.h），它们保留了「级别没开就
-//     不求值」的惰性。
-//   * 错误：`Error::Generic(Tr(Msg::kFoo, x))`。
+//   * Plain messages: `Tr(Msg::kCliUnknownOption, argument)` -- the arguments are exactly the same as std::format,
+//     and it returns std::string.
+//   * Logging: use macros like TETHERKITNEXT_INFO_TR (see logging.h), which keep the laziness of "do not evaluate
+//     if the level is off".
+//   * Errors: `Error::Generic(Tr(Msg::kFoo, x))`.
 //
-// ★ 热路径禁用 ★
+// * Forbidden on the hot path *
 //
-//   Tr() 会做一次 vformat 并返回 std::string，必然分配堆内存。和 error.h 一样，
-//   **数据热路径绝不允许调用**。
+//   Tr() does a vformat and returns std::string, which necessarily allocates heap memory. Like error.h,
+//   **it must never be called on the data hot path**.
 #pragma once
 
 #include <cstdint>
@@ -38,81 +38,81 @@
 
 namespace tetherkitnext {
 
-/// 目前支持的界面语言。
+/// Currently supported UI languages.
 ///
-/// 刻意不做成开放式的语言标签字符串：多一种语言就要多一列文案，编译期能查出
-/// 「漏了一条」比运行期回落到某个默认语言更有价值。
+/// Deliberately not an open-ended language tag string: each additional language needs an additional column of messages, and catching
+/// "a missing entry" at compile time is worth more than falling back to some default language at runtime.
 enum class Language : std::uint8_t {
   kEnglish = 0,
   kChinese = 1,
 };
 
-/// 文案标识。取值由 messages.def 生成。
+/// Message identifier. Values are generated from messages.def.
 enum class Msg : std::uint16_t {
 #define TETHERKITNEXT_MESSAGE(id, zh, en) id,
 #include "tetherkitnext/common/messages.def"  // NOLINT(bugprone-suspicious-include)
 #undef TETHERKITNEXT_MESSAGE
-  /// 哨兵：文案条数。仅供表长断言与测试遍历使用，不是一条真实文案。
+  /// Sentinel: the number of messages. Only for table-length assertions and test iteration; not a real message.
   kMessageCount,
 };
 
-/// 设置当前语言。线程安全，任何时候都可以调用。
+/// Sets the current language. Thread-safe; may be called at any time.
 ///
-/// 进程级的单一状态：日志与错误串会从多个线程产生，做成线程局部只会让同一次
-/// 会话的输出出现两种语言。
+/// Process-wide single state: log and error strings are produced from multiple threads, and making it thread-local would only make the output of a single
+/// session appear in two languages.
 void SetLanguage(Language language) noexcept;
 
 [[nodiscard]] Language GetLanguage() noexcept;
 
-/// 按环境变量推断语言，依次看 `TETHERKITNEXT_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG`。
+/// Infers the language from environment variables, checking in order `TETHERKITNEXT_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`.
 ///
-/// 取第一个非空的值，以 `zh` 开头（大小写不敏感）时判定为中文，其余一律英文；
-/// 四个都没设时也是英文 —— 这与 POSIX 的 "C" 缺省区域一致。
+/// Takes the first non-empty value; if it starts with `zh` (case-insensitive) it is judged Chinese, and everything else is English;
+/// if none of the four is set it is also English -- consistent with POSIX's default "C" locale.
 ///
-/// ⚠️ `sudo` 是否把 `LANG` 透传给命令取决于 sudoers 的 `env_keep`，因此命令行
-/// 还提供 `--lang` 显式指定，不要指望环境变量在 sudo 下一定还在。
+/// WARNING: Whether `sudo` passes `LANG` through to the command depends on sudoers' `env_keep`, so the command line
+/// also provides an explicit `--lang`; do not count on environment variables surviving under sudo.
 [[nodiscard]] Language DetectLanguageFromEnvironment() noexcept;
 
-/// 把一个区域设置串（`"zh_CN.UTF-8"`、`"en_US"`、`"C"`……）判定成语言。
+/// Judges a locale string (`"zh_CN.UTF-8"`, `"en_US"`, `"C"`, ...) as a language.
 ///
-/// 判据只有一条：以 `zh` 开头（大小写不敏感）算中文，其余一概英文。空串同样
-/// 算英文。DetectLanguageFromEnvironment 就是拿环境变量的值来喂它 ——
-/// 拆成独立函数是为了能不碰环境变量就把这条判据测干净。
+/// There is only one criterion: starting with `zh` (case-insensitive) counts as Chinese, everything else is English. An empty string is likewise
+/// English. DetectLanguageFromEnvironment feeds the environment variable's value to it --
+/// it is split into a separate function so this criterion can be tested cleanly without touching environment variables.
 [[nodiscard]] Language LanguageFromLocaleString(std::string_view locale) noexcept;
 
-/// 解析 `--lang` 的取值。接受 `zh` / `zh-Hans` / `zh_CN` / `chinese`、
-/// `en` / `en-US` / `english`、以及 `auto`（按环境推断）。
+/// Parses the value of `--lang`. Accepts `zh` / `zh-Hans` / `zh_CN` / `chinese`,
+/// `en` / `en-US` / `english`, and `auto` (infer from the environment).
 ///
-/// @return 解析成功返回 true 并写入 `out_language`；无法识别时返回 false 且
-///         不改动 `out_language`。
+/// @return true on successful parse, writing `out_language`; false if unrecognized, leaving
+///         `out_language` unchanged.
 [[nodiscard]] bool ParseLanguage(std::string_view text, Language* out_language) noexcept;
 
-/// 语言的短标签（`"zh"` / `"en"`），用于回显与日志。
+/// Short tag of the language (`"zh"` / `"en"`), used for echoing and logs.
 [[nodiscard]] std::string_view LanguageTag(Language language) noexcept;
 
-/// 取某条文案在**当前语言**下的原文（未做参数替换）。
+/// Gets the original text of a message in the **current language** (without argument substitution).
 ///
-/// `id` 越界时返回空串而不是崩溃 —— 文案查表失败绝不该拖垮驱动。
+/// Returns an empty string instead of crashing when `id` is out of range -- a message table lookup failure must never bring down the driver.
 [[nodiscard]] std::string_view Text(Msg id) noexcept;
 
-/// 取某条文案在**指定语言**下的原文。测试用它逐语言核对占位符。
+/// Gets the original text of a message in the **specified language**. Tests use it to check placeholders language by language.
 [[nodiscard]] std::string_view TextIn(Language language, Msg id) noexcept;
 
 namespace detail {
 
-/// Tr() 的实现。做成非模板函数，避免每个调用点都实例化一份 vformat。
+/// Implementation of Tr(). Made a non-template function to avoid instantiating a copy of vformat at every call site.
 ///
-/// 内部吞掉 std::format_error：文案表里的占位符与调用点对不上时（只可能是
-/// 翻译写错了），返回未替换的原文，而不是让一次日志把进程掀翻。
+/// Swallows std::format_error internally: when the placeholders in the message table do not match the call site (which can only happen if a
+/// translation is wrong), it returns the unsubstituted original text instead of letting one log line take down the process.
 [[nodiscard]] std::string FormatMessage(Msg id, std::format_args args) noexcept;
 
 }  // namespace detail
 
-/// 按当前语言取文案并替换参数。参数语义与 `std::format` 完全一致。
+/// Fetches a message in the current language and substitutes arguments. The argument semantics are exactly the same as `std::format`.
 ///
-/// 与 `std::format` 的唯一区别是格式串来自运行期查表，因此**编译器无法**检查
-/// 占位符与参数是否匹配。这一层保障由 tests/test_common_i18n.cc 承担：它会核对
-/// 每条文案两种语言的占位符集合一致，并用真实参数试跑一遍。
+/// The only difference from `std::format` is that the format string comes from a runtime table lookup, so **the compiler cannot** check
+/// whether the placeholders match the arguments. That safeguard is provided by tests/test_common_i18n.cc: it checks that
+/// each message's placeholder set is identical in both languages, and does a trial run with real arguments.
 template <typename... Args>
 [[nodiscard]] std::string Tr(Msg id, const Args&... args) {
   return detail::FormatMessage(id, std::make_format_args(args...));

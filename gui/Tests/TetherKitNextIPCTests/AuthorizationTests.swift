@@ -3,18 +3,18 @@ import XCTest
 
 @testable import TetherKitNextIPC
 
-/// 授权凭据生命周期的回归测试。
+/// Regression tests of the authorization credential lifecycle.
 ///
-/// ★ 这里钉住的是一个真实踩过的坑 ★
-///   `AuthorizationMakeExternalForm` 产出的 32 字节**不是凭据本身**，只是指向
-///   securityd 里那份授权的一把钥匙。App 侧一旦提前把 AuthorizationRef 释放
-///   （尤其是带 `.destroyRights`），helper 还原时就会失败 —— 而失败信息只有一个
-///   `-60005`，从代码上完全看不出「是被自己提前销毁的」。
+/// * What is pinned down here is a pitfall that was really hit *
+///   The 32 bytes produced by `AuthorizationMakeExternalForm` are **not the credential itself**, only
+///   a key pointing to that authorization in securityd. Once the App side releases the AuthorizationRef early
+///   (especially with `.destroyRights`), the helper's restore fails -- and the failure information is just one
+///   `-60005`, from which it is completely impossible to tell from the code that "it was destroyed early by ourselves".
 ///
-///   这些用例**不会弹授权框**：只调 `AuthorizationCreate`（建立空的授权会话），
-///   不调 `AuthorizationCopyRights`，所以不需要任何用户交互，可以放进 CI。
+///   These cases **do not pop up an authorization dialog**: they only call `AuthorizationCreate` (creating an empty authorization session),
+///   and do not call `AuthorizationCopyRights`, so no user interaction is needed and they can go into CI.
 final class AuthorizationTests: XCTestCase {
-    /// 把 AuthorizationRef 外部化。
+    /// Externalizes an AuthorizationRef.
     private func externalForm(of authorization: AuthorizationRef) throws -> Data {
         var external = AuthorizationExternalForm()
         let status = AuthorizationMakeExternalForm(authorization, &external)
@@ -23,7 +23,7 @@ final class AuthorizationTests: XCTestCase {
         return withUnsafeBytes(of: &external) { Data($0) }
     }
 
-    /// 模拟 helper 侧的还原，返回状态码。
+    /// Simulates the restore on the helper side, returning the status code.
     private func restore(_ data: Data) -> OSStatus {
         var external = AuthorizationExternalForm()
         _ = withUnsafeMutableBytes(of: &external) { destination in
@@ -37,7 +37,7 @@ final class AuthorizationTests: XCTestCase {
         return status
     }
 
-    /// 令牌活着时，另一侧能还原出来。这是正常路径。
+    /// While the token is alive, the other side can restore it. This is the normal path.
     func testExternalFormRestorableWhileTokenAlive() throws {
         var authorization: AuthorizationRef?
         XCTAssertEqual(AuthorizationCreate(nil, nil, [], &authorization), errAuthorizationSuccess)
@@ -52,10 +52,10 @@ final class AuthorizationTests: XCTestCase {
         withExtendedLifetime(token) {}
     }
 
-    /// 令牌被释放后就还原不出来了 —— 这正是当初 -60005 的成因。
+    /// After the token is released it can no longer be restored -- this is exactly the cause of -60005 back then.
     ///
-    /// 反过来说：这条用例一旦变红，说明「提前释放也没事」，那 AuthorizationToken
-    /// 这一整层就没有存在意义了，应该先搞清楚系统行为变了什么再动它。
+    /// Conversely: once this case turns red, it means "releasing early is fine", and then the whole AuthorizationToken
+    /// layer has no reason to exist, and you should first find out what changed in system behavior before touching it.
     func testExternalFormUnusableAfterTokenReleased() throws {
         var authorization: AuthorizationRef?
         XCTAssertEqual(AuthorizationCreate(nil, nil, [], &authorization), errAuthorizationSuccess)
@@ -66,7 +66,7 @@ final class AuthorizationTests: XCTestCase {
             let token = AuthorizationToken(authorization: reference,
                                            externalForm: try externalForm(of: reference))
             capturedForm = token.externalForm
-        }  // token 在这里析构，连同权利一起销毁
+        }  // token is destroyed here, together with the rights
 
         XCTAssertEqual(restore(capturedForm), errAuthorizationDenied,
                        "令牌释放后外部形式必须失效；当初就是它导致了 -60005")

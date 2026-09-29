@@ -1,6 +1,6 @@
-// SpscRing / SpscCursor 的单元测试。
+// Unit tests of SpscRing / SpscCursor.
 //
-// 多线程用例在 ThreadSanitizer 构建下才有完整意义：
+// The multi-threaded cases are only fully meaningful under a ThreadSanitizer build:
 //   cmake -B build-tsan -DTETHERKITNEXT_ENABLE_TSAN=ON && ctest --test-dir build-tsan -R spsc
 #include <atomic>
 #include <cstdint>
@@ -16,7 +16,7 @@ using tetherkitnext::SpscRing;
 
 namespace {
 
-/// 用于验证「元素内容确实完整传递」而非只传了索引。
+/// Used to verify that "the element content is really transferred in full" rather than just the index.
 struct Payload {
   std::uint64_t sequence;
   std::uint32_t checksum;
@@ -41,12 +41,12 @@ TEST_CASE("空队列出队失败") {
   SpscRing<std::uint32_t> ring(4);
   std::uint32_t value = 0xFFFFFFFFU;
   CHECK_FALSE(ring.TryPop(value));
-  CHECK(value == 0xFFFFFFFFU);  // 失败时不得改动输出参数
+  CHECK(value == 0xFFFFFFFFU);  // the output parameter must not be modified on failure
   CHECK(ring.SizeSnapshot() == 0);
 }
 
 TEST_CASE("满队列入队失败且容量被完整利用") {
-  // 自由递增计数器的设计目标之一：不浪费槽位。容量 4 就应能装 4 个。
+  // One of the design goals of the freely incrementing counters: no wasted slots. Capacity 4 should hold 4.
   SpscRing<std::uint32_t> ring(4);
   for (std::uint32_t i = 0; i < 4; ++i) {
     CHECK(ring.TryPush(i));
@@ -70,7 +70,7 @@ TEST_CASE("FIFO 顺序与内容完整性") {
 }
 
 TEST_CASE("反复绕环不丢数据") {
-  // 容量 4，推 1000 个元素，每推一个立刻取一个，逼迫索引反复回绕。
+  // Capacity 4, push 1000 elements, taking one immediately after each push, forcing the indices to wrap around repeatedly.
   SpscRing<std::uint64_t> ring(4);
   for (std::uint64_t i = 0; i < 1000; ++i) {
     REQUIRE(ring.TryPush(i));
@@ -81,12 +81,12 @@ TEST_CASE("反复绕环不丢数据") {
 }
 
 TEST_CASE("索引游标各字段落在不同缓存行") {
-  // 这是性能正确性断言：若 false sharing 回归，本用例会失败。
+  // This is a performance correctness assertion: if false sharing regresses, this test case fails.
   SpscRing<std::uint32_t> ring(8);
   const auto& cursor = ring.Cursor();
   const auto base = reinterpret_cast<std::uintptr_t>(&cursor);
-  // SpscCursor 的四个索引各自 alignas(kCacheLineSize)，
-  // 因此整个对象至少要占 4 条缓存行（外加只读字段那一条）。
+  // SpscCursor's four indices each have alignas(kCacheLineSize),
+  // so the whole object must occupy at least 4 cache lines (plus the one for the read-only fields).
   CHECK(sizeof(tetherkitnext::SpscCursor) >= 4 * kCacheLineSize);
   CHECK(base % kCacheLineSize == 0);
 }
@@ -114,7 +114,7 @@ TEST_CASE("单生产者单消费者并发搬运不丢不重不乱序") {
   while (expected < kTotal) {
     Payload out{};
     if (ring.TryPop(out)) {
-      // 顺序必须严格递增（FIFO），内容必须与序号自洽（无撕裂）。
+      // The order must be strictly increasing (FIFO), and the content must be self-consistent with the sequence number (no tearing).
       if (out.sequence != expected || out.checksum != Checksum(out.sequence)) {
         corrupted.store(true, std::memory_order_relaxed);
         break;

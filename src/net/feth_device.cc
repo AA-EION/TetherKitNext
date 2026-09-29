@@ -22,12 +22,12 @@
 namespace tetherkitnext::net {
 namespace {
 
-/// 宿主安装的接口登记回调。用原子而非互斥锁：读发生在每次创建/销毁，
-/// 而销毁路径在析构里、必须 noexcept，加锁会引入抛异常的可能。
+/// The interface registration callback installed by the host. An atomic rather than a mutex: reads happen on every create/destroy,
+/// and the destroy path is in a destructor and must be noexcept; taking a lock would introduce the possibility of throwing.
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<InterfaceRegistry> g_interface_registry{nullptr};
 
-/// 通知登记回调。回调未安装时是空操作。
+/// Notifies the registration callback. A no-op when no callback is installed.
 void NotifyRegistry(std::string_view name, bool created) noexcept {
   if (const InterfaceRegistry registry = g_interface_registry.load(std::memory_order_acquire);
       registry != nullptr) {
@@ -35,10 +35,10 @@ void NotifyRegistry(std::string_view name, bool created) noexcept {
   }
 }
 
-/// 一个只用来发 ioctl 的临时套接字。
+/// A temporary socket used only for issuing ioctls.
 ///
-/// 接口相关的 ioctl 需要一个 socket 作为句柄；用 AF_INET/SOCK_DGRAM 是惯例
-/// （ifconfig 也是这么做的），并不真的收发数据。
+/// Interface-related ioctls need a socket as a handle; using AF_INET/SOCK_DGRAM is the convention
+/// (ifconfig does the same), and no data is actually sent or received.
 class IoctlSocket {
  public:
   [[nodiscard]] static Result<IoctlSocket> Open() {
@@ -66,7 +66,7 @@ class IoctlSocket {
 
   [[nodiscard]] int Fd() const noexcept { return fd_; }
 
-  /// 发一次 ioctl，失败时把 errno 与调用名包进 Error。
+  /// Issues one ioctl; on failure wraps errno and the call name into an Error.
   [[nodiscard]] Status Call(unsigned long request, void* argument, std::string_view what) const {
     if (::ioctl(fd_, request, argument) < 0) {
       return std::unexpected(Error::FromErrno(0, std::string{what}));
@@ -87,7 +87,7 @@ class IoctlSocket {
   int fd_ = -1;
 };
 
-/// 填一个只带接口名的 ifreq。
+/// Fills an ifreq carrying only the interface name.
 [[nodiscard]] Result<::ifreq> MakeIfreq(std::string_view name) {
   if (name.size() >= kInterfaceNameCapacity) {
     return std::unexpected(Error::Generic(
@@ -98,7 +98,7 @@ class IoctlSocket {
   return request;
 }
 
-/// 读一个 32 位整型 sysctl。
+/// Reads a 32-bit integer sysctl.
 [[nodiscard]] Result<std::int32_t> ReadInt32Sysctl(const char* name) {
   std::int32_t value = 0;
   std::size_t size = sizeof(value);
@@ -108,7 +108,7 @@ class IoctlSocket {
   return value;
 }
 
-/// 对 feth 发一次驱动私有 ioctl。
+/// Issues one driver-private ioctl to feth.
 [[nodiscard]] Status CallFethDriverIoctl(const IoctlSocket& socket, std::string_view interface_name,
                                         unsigned long ioctl_request, unsigned long command,
                                         FethRequest& payload, std::string_view what) {
@@ -119,7 +119,7 @@ class IoctlSocket {
   IfDrv driver{};
   std::memcpy(driver.ifd_name, interface_name.data(), interface_name.size());
   driver.ifd_cmd = command;
-  // 内核校验 ifd_len >= sizeof(struct if_fake_request)，短了直接 EINVAL。
+  // The kernel checks ifd_len >= sizeof(struct if_fake_request); anything shorter gets EINVAL directly.
   driver.ifd_len = sizeof(payload);
   driver.ifd_data = &payload;
 
@@ -151,7 +151,7 @@ Status VerifyFethSysctls() {
   for (const RequiredFethSysctl& entry : kRequiredFethSysctls) {
     const auto value = ReadInt32Sysctl(entry.name);
     if (!value) {
-      // 某些 sysctl 在特定 macOS 版本上可能不存在；缺失不算错误，只记一条。
+      // Some sysctls may not exist on particular macOS versions; a missing one is not an error, just log it.
       TETHERKITNEXT_DEBUG_TR(Msg::kNetSysctlUnreadableSkipped, entry.name,
                          value.error().ToString());
       continue;
@@ -217,7 +217,7 @@ void FethInterface::Destroy() noexcept {
     TETHERKITNEXT_ERROR_TR(Msg::kNetDestroyFailed, name, request.error().ToString());
     return;
   }
-  // feth_clone_destroy 内部会自动先解绑 peer，无需我们先 Unpeer。
+  // feth_clone_destroy automatically unpairs the peer first internally, so we need not Unpeer first.
   if (const auto status = socket->Call(SIOCIFDESTROY, &*request, "ioctl(SIOCIFDESTROY)"); !status) {
     TETHERKITNEXT_ERROR_TR(Msg::kNetDestroyFailed, name, status.error().ToString());
     return;
@@ -229,13 +229,13 @@ void FethInterface::Destroy() noexcept {
 Result<FethInterface> FethInterface::Create(std::string_view requested_name) {
   TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
-  // 名字为空 → 填驱动名 "feth" 作为通配，内核选最小空闲编号并写回完整名字。
+  // Empty name -> fill in the driver name "feth" as a wildcard; the kernel picks the lowest free number and writes back the full name.
   const std::string_view name_to_request =
       requested_name.empty() ? std::string_view{kFethCloneName} : requested_name;
   TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_to_request));
 
-  // SIOCIFCREATE 与 SIOCIFCREATE2 对 feth 完全等价 —— feth_clone_create 忽略
-  // params，而 SIOCIFCREATE2 唯一的区别就是多传一个 params 指针。用简单的那个。
+  // SIOCIFCREATE and SIOCIFCREATE2 are fully equivalent for feth -- feth_clone_create ignores
+  // params, and the only difference of SIOCIFCREATE2 is passing one extra params pointer. Use the simple one.
   if (const auto status = socket.Call(SIOCIFCREATE, &request, "ioctl(SIOCIFCREATE)"); !status) {
     Error error = status.error();
     if (error.Code() == EPERM) {
@@ -250,11 +250,11 @@ Result<FethInterface> FethInterface::Create(std::string_view requested_name) {
         std::move(error).WithContext(Tr(Msg::kNetFethCreateFailed, name_to_request)));
   }
 
-  // 通配创建时内核把完整名字（含编号）写回 ifr_name。
+  // On wildcard creation the kernel writes the full name (including the number) back into ifr_name.
   std::string created_name(request.ifr_name,
                            ::strnlen(request.ifr_name, kInterfaceNameCapacity));
-  // 先登记再返回：登记的意义就是「万一从这一刻起进程被强杀，下次也能清掉它」，
-  // 所以中间不能留任何窗口。
+  // Register first, then return: the point of registering is "in case the process is forcibly killed from this moment on, the next run can still clean it up",
+  // so no window may be left in between.
   NotifyRegistry(created_name, true);
   TETHERKITNEXT_INFO_TR(Msg::kNetCreated, created_name);
   return FethInterface{std::move(created_name)};
@@ -270,7 +270,7 @@ Status FethInterface::PeerWith(const FethInterface& peer) {
 
   TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
-  // reserved 字段保持全零 —— 内核会校验，非零直接 EINVAL。
+  // The reserved field is kept all zero -- the kernel checks it, and non-zero gets EINVAL directly.
   FethRequest payload{};
   std::memcpy(payload.u.peer_name, peer.Name().data(), peer.Name().size());
 
@@ -301,7 +301,7 @@ Status FethInterface::Unpeer() {
   }
   TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
 
-  // 空 peer 名（首字节 '\0'）即表示解绑。
+  // An empty peer name (first byte '\0') means unpair.
   FethRequest payload{};
   TETHERKITNEXT_RETURN_IF_ERROR(CallFethDriverIoctl(
       socket, name_, kSetDriverSpec, static_cast<unsigned long>(FethSetCommand::kSetPeer), payload,
@@ -360,8 +360,8 @@ Status FethInterface::SetMacAddress(const MacAddress& mac) {
   TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
   TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
 
-  // feth_ioctl 直接把 ifr_addr 转给 ifnet_set_lladdr(ifp, sa_data, sa_len)，
-  // 只看 sa_len 与 sa_data，不校验 sa_family。
+  // feth_ioctl passes ifr_addr directly to ifnet_set_lladdr(ifp, sa_data, sa_len),
+  // looking only at sa_len and sa_data, without verifying sa_family.
   request.ifr_addr.sa_len = static_cast<std::uint8_t>(mac.size());
   request.ifr_addr.sa_family = AF_LINK;
   std::memcpy(request.ifr_addr.sa_data, mac.data(), mac.size());
@@ -379,14 +379,14 @@ Status FethInterface::SetMacAddress(const MacAddress& mac) {
 }
 
 Result<MacAddress> FethInterface::QueryMacAddress() const {
-  // 读 MAC 走 getifaddrs + AF_LINK 而非 ioctl：macOS 的 SDK 只提供
-  // SIOCSIFLLADDR（写），没有对应的读 ioctl。getifaddrs 是 BSD 上读链路地址的
-  // 标准做法，且不需要额外权限。
+  // Reading the MAC goes through getifaddrs + AF_LINK rather than an ioctl: macOS's SDK only provides
+  // SIOCSIFLLADDR (write), with no corresponding read ioctl. getifaddrs is the
+  // standard way to read link addresses on BSD, and needs no extra privileges.
   ::ifaddrs* list = nullptr;
   if (::getifaddrs(&list) != 0) {
     return std::unexpected(Error::FromErrno(0, Tr(Msg::kNetGetifaddrsFailed)));
   }
-  // 用 RAII 保证任何返回路径都释放链表。
+  // RAII guarantees the list is freed on any return path.
   const std::unique_ptr<::ifaddrs, decltype(&::freeifaddrs)> guard(list, &::freeifaddrs);
 
   for (const ::ifaddrs* entry = list; entry != nullptr; entry = entry->ifa_next) {
@@ -415,11 +415,11 @@ Status FethInterface::SetUp(bool up) {
   TETHERKITNEXT_ASSIGN_OR_RETURN(const auto socket, IoctlSocket::Open());
   TETHERKITNEXT_ASSIGN_OR_RETURN(::ifreq request, MakeIfreq(name_));
 
-  // 先读回当前 flags 再改，避免把别的标志位清掉。
+  // Read back the current flags first and then modify, to avoid clearing other flag bits.
   TETHERKITNEXT_RETURN_IF_ERROR(socket.Call(SIOCGIFFLAGS, &request, "ioctl(SIOCGIFFLAGS)"));
 
-  // ifr_flags 是 short，而 IFF_* 在 64 位下可能超出 short 范围，
-  // 因此按 macOS 的惯例用 uint16 掩码运算。
+  // ifr_flags is a short, and IFF_* may exceed the range of short on 64-bit,
+  // so uint16 mask arithmetic is used by macOS convention.
   auto flags = static_cast<std::uint16_t>(request.ifr_flags);
   if (up) {
     flags |= static_cast<std::uint16_t>(IFF_UP);
@@ -455,7 +455,7 @@ Result<FethPair> FethPair::Create(std::uint32_t mtu, const MacAddress* system_ma
     return std::unexpected(Error::Generic(Tr(Msg::kNetFethPairNeedsRoot)));
   }
 
-  // 1. 校验创建期会被快照的 sysctl —— **必须在创建之前**。
+  // 1. Verify the sysctls that get snapshotted at creation -- **must be before creation**.
   TETHERKITNEXT_RETURN_IF_ERROR(VerifyFethSysctls());
 
   TETHERKITNEXT_ASSIGN_OR_RETURN(const std::uint32_t max_mtu, QueryFethMaxMtu());
@@ -463,20 +463,20 @@ Result<FethPair> FethPair::Create(std::uint32_t mtu, const MacAddress* system_ma
     return std::unexpected(Error::Generic(Tr(Msg::kNetMtuExceedsFethLimit, mtu, max_mtu)));
   }
 
-  // 2. 创建两张接口。
+  // 2. Create the two interfaces.
   TETHERKITNEXT_ASSIGN_OR_RETURN(FethInterface system_side, FethInterface::Create());
   TETHERKITNEXT_ASSIGN_OR_RETURN(FethInterface driver_side, FethInterface::Create());
 
-  // 3. 配对 —— 在 UP 之前做，这样链路从一开始就是 up 的。
+  // 3. Pair -- done before UP, so that the link is up from the start.
   TETHERKITNEXT_RETURN_IF_ERROR(driver_side.PeerWith(system_side));
 
-  // 4. 两侧 MTU 必须一致，否则一侧能发的帧另一侧收不下。
+  // 4. The MTU of both sides must be the same, otherwise frames one side can send cannot be received by the other.
   TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetMtu(mtu));
   TETHERKITNEXT_RETURN_IF_ERROR(driver_side.SetMtu(mtu));
 
-  // 5. 设系统侧 MAC —— **必须在 UP 之前**。
-  //    驱动侧刻意保留内核分配的地址：两侧 MAC 必须不同，否则 IPv6 链路本地
-  //    地址相同会触发 DAD 冲突。
+  // 5. Set the system-side MAC -- **must be before UP**.
+  //    The driver side deliberately keeps the kernel-assigned address: the MACs of the two sides must differ, otherwise the same IPv6 link-local
+  //    address triggers a DAD conflict.
   if (system_mac != nullptr) {
     TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetMacAddress(*system_mac));
 
@@ -487,8 +487,8 @@ Result<FethPair> FethPair::Create(std::uint32_t mtu, const MacAddress* system_ma
     }
   }
 
-  // 6. 两侧都置 UP。
-  //    bpfwrite 里有硬检查：接口不是 IFF_UP 就返回 ENETDOWN。
+  // 6. Bring both sides UP.
+  //    bpfwrite has a hard check: if the interface is not IFF_UP it returns ENETDOWN.
   TETHERKITNEXT_RETURN_IF_ERROR(driver_side.SetUp(true));
   TETHERKITNEXT_RETURN_IF_ERROR(system_side.SetUp(true));
 

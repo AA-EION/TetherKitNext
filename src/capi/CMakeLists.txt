@@ -1,12 +1,12 @@
-# tk_capi —— C ABI 层
+# tk_capi -- C ABI layer
 #
-# 全项目**唯一**的 extern "C" 边界，存在的唯一理由是给 Swift GUI 用。
-# 它站在依赖链的最顶端（和 app 同层），依赖 core 及其下的全部模块。
+# The **only** extern "C" boundary in the whole project; its sole reason to exist is to serve the Swift GUI.
+# It sits at the very top of the dependency chain (the same layer as app) and depends on core and all modules below it.
 #
-# 编成 OBJECT 库而不是 STATIC，是为了让共享库 libtetherkitnext 能拿到**全部**目标
-# 文件。若编成静态库，链接器只会挑「有人引用的」成员，而 C ABI 的导出函数在
-# 库内部无人引用 —— 结果会是一个空的 dylib，且没有任何报错。
-# （另一条路是 -force_load，但 OBJECT 库是 CMake 里更直白的表达。）
+# It is built as an OBJECT library rather than STATIC so that the shared library libtetherkitnext gets **all** the object
+# files. If built as a static library, the linker would only pick "referenced" members, and the C ABI's exported functions
+# are referenced by nobody inside the library -- the result would be an empty dylib with no error at all.
+# (The other route is -force_load, but an OBJECT library is the more direct expression in CMake.)
 
 add_library(
   tk_capi OBJECT
@@ -22,15 +22,15 @@ add_library(
 
 target_link_libraries(tk_capi PUBLIC tetherkitnext_base tk_version tk_core)
 
-# 网卡 IP 配置要回读 configd 的动态存储（真实生效的网关与 DNS），只能走
-# SystemConfiguration。这是 tk_capi 独有的依赖 —— 下层模块一概不碰 configd。
+# Reading back the NIC IP configuration requires configd's dynamic store (the gateway and DNS actually in effect), which can only go through
+# SystemConfiguration. This is a dependency unique to tk_capi -- lower-level modules never touch configd.
 target_link_libraries(tk_capi PUBLIC "-framework CoreFoundation"
                                      "-framework SystemConfiguration")
 
 # ------------------------------------------------------------------------------
-# libtetherkitnext —— 对外分发的共享库
+# libtetherkitnext -- the shared library distributed externally
 #
-# Swift 只能链接共享库或系统库，链接不了一堆 CMake 静态目标，所以必须有这一层。
+# Swift can only link shared libraries or system libraries, not a pile of CMake static targets, so this layer is required.
 # ------------------------------------------------------------------------------
 if(TETHERKITNEXT_BUILD_SHARED_LIB)
   add_library(tetherkitnext_shared SHARED)
@@ -41,19 +41,19 @@ if(TETHERKITNEXT_BUILD_SHARED_LIB)
     PROPERTIES OUTPUT_NAME tetherkitnext
                VERSION "${PROJECT_VERSION}"
                SOVERSION "${PROJECT_VERSION_MAJOR}"
-               # 让依赖方按 @rpath 加载，而不是烧死绝对路径 —— .app 内嵌
-               # 这个 dylib 时才不用事后 install_name_tool 改（改完还得重签，
-               # 见 docs/GUI-SPIKE.md 第 7 节踩过的坑）。
+               # Let dependents load via @rpath instead of burning in an absolute path -- so that when the .app embeds
+               # this dylib there is no need for a post-hoc install_name_tool (which would also require re-signing;
+               # see the pitfall in section 7 of docs/GUI-SPIKE.md).
                INSTALL_NAME_DIR "@rpath")
 
-  # 只导出 C ABI，其余符号（含 C++ 重整名）一律隐藏。理由见白名单文件。
+  # Only export the C ABI; all other symbols (including C++ mangled names) are hidden. See the allowlist file for the reasons.
   target_link_options(tetherkitnext_shared PRIVATE
                       "-Wl,-exported_symbols_list,${PROJECT_SOURCE_DIR}/cmake/tetherkitnext_exports.txt")
 
   install(TARGETS tetherkitnext_shared LIBRARY DESTINATION lib)
 endif()
 
-# C ABI 头对外安装：Homebrew formula 装完之后，别的项目也能拿它做绑定。
+# The C ABI header is installed for external use: after the Homebrew formula is installed, other projects can also use it for bindings.
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/tetherkitnext/capi"
         DESTINATION include/tetherkitnext
         FILES_MATCHING

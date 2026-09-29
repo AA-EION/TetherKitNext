@@ -1,13 +1,13 @@
-// 内存 loopback 链路后端 —— 用于离线测试与吞吐基准。
+// In-memory loopback link backend -- for offline tests and throughput benchmarks.
 //
-// 为什么必须有它：BpfLink 需要 root 权限 + 真实的 feth 接口，而开发机上既没有
-// root 也没有 USB 设备。把链路层抽象成 LinkBackend 之后，端到端逻辑（桥接层的
-// 线程模型、批处理、背压、统计）就能在任何环境下被完整测试和基准。
+// Why it is a must: BpfLink needs root privileges + a real feth interface, while the development machine has neither
+// root nor a USB device. After abstracting the link layer into LinkBackend, the end-to-end logic (the bridge layer's
+// threading model, batching, backpressure, statistics) can be fully tested and benchmarked in any environment.
 //
-// 语义：
-//   * WriteFrames 写入的帧进入 `sent` 队列，供测试断言「驱动往主机侧发了什么」；
-//   * ReadFrames 从 `inbound` 队列取帧，供测试注入「主机侧发来了什么」；
-//   * 两个队列都是有界的，满了就丢弃并计数 —— 与真实 BPF 的行为一致。
+// Semantics:
+//   * Frames written by WriteFrames enter the `sent` queue, for tests to assert "what the driver sent toward the host side";
+//   * ReadFrames takes frames from the `inbound` queue, for tests to inject "what the host side sent";
+//   * Both queues are bounded; when full they drop and count -- consistent with real BPF behavior.
 #pragma once
 
 #include <atomic>
@@ -20,29 +20,29 @@
 
 namespace tetherkitnext::net {
 
-/// loopback 后端的配置。
+/// Configuration of the loopback backend.
 struct LoopbackConfig {
   std::uint32_t max_frame_bytes = 1518;
-  std::size_t inbound_capacity = 4096;   ///< 待被 ReadFrames 取走的帧数上限。
-  std::size_t sent_capacity = 4096;      ///< 已被 WriteFrames 写出的帧数上限。
+  std::size_t inbound_capacity = 4096;   ///< Upper limit on frames waiting to be taken by ReadFrames.
+  std::size_t sent_capacity = 4096;      ///< Upper limit on frames already written out by WriteFrames.
   std::size_t max_frames_per_batch = 256;
-  /// 是否宣称支持批量写。测试里两种路径都要覆盖。
+  /// Whether to claim support for batch writes. Tests need to cover both paths.
   bool report_batch_write = true;
 };
 
-/// 纯内存的链路后端。
+/// Purely in-memory link backend.
 ///
-/// 线程安全：ReadFrames 只允许一个线程调用，WriteFrames 只允许一个线程调用
-/// （与 LinkBackend 的契约一致）；而 PushInbound / DrainSent / Interrupt 可以
-/// 从任意线程调用，内部用互斥锁保护。
+/// Thread safety: ReadFrames may be called by only one thread, and WriteFrames by only one thread
+/// (consistent with the LinkBackend contract); while PushInbound / DrainSent / Interrupt may be
+/// called from any thread, protected internally by a mutex.
 ///
-/// 这里刻意用互斥锁而不是无锁队列：本类只服务测试与基准的**注入侧**，
-/// 不在被测的数据路径上；无锁化只会增加实现复杂度却测不出更多东西。
+/// A mutex is deliberately used here instead of a lock-free queue: this class only serves the **injection side** of tests and benchmarks,
+/// and is not on the data path under test; going lock-free would only add implementation complexity without testing anything more.
 class LoopbackLink final : public LinkBackend {
  public:
   explicit LoopbackLink(const LoopbackConfig& config = {});
 
-  // 拷贝与移动已在基类 LinkBackend 中删除，这里显式重申以满足静态检查。
+  // Copy and move are already deleted in the base class LinkBackend; they are restated explicitly here to satisfy static analysis.
   LoopbackLink(const LoopbackLink&) = delete;
   LoopbackLink& operator=(const LoopbackLink&) = delete;
   LoopbackLink(LoopbackLink&&) = delete;
@@ -63,16 +63,16 @@ class LoopbackLink final : public LinkBackend {
   void Interrupt() noexcept override;
 
   // ---------------------------------------------------------------------------
-  // 测试注入与观测接口
+  // Test injection and observation interfaces
   // ---------------------------------------------------------------------------
 
-  /// 注入一帧「来自主机侧」的数据，供 ReadFrames 取出。队列满返回 false。
+  /// Injects one frame "from the host side" for ReadFrames to take out. Returns false when the queue is full.
   [[nodiscard]] bool PushInbound(std::span<const std::byte> frame);
 
-  /// 取出并清空「驱动写给主机侧」的全部帧。
+  /// Takes out and clears all frames "written by the driver to the host side".
   [[nodiscard]] std::vector<std::vector<std::byte>> DrainSent();
 
-  /// 已写出的帧数与字节数（累计，不受 DrainSent 影响）。
+  /// Number of frames and bytes written out (cumulative, unaffected by DrainSent).
   [[nodiscard]] std::uint64_t TotalSentFrames() const noexcept {
     return total_sent_frames_.load(std::memory_order_relaxed);
   }
@@ -81,17 +81,17 @@ class LoopbackLink final : public LinkBackend {
     return total_sent_bytes_.load(std::memory_order_relaxed);
   }
 
-  /// 因队列满而丢弃的注入帧数。
+  /// Number of injected frames dropped because the queue was full.
   [[nodiscard]] std::uint64_t InboundDrops() const noexcept {
     return inbound_drops_.load(std::memory_order_relaxed);
   }
 
-  /// 是否已被 Interrupt。
+  /// Whether Interrupt has been called.
   [[nodiscard]] bool Interrupted() const noexcept {
     return interrupted_.load(std::memory_order_acquire);
   }
 
-  /// 让 WriteFrames 从第 N 次调用起返回错误，用于测试错误传播路径。
+  /// Makes WriteFrames return an error starting from the Nth call, for testing the error propagation path.
   void FailWritesAfter(std::uint32_t successful_calls) noexcept {
     fail_writes_after_.store(successful_calls, std::memory_order_relaxed);
   }
@@ -100,12 +100,12 @@ class LoopbackLink final : public LinkBackend {
   LoopbackConfig config_;
 
   mutable std::mutex mutex_;
-  /// 待读取的帧（FIFO）。
+  /// Frames waiting to be read (FIFO).
   std::vector<std::vector<std::byte>> inbound_;
-  /// 已写出的帧。
+  /// Frames already written out.
   std::vector<std::vector<std::byte>> sent_;
 
-  /// ReadFrames 返回的视图必须在下次调用前保持有效，因此本批数据留在这里。
+  /// The view returned by ReadFrames must remain valid until the next call, so this batch's data stays here.
   std::vector<std::vector<std::byte>> read_storage_;
   std::vector<FrameView> read_views_;
 

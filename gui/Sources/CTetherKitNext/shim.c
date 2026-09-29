@@ -1,14 +1,14 @@
-// SwiftPM 要求每个 C target 至少有一个源文件，否则拒绝构建。
+// SwiftPM requires every C target to have at least one source file, otherwise it refuses to build.
 //
-// 本 target 的全部内容其实是 include/tetherkitnext_c.h（一个指向 C++ 侧头文件的
-// 符号链接）—— 真正的实现在 libtetherkitnext.dylib 里。这个空的翻译单元只是用来
-// 满足 SwiftPM 的形式要求。
+// The entire content of this target is really include/tetherkitnext_c.h (a symbolic link to the C++ side's
+// header) -- the real implementation is in libtetherkitnext.dylib. This empty translation unit only serves to
+// satisfy SwiftPM's formal requirement.
 //
-// 顺带做一件有用的事：把头文件包一遍，编译期就能发现「头文件里写了 C++ 才认的
-// 语法」这类问题，而不用等到 Swift 侧导入失败。
+// Incidentally it does one useful thing: it wraps the header once, so that "syntax that only C++ understands was written into the header"
+// and similar problems are found at compile time, without waiting for the import on the Swift side to fail.
 #include "tetherkitnext_c.h"
 
-// 一个不导出的哑符号，防止某些链接器对完全空的目标文件发出告警。
+// A non-exported dummy symbol, to keep some linkers from warning about a completely empty object file.
 static const int tetherkitnext_c_shim_anchor = 0;
 const int* tetherkitnext_c_shim_unused(void);
 const int* tetherkitnext_c_shim_unused(void) { return &tetherkitnext_c_shim_anchor; }

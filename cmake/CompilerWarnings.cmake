@@ -1,7 +1,7 @@
-# CompilerWarnings.cmake —— 集中管理警告选项
+# CompilerWarnings.cmake -- centralized management of warning options
 #
-# 提供 INTERFACE 目标 tetherkitnext_warnings，所有本项目自己的目标都 link 它；
-# 第三方代码（third_party/）不 link，避免噪声。
+# Provides the INTERFACE target tetherkitnext_warnings, which all of this project's own targets link;
+# third-party code (third_party/) does not link it, to avoid noise.
 
 add_library(tetherkitnext_warnings INTERFACE)
 
@@ -9,7 +9,7 @@ set(_tk_warnings
     -Wall
     -Wextra
     -Wpedantic
-    # 隐式转换是协议解析代码最容易出错的地方，必须开。
+    # Implicit conversions are where protocol-parsing code most easily goes wrong; must be enabled.
     -Wconversion
     -Wsign-conversion
     -Wshadow
@@ -22,10 +22,10 @@ set(_tk_warnings
     -Wdouble-promotion
     -Wformat=2
     -Wimplicit-fallthrough
-    # 数据路径上的隐式堆分配是性能杀手，让编译器帮忙盯着 VLA。
+    # Implicit heap allocation on the data path is a performance killer; let the compiler watch for VLAs.
     -Wvla
-    # 结构体填充会影响我们手写的线格式结构体，需要 static_assert 兜底，
-    # 但 -Wpadded 噪声过大，因此不开，改用 static_assert(sizeof(...)) 校验。
+    # Struct padding affects our hand-written wire-format structs and needs a static_assert backstop,
+    # but -Wpadded is too noisy, so it is not enabled; static_assert(sizeof(...)) checks are used instead.
 )
 
 target_compile_options(tetherkitnext_warnings INTERFACE ${_tk_warnings})

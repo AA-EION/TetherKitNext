@@ -1,15 +1,15 @@
-// 线格式字节序读写。
+// Wire-format byte order reads and writes.
 //
-// RNDIS 的线格式**固定小端**（协议源自 Windows NDIS），而以太帧头里的
-// EtherType 等字段是大端。两种都要用，因此这里同时提供 Le/Be 两族函数。
+// The RNDIS wire format is **fixed little-endian** (the protocol originates from Windows NDIS), while fields such as
+// EtherType in the Ethernet frame header are big-endian. Both are needed, so both Le/Be families of functions are provided here.
 //
-// 实现要点：
-//   * 全部走 std::memcpy 而非指针强转，避免未对齐访问的未定义行为 ——
-//     RNDIS 消息在 USB 传输缓冲里的起始偏移只保证 4 字节对齐，而
-//     REMOTE_NDIS_PACKET_MSG 之后紧跟的以太帧起始偏移可能是任意值。
-//     clang 会把「memcpy 到局部变量 + byteswap」优化成单条 ldr/rev 指令，
-//     所以这是零成本抽象。
-//   * 用 std::endian 在编译期分支，big-endian 主机上也正确（虽然 macOS 不存在）。
+// Implementation notes:
+//   * Everything goes through std::memcpy rather than pointer casts, avoiding the undefined behavior of unaligned accesses --
+//     the start offset of an RNDIS message in the USB transfer buffer is only guaranteed to be 4-byte aligned, and
+//     the start offset of the Ethernet frame right after REMOTE_NDIS_PACKET_MSG can be arbitrary.
+//     clang optimizes "memcpy into a local variable + byteswap" into a single ldr/rev instruction,
+//     so this is a zero-cost abstraction.
+//   * std::endian is used to branch at compile time, so it is also correct on big-endian hosts (although macOS has none).
 #pragma once
 
 #include <bit>
@@ -20,12 +20,12 @@
 
 namespace tetherkitnext {
 
-/// 线格式里出现的无符号整数类型。
+/// Unsigned integer types that appear in the wire format.
 template <typename T>
 concept WireUnsigned = std::unsigned_integral<T> && !std::same_as<T, bool> &&
                        (sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8);
 
-/// 从小端字节序读出一个整数。
+/// Reads an integer from little-endian byte order.
 template <WireUnsigned T>
 [[nodiscard]] inline T LoadLe(const std::byte* src) noexcept {
   T value{};
@@ -36,7 +36,7 @@ template <WireUnsigned T>
   return value;
 }
 
-/// 把一个整数按小端字节序写入。
+/// Writes an integer in little-endian byte order.
 template <WireUnsigned T>
 inline void StoreLe(std::byte* dst, T value) noexcept {
   if constexpr (sizeof(T) > 1 && std::endian::native == std::endian::big) {
@@ -45,7 +45,7 @@ inline void StoreLe(std::byte* dst, T value) noexcept {
   std::memcpy(dst, &value, sizeof(T));
 }
 
-/// 从大端（网络字节序）读出一个整数。
+/// Reads an integer from big-endian (network byte order).
 template <WireUnsigned T>
 [[nodiscard]] inline T LoadBe(const std::byte* src) noexcept {
   T value{};
@@ -56,7 +56,7 @@ template <WireUnsigned T>
   return value;
 }
 
-/// 把一个整数按大端（网络字节序）写入。
+/// Writes an integer in big-endian (network byte order).
 template <WireUnsigned T>
 inline void StoreBe(std::byte* dst, T value) noexcept {
   if constexpr (sizeof(T) > 1 && std::endian::native == std::endian::little) {
@@ -65,7 +65,7 @@ inline void StoreBe(std::byte* dst, T value) noexcept {
   std::memcpy(dst, &value, sizeof(T));
 }
 
-// 常用宽度的便捷别名，让协议解析代码读起来更贴近规范文档里的字段类型。
+// Convenience aliases for common widths, so protocol-parsing code reads closer to the field types in the spec documents.
 [[nodiscard]] inline std::uint16_t LoadLe16(const std::byte* p) noexcept {
   return LoadLe<std::uint16_t>(p);
 }
@@ -98,13 +98,13 @@ inline void StoreBe16(std::byte* p, std::uint16_t v) noexcept {
   StoreBe<std::uint16_t>(p, v);
 }
 
-/// 向上对齐到 `alignment` 的整数倍。`alignment` 必须是 2 的幂。
+/// Rounds up to a multiple of `alignment`. `alignment` must be a power of two.
 template <std::unsigned_integral T>
 [[nodiscard]] constexpr T AlignUp(T value, T alignment) noexcept {
   return (value + alignment - 1) & ~(alignment - 1);
 }
 
-/// 判断是否为 2 的幂（0 不是）。
+/// Checks whether the value is a power of two (0 is not).
 template <std::unsigned_integral T>
 [[nodiscard]] constexpr bool IsPowerOfTwo(T value) noexcept {
   return value != 0 && (value & (value - 1)) == 0;

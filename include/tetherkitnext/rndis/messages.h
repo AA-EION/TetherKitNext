@@ -1,16 +1,16 @@
-// RNDIS 控制消息的编解码。
+// Encoding and decoding of RNDIS control messages.
 //
-// 设计取舍：**不用 packed struct 直接映射线格式**，而是「逻辑结构体 + 显式
-// 偏移读写」。理由有三：
-//   1. 线格式是小端，packed struct 在大端机上静默出错；
-//   2. RNDIS 消息在 USB 缓冲里的起始偏移只保证 4 字节对齐，packed struct 的
-//      成员访问在某些偏移上是未定义行为（-fsanitize=alignment 会报）；
-//   3. 偏移字段的基准点是「消息起始 + 8」这种反直觉规则（见 protocol.h 文件头
-//      规则 2），用显式的 Encode/Decode 函数能把这个换算集中在一处并加测试，
-//      而 struct 映射会让每个使用点都得自己记住 ±8。
+// Design trade-off: **do not map the wire format directly with packed structs**, but use "logical structs + explicit
+// offset reads/writes". There are three reasons:
+//   1. The wire format is little-endian, and packed structs fail silently on big-endian machines;
+//   2. The start offset of an RNDIS message in the USB buffer is only guaranteed to be 4-byte aligned, and member access of a packed struct
+//      at some offsets is undefined behavior (-fsanitize=alignment reports it);
+//   3. The base point of the offset fields follows the counter-intuitive rule "message start + 8" (see rule 2 in the file header of protocol.h),
+//      and explicit Encode/Decode functions concentrate this conversion in one place and add tests,
+//      whereas a struct mapping would make every use site remember the +/-8 itself.
 //
-// 解码函数一律做**完整的边界与自洽性校验**：控制通道的数据来自外部设备，
-// 必须假定它可能是恶意或有 bug 的。校验失败返回 Error 而非崩溃或读越界。
+// Decode functions all perform **complete bounds and self-consistency checks**: control channel data comes from an external device,
+// and must be assumed potentially malicious or buggy. A failed check returns Error rather than crashing or reading out of bounds.
 #pragma once
 
 #include <array>
@@ -23,23 +23,23 @@
 
 namespace tetherkitnext::rndis {
 
-/// 6 字节以太网 MAC 地址。
+/// 6-byte Ethernet MAC address.
 using MacAddress = std::array<std::uint8_t, 6>;
 
-/// 把 MAC 渲染成 "aa:bb:cc:dd:ee:ff"。
+/// Renders a MAC as "aa:bb:cc:dd:ee:ff".
 [[nodiscard]] std::array<char, 18> FormatMac(const MacAddress& mac) noexcept;
 
 // =============================================================================
-// 通用头部访问
+// Common header access
 // =============================================================================
 
-/// 任意 RNDIS 消息的公共头部。
+/// The common header of any RNDIS message.
 struct MessageHeader {
   std::uint32_t message_type = 0;
   std::uint32_t message_length = 0;
 };
 
-/// 读取公共头部。缓冲区不足 8 字节则返回错误。
+/// Reads the common header. Returns an error if the buffer is smaller than 8 bytes.
 [[nodiscard]] Result<MessageHeader> DecodeMessageHeader(std::span<const std::byte> buffer);
 
 // =============================================================================
@@ -50,11 +50,11 @@ struct InitializeRequest {
   std::uint32_t request_id = 0;
   std::uint32_t major_version = kMajorVersion;
   std::uint32_t minor_version = kMinorVersion;
-  /// host 一次能从 bulk IN 接收的最大字节数，用 MaxTransferSizeFor() 算。
+  /// The maximum number of bytes the host can receive from bulk IN at one time, computed with MaxTransferSizeFor().
   std::uint32_t max_transfer_size = 0;
 };
 
-/// 编码 INITIALIZE_MSG。缓冲区至少 kInitializeMsgBytes 字节，返回写入长度。
+/// Encodes INITIALIZE_MSG. The buffer must be at least kInitializeMsgBytes bytes; returns the length written.
 [[nodiscard]] Result<std::uint32_t> Encode(const InitializeRequest& request,
                                           std::span<std::byte> buffer);
 
@@ -65,12 +65,12 @@ struct InitializeComplete {
   std::uint32_t minor_version = 0;
   std::uint32_t device_flags = 0;
   std::uint32_t medium = 0;
-  /// 设备一次传输能承载的 PACKET_MSG 个数上限。多数 Android gadget 报 1，
-  /// 打了高通聚合补丁的报 3 或更多。为 0 时按 1 处理。
+  /// Upper limit on the number of PACKET_MSGs the device can carry in one transfer. Most Android gadgets report 1,
+  /// while those with the Qualcomm aggregation patch report 3 or more. 0 is treated as 1.
   std::uint32_t max_packets_per_message = 0;
-  /// 设备一次能接收的最大字节数 —— 决定 host 侧 TX 聚合的上限。
+  /// Maximum bytes the device can receive at once -- determines the upper limit of host-side TX aggregation.
   std::uint32_t max_transfer_size = 0;
-  /// host → device 的对齐要求，对齐字节数 = 1 << 此值，合法上界 7。
+  /// Host -> device alignment requirement; alignment bytes = 1 << this value, legal upper bound 7.
   std::uint32_t packet_alignment_factor = 0;
   std::uint32_t af_list_offset = 0;
   std::uint32_t af_list_size = 0;
@@ -78,24 +78,24 @@ struct InitializeComplete {
 
 [[nodiscard]] Result<InitializeComplete> DecodeInitializeComplete(std::span<const std::byte> buffer);
 
-/// 由 INITIALIZE_CMPLT 推导出的、数据路径真正要用的参数。
+/// Parameters derived from INITIALIZE_CMPLT that the data path actually uses.
 struct NegotiatedParameters {
-  std::uint32_t device_max_transfer_size = 0;  ///< TX 聚合的字节上限。
-  std::uint32_t max_packets_per_message = 1;   ///< TX 聚合的包数上限。
-  std::uint32_t tx_alignment_bytes = 1;        ///< host → device 的每包对齐。
-  std::uint32_t mtu = kDefaultMtu;             ///< 最终采用的 MTU。
+  std::uint32_t device_max_transfer_size = 0;  ///< Upper limit in bytes for TX aggregation.
+  std::uint32_t max_packets_per_message = 1;   ///< Upper limit in packets for TX aggregation.
+  std::uint32_t tx_alignment_bytes = 1;        ///< Per-packet alignment for host -> device.
+  std::uint32_t mtu = kDefaultMtu;             ///< The MTU finally adopted.
   bool connectionless = true;
 };
 
-/// 校验并归一化 INITIALIZE_CMPLT，得到可直接用于数据路径的参数。
+/// Validates and normalizes INITIALIZE_CMPLT, yielding parameters directly usable by the data path.
 ///
-/// 这里集中处理全部已知的设备 quirk：
-///   * MaxPacketsPerMessage 为 0 → 当 1；
-///   * PacketAlignmentFactor > 7 → 钳到 7（协议违规，否则会算出荒谬的填充）；
-///   * MaxTransferSize 小于一个满帧（hard_mtu）→ 反推并下调 MTU；
-///     太小（<= 58，装不下头部）→ 报错；
-///   * MaxTransferSize 报出 8KB/16KB 巨帧（WinCE / Windows Mobile 的习惯）→
-///     不盲从，钳到我们自己的缓冲上限。
+/// All known device quirks are handled together here:
+///   * MaxPacketsPerMessage of 0 -> treated as 1;
+///   * PacketAlignmentFactor > 7 -> clamped to 7 (a protocol violation; otherwise absurd padding would be computed);
+///   * MaxTransferSize smaller than one full frame (hard_mtu) -> back-derive and lower the MTU;
+///     too small (<= 58, cannot fit the headers) -> report an error;
+///   * MaxTransferSize reporting 8KB/16KB jumbo frames (habit of WinCE / Windows Mobile) ->
+///     do not follow blindly; clamp to our own buffer limit.
 [[nodiscard]] Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
                                                      std::uint32_t requested_mtu,
                                                      std::uint32_t host_transfer_size_limit);
@@ -104,7 +104,7 @@ struct NegotiatedParameters {
 // HALT
 // =============================================================================
 
-/// 编码 HALT_MSG。**设备不会回复**，发完即可认为进入 uninitialized。
+/// Encodes HALT_MSG. **The device does not reply**; once sent, it can be considered to have entered uninitialized.
 [[nodiscard]] Result<std::uint32_t> EncodeHalt(std::uint32_t request_id,
                                                std::span<std::byte> buffer);
 
@@ -115,23 +115,23 @@ struct NegotiatedParameters {
 struct QueryRequest {
   std::uint32_t request_id = 0;
   Oid oid = Oid::kGenSupportedList;
-  /// 期望的响应字节数。
+  /// Expected response size in bytes.
   ///
-  /// 对**定长** OID 必须 ≥ 期望响应长度，并在消息尾部补上同样多的零字节；
-  /// 对**变长** OID 必须为 0。这条未文档化的要求来自微软 ActiveSync 实现，
-  /// 违反会得到 RNDIS_STATUS_INVALID_LENGTH。Encode 会按 IsVariableLengthOid()
-  /// 自动纠正，调用方填 0 即可让它自己决定。
+  /// For **fixed-length** OIDs it must be >= the expected response length, and the same number of zero bytes must be padded at the end of the message;
+  /// for **variable-length** OIDs it must be 0. This undocumented requirement comes from Microsoft's ActiveSync implementation,
+  /// and violating it yields RNDIS_STATUS_INVALID_LENGTH. Encode automatically corrects by IsVariableLengthOid(),
+  /// so the caller can fill 0 and let it decide on its own.
   std::uint32_t expected_response_bytes = 0;
 };
 
-/// 编码 QUERY_MSG（含按 OID 类型自动决定的尾部填充）。
+/// Encodes QUERY_MSG (including trailing padding decided automatically by OID type).
 [[nodiscard]] Result<std::uint32_t> Encode(const QueryRequest& request,
                                           std::span<std::byte> buffer);
 
 struct QueryComplete {
   std::uint32_t request_id = 0;
   std::uint32_t status = 0;
-  /// 指向 `buffer` 内部的信息缓冲区视图，生命周期同 `buffer`。
+  /// A view of the information buffer inside `buffer`, with the same lifetime as `buffer`.
   std::span<const std::byte> information;
 };
 
@@ -143,10 +143,10 @@ struct SetRequest {
   std::span<const std::byte> information;
 };
 
-/// 编码 SET_MSG。
+/// Encodes SET_MSG.
 [[nodiscard]] Result<std::uint32_t> Encode(const SetRequest& request, std::span<std::byte> buffer);
 
-/// 便捷入口：SET 一个 LE32 值（最常用，例如设置包过滤）。
+/// Convenience entry point: SET one LE32 value (the most common, e.g. setting the packet filter).
 [[nodiscard]] Result<std::uint32_t> EncodeSetUint32(std::uint32_t request_id, Oid oid,
                                                     std::uint32_t value,
                                                     std::span<std::byte> buffer);
@@ -162,15 +162,15 @@ struct SetComplete {
 // RESET
 // =============================================================================
 
-/// 编码 RESET_MSG。
+/// Encodes RESET_MSG.
 ///
-/// **注意：RESET_MSG 没有 RequestId 字段**（offset 8 是 Reserved），所以无法用
-/// ID 配对响应，同一时刻只能有一个 RESET 在飞。
+/// **Note: RESET_MSG has no RequestId field** (offset 8 is Reserved), so responses cannot be paired by
+/// ID, and only one RESET can be in flight at a time.
 [[nodiscard]] Result<std::uint32_t> EncodeReset(std::span<std::byte> buffer);
 
 struct ResetComplete {
   std::uint32_t status = 0;
-  /// 非零表示寻址信息（包过滤、组播表）在复位中丢失，host 必须重发对应 SET。
+  /// Non-zero means addressing information (packet filter, multicast table) was lost in the reset, and the host must resend the corresponding SETs.
   bool addressing_reset = false;
 };
 
@@ -190,10 +190,10 @@ struct KeepAliveComplete {
 
 [[nodiscard]] Result<KeepAliveComplete> DecodeKeepAliveComplete(std::span<const std::byte> buffer);
 
-/// 编码 KEEPALIVE_CMPLT。
+/// Encodes KEEPALIVE_CMPLT.
 ///
-/// 需要它是因为**设备也可以主动发 KEEPALIVE_MSG**，此时 host 必须回复
-/// KEEPALIVE_CMPLT，否则设备可能认为 host 已死并断开。
+/// It is needed because the **device can also proactively send KEEPALIVE_MSG**, in which case the host must reply with
+/// KEEPALIVE_CMPLT, otherwise the device may consider the host dead and disconnect.
 [[nodiscard]] Result<std::uint32_t> EncodeKeepAliveComplete(std::uint32_t request_id,
                                                             std::uint32_t status,
                                                             std::span<std::byte> buffer);
@@ -204,38 +204,38 @@ struct KeepAliveComplete {
 
 struct IndicateStatus {
   std::uint32_t status = 0;
-  /// 状态缓冲区视图；多数情况为空（MEDIA_CONNECT/DISCONNECT 不带负载）。
+  /// View of the status buffer; empty in most cases (MEDIA_CONNECT/DISCONNECT carry no payload).
   std::span<const std::byte> status_buffer;
-  /// 若状态缓冲区恰好是 8 字节的 RNDIS_Diagnostic_Info，这两个字段被填充。
+  /// If the status buffer happens to be an 8-byte RNDIS_Diagnostic_Info, these two fields are filled.
   bool has_diagnostic_info = false;
   std::uint32_t diagnostic_status = 0;
   std::uint32_t diagnostic_error_offset = 0;
 };
 
-/// 解码 INDICATE_STATUS_MSG。
+/// Decodes INDICATE_STATUS_MSG.
 ///
-/// **StatusBufferOffset 的基准点在规范里是矛盾的**（MS 文档说消息起始，而同族
-/// 的 QUERY/SET 都是消息起始 +8）。本实现按以下顺序容错：
-///   1. 若长度为 0 —— 无负载，直接成功（绝大多数情况）；
-///   2. 先按「基准点 = 消息起始 + 8」解释，落在消息范围内则采用；
-///   3. 否则按「基准点 = 消息起始」解释；
-///   4. 两种都越界 —— 丢弃状态缓冲区但**仍返回成功**，因为 status 本身有用，
-///      不能因为一个可选负载解析不了就断开链路。
+/// **The base point of StatusBufferOffset is contradictory in the spec** (MS documentation says message start, while the QUERY/SET of the same
+/// family are all message start + 8). This implementation tolerates both in the following order:
+///   1. If the length is 0 -- no payload, succeed directly (the vast majority of cases);
+///   2. First interpret with "base = message start + 8"; adopt it if it falls within the message range;
+///   3. Otherwise interpret with "base = message start";
+///   4. If both are out of bounds -- discard the status buffer but **still return success**, because the status itself is useful,
+///      and the link must not be dropped just because an optional payload cannot be parsed.
 [[nodiscard]] Result<IndicateStatus> DecodeIndicateStatus(std::span<const std::byte> buffer);
 
 // =============================================================================
-// OID 负载解析
+// OID payload parsing
 // =============================================================================
 
-/// 从 QUERY_CMPLT 的信息缓冲区里取一个 LE32。
+/// Takes an LE32 from the information buffer of QUERY_CMPLT.
 [[nodiscard]] Result<std::uint32_t> ParseUint32(std::span<const std::byte> information);
 
-/// 从信息缓冲区里取一个计数器值。
+/// Takes a counter value from the information buffer.
 ///
-/// 统计类 OID（OID_GEN_XMIT_OK 等）可能返回 4 或 8 字节，两者都必须接受。
+/// Statistics OIDs (OID_GEN_XMIT_OK etc.) may return 4 or 8 bytes; both must be accepted.
 [[nodiscard]] Result<std::uint64_t> ParseCounter(std::span<const std::byte> information);
 
-/// 从信息缓冲区里取 6 字节 MAC。
+/// Takes a 6-byte MAC from the information buffer.
 [[nodiscard]] Result<MacAddress> ParseMac(std::span<const std::byte> information);
 
 }  // namespace tetherkitnext::rndis

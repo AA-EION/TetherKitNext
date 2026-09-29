@@ -1,22 +1,22 @@
-// Darwin 私有 ABI 声明。
+// Darwin private ABI declarations.
 //
-// 本文件声明的东西**不在**公开 macOS SDK 里，但驱动必须用到。全部定义都从
-// Apple 开源的 xnu 源码抄来，并在本机用 static_assert + 实测 ioctl 编号核对过。
+// The things declared in this file are **not** in the public macOS SDK, yet the driver must use them. All definitions are copied
+// from Apple's open-source xnu sources, and verified locally with static_assert + measured ioctl numbers.
 //
-// 为什么敢用私有 ABI（以及风险评估）：
-//   * `net/if_fake_var.h` 在 xnu-7195(macOS 11) → xnu-12377(macOS 26) 的所有
-//     发布 tag 下文件内容完全相同（md5 一致），15 年来未变动过一个字节。
-//     `ifconfig fethN peer fethM` 走的就是这套 ABI，Apple 自己的 ifconfig
-//     依赖它，因此它实际上是被冻结的。
-//   * `struct ifdrv` 同理，且它的大小直接参与 _IOW 宏计算 ioctl 编号 ——
-//     一旦大小算错，ioctl 号就错，内核会返回 ENOTTY 而不会做危险的事。
-//     下面用 static_assert 把大小钉死为 40。
-//   * BPF 的私有 ioctl（BIOCSBATCHWRITE / BIOCSNOTSTAMP）是**可选优化**，
-//     一律做运行时特性探测，失败就回落到通用路径，不影响功能正确性。
-//     macOS 26 把它们从 net/bpf.h 挪到了 net/bpf_private.h（SDK 未提供该文件）。
+// Why dare to use a private ABI (and the risk assessment):
+//   * `net/if_fake_var.h` is byte-for-byte identical (same md5) across all release tags from
+//     xnu-7195 (macOS 11) to xnu-12377 (macOS 26); it has not changed a single byte in 15 years.
+//     `ifconfig fethN peer fethM` uses exactly this ABI, and Apple's own ifconfig
+//     depends on it, so it is effectively frozen.
+//   * The same goes for `struct ifdrv`, and its size directly participates in the _IOW macro's computation of the ioctl number --
+//     if the size is computed wrongly, the ioctl number is wrong, and the kernel returns ENOTTY without doing anything dangerous.
+//     The static_assert below pins the size to 40.
+//   * BPF's private ioctls (BIOCSBATCHWRITE / BIOCSNOTSTAMP) are **optional optimizations**,
+//     always feature-probed at runtime, falling back to the generic path on failure, without affecting functional correctness.
+//     macOS 26 moved them from net/bpf.h to net/bpf_private.h (a file the SDK does not provide).
 //
-// 一句话：功能性 ABI（feth peer）经过 15 年验证且有 static_assert 兜底；
-// 优化性 ABI（BPF 批量写）做特性探测。两者都不会静默走错路径。
+// In one sentence: the functional ABI (feth peer) has been validated for 15 years and is backstopped by static_assert;
+// the optimization ABI (BPF batch write) is feature-probed. Neither can silently take the wrong path.
 #pragma once
 
 #include <net/bpf.h>
@@ -33,73 +33,73 @@
 namespace tetherkitnext::net {
 
 // =============================================================================
-// struct ifdrv —— SIOCSDRVSPEC / SIOCGDRVSPEC 的参数
+// struct ifdrv -- the argument of SIOCSDRVSPEC / SIOCGDRVSPEC
 //
-// 出处：xnu/bsd/net/if.h（带 #pragma pack(4)，但在 LP64/arm64 上不改变布局）。
-// SDK 的 net/if.h 里没有这个结构，只有引用它的 ioctl 宏定义。
+// Source: xnu/bsd/net/if.h (with #pragma pack(4), which does not change the layout on LP64/arm64).
+// The SDK's net/if.h does not have this struct, only the ioctl macro definitions that reference it.
 // =============================================================================
 
-/// 驱动私有 ioctl 的参数块。
+/// Argument block of driver-private ioctls.
 struct IfDrv {
-  char ifd_name[IFNAMSIZ];  ///< 目标接口名。
-  unsigned long ifd_cmd;    ///< 驱动私有命令码（对 feth 是 IF_FAKE_S_CMD_*）。
-  std::size_t ifd_len;      ///< ifd_data 指向的数据长度。
-  void* ifd_data;           ///< 命令参数。
+  char ifd_name[IFNAMSIZ];  ///< Target interface name.
+  unsigned long ifd_cmd;    ///< Driver-private command code (IF_FAKE_S_CMD_* for feth).
+  std::size_t ifd_len;      ///< Length of the data pointed to by ifd_data.
+  void* ifd_data;           ///< Command argument.
 };
 
-// 大小必须正好 40 字节：它参与 _IOW('i', 123, struct ifdrv) 的 ioctl 编号计算，
-// 算错的话得到的是一个不存在的 ioctl 号。实测 SIOCSDRVSPEC = 0x8028697b。
+// The size must be exactly 40 bytes: it participates in the ioctl number computation of _IOW('i', 123, struct ifdrv),
+// and if computed wrongly the result is a nonexistent ioctl number. Measured SIOCSDRVSPEC = 0x8028697b.
 static_assert(sizeof(IfDrv) == 40, "struct ifdrv 必须是 40 字节，否则 ioctl 编号会算错");
 static_assert(offsetof(IfDrv, ifd_cmd) == 16);
 static_assert(offsetof(IfDrv, ifd_len) == 24);
 static_assert(offsetof(IfDrv, ifd_data) == 32);
 
-/// 设置驱动私有参数。等价于 SDK 的 SIOCSDRVSPEC，但用我们自己的 IfDrv 计算。
+/// Sets driver-private parameters. Equivalent to the SDK's SIOCSDRVSPEC, but computed with our own IfDrv.
 inline constexpr unsigned long kSetDriverSpec = _IOW('i', 123, IfDrv);
-/// 读取驱动私有参数。
+/// Reads driver-private parameters.
 inline constexpr unsigned long kGetDriverSpec = _IOWR('i', 123, IfDrv);
 
 static_assert(kSetDriverSpec == 0x8028'697BUL, "SIOCSDRVSPEC 编号与实测值不符");
 static_assert(kGetDriverSpec == 0xC028'697BUL, "SIOCGDRVSPEC 编号与实测值不符");
 
 // =============================================================================
-// if_fake（feth）私有 ABI
+// if_fake (feth) private ABI
 //
-// 出处：xnu/bsd/net/if_fake_var.h
+// Source: xnu/bsd/net/if_fake_var.h
 // =============================================================================
 
-/// feth 的驱动名（if_clone 名字，创建时填进 ifr_name 作为通配前缀）。
+/// The driver name of feth (the if_clone name, filled into ifr_name as a wildcard prefix at creation).
 inline constexpr const char* kFethCloneName = "feth";
 
-/// SIOCSDRVSPEC 的命令码。
+/// Command codes for SIOCSDRVSPEC.
 enum class FethSetCommand : unsigned long {
   kNone = 0,
-  kSetPeer = 1,           ///< 配对 / 解绑 peer。
+  kSetPeer = 1,           ///< Pair / unpair the peer.
   kSetMedia = 2,
   kSetDequeueStall = 3,
 };
 
-/// SIOCGDRVSPEC 的命令码。
+/// Command codes for SIOCGDRVSPEC.
 enum class FethGetCommand : unsigned long {
   kNone = 0,
   kGetPeer = 1,
 };
 
-/// if_fake_media 的媒体类型列表上限。
+/// Upper limit of the media type list of if_fake_media.
 inline constexpr std::size_t kFethMediaListMax = 27;
 
-/// SIOCSDRVSPEC / SIOCGDRVSPEC 对 feth 的参数块。
+/// Argument block of SIOCSDRVSPEC / SIOCGDRVSPEC for feth.
 ///
-/// 布局必须与 xnu 的 struct if_fake_request 逐字节一致：
-///   uint64_t iffr_reserved[4];            // 32 字节，**必须全零**
-///   union {                               // 128 字节
+/// The layout must match xnu's struct if_fake_request byte for byte:
+///   uint64_t iffr_reserved[4];            // 32 bytes, **must be all zero**
+///   union {                               // 128 bytes
 ///     char     iffru_buf[128];
-///     struct   if_fake_media iffru_media; // 也是 128 字节
+///     struct   if_fake_media iffru_media; // also 128 bytes
 ///     char     iffru_peer_name[IFNAMSIZ];
 ///     uint32_t iffru_dequeue_stall;
 ///   };
 struct FethRequest {
-  /// 保留字段。内核会校验它**必须全为 0**，非零直接返回 EINVAL。
+  /// Reserved field. The kernel verifies it **must be all 0**; non-zero returns EINVAL directly.
   std::uint64_t reserved[4];
 
   union {
@@ -110,7 +110,7 @@ struct FethRequest {
       std::uint32_t media_reserved[3];
       std::int32_t list[kFethMediaListMax];
     } media;
-    /// peer 接口名。写空串（首字节 '\0'）表示解绑。
+    /// Peer interface name. Writing an empty string (first byte '\0') means unpair.
     char peer_name[IFNAMSIZ];
     std::uint32_t dequeue_stall;
   } u;
@@ -122,58 +122,58 @@ static_assert(sizeof(FethRequest::u) == 128);
 static_assert(alignof(FethRequest) == 8);
 
 // =============================================================================
-// BPF 私有常量与 ioctl
+// BPF private constants and ioctls
 //
-// 出处：xnu/bsd/net/bpf.h 的 PRIVATE 段（macOS 26 起挪到 bsd/net/bpf_private.h）。
-// SDK 均未提供，全部做运行时特性探测。
+// Source: the PRIVATE section of xnu/bsd/net/bpf.h (moved to bsd/net/bpf_private.h starting with macOS 26).
+// Not provided by the SDK; all are feature-probed at runtime.
 // =============================================================================
 
-/// 启用批量写：一次 write() 发送多帧。
+/// Enables batch writes: send multiple frames with one write().
 ///
-/// 内核实现出现在 macOS 14 / xnu-10063 起；macOS 13 及更早完全没有。
-/// 因此必须探测：ioctl 返回 ENOTTY / EINVAL 就回落到逐帧 write。
+/// The kernel implementation appeared in macOS 14 / xnu-10063; macOS 13 and earlier have nothing at all.
+/// Hence probing is required: if the ioctl returns ENOTTY / EINVAL, fall back to per-frame write.
 ///
-/// 前置条件：BIOCSHDRCMPLT 必须已设为 1，且不得设置过 BIOCSETTC。
+/// Precondition: BIOCSHDRCMPLT must already be set to 1, and BIOCSETTC must not have been set.
 inline constexpr unsigned long kBpfSetBatchWrite = _IOW('B', 143, int);
 static_assert(kBpfSetBatchWrite == 0x8004'428FUL, "BIOCSBATCHWRITE 编号与实测值不符");
 
-/// 关闭抓包时间戳，让 catchpacket 跳过 microtime() 调用。
+/// Turns off capture timestamps so catchpacket skips the microtime() call.
 ///
-/// 我们不需要时间戳（帧直接转发给 USB），关掉能省掉每帧一次时钟读取。
-/// 同样做特性探测，失败无害。
+/// We do not need timestamps (frames are forwarded directly to USB); turning them off saves one clock read per frame.
+/// Also feature-probed; failure is harmless.
 inline constexpr unsigned long kBpfSetNoTimestamp = _IOW('B', 145, int);
 static_assert(kBpfSetNoTimestamp == 0x8004'4291UL, "BIOCSNOTSTAMP 编号与实测值不符");
 
-/// 显式设置抓包方向（BIOCSSEESENT 的更精确版本）。
+/// Explicitly sets the capture direction (a more precise version of BIOCSSEESENT).
 inline constexpr unsigned long kBpfSetDirection = _IOW('B', 138, unsigned int);
 
-/// 抓包方向取值。
+/// Capture direction values.
 inline constexpr unsigned int kBpfDirectionNone = 0;
 inline constexpr unsigned int kBpfDirectionIn = 0x1;
 inline constexpr unsigned int kBpfDirectionOut = 0x2;
 inline constexpr unsigned int kBpfDirectionInOut = kBpfDirectionIn | kBpfDirectionOut;
 
-/// bpfwrite 允许的超长余量。
+/// The oversize allowance permitted by bpfwrite.
 ///
-/// 内核检查是 `(len - hlen) > (ifp->if_mtu + BPF_WRITE_LEEWAY)` → EMSGSIZE。
-/// 在 BIOCSHDRCMPLT=1（我们的用法）下 hlen == 0，所以**整帧长度（含 14 字节
-/// 以太头）必须 <= 接口 MTU + 18**。MTU=1500 时上限 1518，刚好容得下标准
-/// 1514 帧和带 VLAN 标签的 1518 帧。
+/// The kernel check is `(len - hlen) > (ifp->if_mtu + BPF_WRITE_LEEWAY)` -> EMSGSIZE.
+/// Under BIOCSHDRCMPLT=1 (our usage) hlen == 0, so the **whole frame length (including the 14-byte
+/// Ethernet header) must be <= interface MTU + 18**. With MTU=1500 the cap is 1518, which exactly fits a standard
+/// 1514 frame and a 1518 frame with a VLAN tag.
 inline constexpr std::uint32_t kBpfWriteLeeway = 18;
 
-/// BIOCSBLEN 的上下限。
+/// Upper and lower bounds of BIOCSBLEN.
 ///
-/// macOS 13（xnu-8792）起上限是 BPF_BUFSIZE_CAP，本机通过只读 sysctl
-/// debug.bpf_bufsize_cap 暴露为 32 MiB。**超限不报错**，而是静默截到上限并
-/// 通过 _IOWR 把实际生效值写回参数 —— 所以必须使用写回值，见 bpf_link.cc。
+/// Starting with macOS 13 (xnu-8792) the upper bound is BPF_BUFSIZE_CAP, exposed on this machine through the read-only sysctl
+/// debug.bpf_bufsize_cap as 32 MiB. **Exceeding it does not report an error**; it silently clamps to the cap and
+/// writes the actually effective value back through _IOWR -- so the written-back value must be used; see bpf_link.cc.
 inline constexpr std::uint32_t kBpfMinBufferBytes = 32;
 
-/// BPF 记录头的最小长度。
+/// Minimum length of a BPF record header.
 ///
-/// 关键陷阱：`sizeof(struct bpf_hdr)` 在 LP64 上是 **20**（18 字节内容被编译器
-/// 补齐到 20），而内核实际写入的 `bh_hdrlen` 对 DLT_EN10MB 是 **18**
-/// （SIZEOF_BPF_HDR=18，bif_hdrlen = BPF_WORDALIGN(14+18) - 14 = 18）。
-/// **读取时必须用记录里的 bh_hdrlen，用 sizeof 会立刻错位。**
+/// Key pitfall: `sizeof(struct bpf_hdr)` is **20** on LP64 (the 18 bytes of content are padded by the compiler
+/// to 20), while the `bh_hdrlen` the kernel actually writes for DLT_EN10MB is **18**
+/// (SIZEOF_BPF_HDR=18, bif_hdrlen = BPF_WORDALIGN(14+18) - 14 = 18).
+/// **When reading, the bh_hdrlen in the record must be used; using sizeof misaligns immediately.**
 inline constexpr std::uint32_t kBpfHeaderMinBytes = 18;
 
 static_assert(sizeof(struct bpf_hdr) == 20,
@@ -182,25 +182,25 @@ static_assert(sizeof(struct BPF_TIMEVAL) == 8,
               "LP64 下 BPF 时间戳是 timeval32（8 字节），不是 64 位 timeval");
 
 // =============================================================================
-// feth 创建期会被快照的 sysctl
+// sysctls snapshotted at feth creation time
 //
-// 这些开关在 feth_clone_create() 那一刻从 sysctl 读进接口的私有标志位，
-// **创建之后再改 sysctl 无效**。因此必须在创建 feth 之前校验它们。
+// These switches are read from sysctl into the interface's private flag bits at the moment of feth_clone_create(),
+// and **changing the sysctl after creation has no effect**. They must therefore be verified before creating the feth.
 // =============================================================================
 
-/// 一个必须为特定值的 feth sysctl。
+/// A feth sysctl that must have a specific value.
 ///
-/// `why` 存的是文案标识而不是现成的字符串：这张表是 constexpr 的，而「为什么」
-/// 要按用户当前语言渲染，只能推迟到出错那一刻再查表。
+/// `why` stores a message identifier rather than a ready-made string: this table is constexpr, while the "why"
+/// must be rendered in the user's current language, so it can only be deferred to the moment of the error and looked up then.
 struct RequiredFethSysctl {
   const char* name;
   std::int32_t required_value;
   Msg why;
 };
 
-/// 创建 feth 前必须校验的 sysctl 清单。
+/// List of sysctls that must be verified before creating a feth.
 ///
-/// 这些值如果不对，我们从 BPF 读到的帧就不是「干净的以太帧」：
+/// If these values are wrong, the frames we read from BPF are not "clean Ethernet frames":
 inline constexpr RequiredFethSysctl kRequiredFethSysctls[] = {
     {"net.link.fake.hwcsum", 0, Msg::kNetSysctlWhyHwcsum},
     {"net.link.fake.fcs", 0, Msg::kNetSysctlWhyFcs},

@@ -1,4 +1,4 @@
-// 版本信息的冒烟测试：确认 CMake 的版本注入链路是通的。
+// Smoke test of version information: confirms the CMake version injection chain works.
 #include <doctest.h>
 
 #include "tetherkitnext/version.h"

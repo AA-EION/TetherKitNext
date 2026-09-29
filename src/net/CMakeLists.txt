@@ -1,8 +1,8 @@
-# tk_net —— 虚拟网卡与链路层
+# tk_net -- virtual NIC and link layer
 #
-# 只依赖 macOS 系统调用（ioctl / BPF），不依赖 libusb 也不依赖 RNDIS 协议层。
-# LinkBackend 是本模块的对外抽象；BpfLink 是生产实现，LoopbackLink 是纯内存实现
-# —— 后者让桥接层的端到端测试与吞吐基准能在没有 root、没有真实接口的机器上跑。
+# Depends only on macOS system calls (ioctl / BPF), not on libusb nor on the RNDIS protocol layer.
+# LinkBackend is this module's public abstraction; BpfLink is the production implementation and LoopbackLink is a pure in-memory implementation
+# -- the latter lets the bridge layer's end-to-end tests and throughput benchmarks run on machines without root or real interfaces.
 
 add_library(
   tk_net STATIC

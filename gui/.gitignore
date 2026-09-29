@@ -1,4 +1,4 @@
-# SwiftPM 的构建产物与解析出的依赖状态。
+# SwiftPM build artifacts and resolved dependency state.
 .build/
 .swiftpm/
 Package.resolved

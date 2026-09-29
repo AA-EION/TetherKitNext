@@ -1,12 +1,12 @@
-// 内存版 RNDIS 数据通道，用于离线驱动桥接层。
+// In-memory RNDIS data channel, for driving the bridge layer offline.
 //
-// 它扮演「USB 设备」这一侧：
-//   * StartReceiving 之后可以用 InjectFromDevice 注入「设备发来的帧」，由一个
-//     内部生产者线程推进桥接层的 RX 队列 —— 这模拟 libusb 事件线程的角色；
-//   * SendFrames 收下「主机要发给设备的帧」，供测试断言。
+// It plays the "USB device" side:
+//   * After StartReceiving, InjectFromDevice can be used to inject "frames sent by the device", and an
+//     internal producer thread pushes them into the bridge layer's RX queue -- simulating the role of the libusb event thread;
+//   * SendFrames accepts "frames the host wants to send to the device", for tests to assert.
 //
-// 这样桥接层的线程模型、批处理、背压与统计就能在没有 USB 设备的机器上被完整
-// 测试，包括 TSan 下的并发正确性。
+// This way the bridge layer's threading model, batching, backpressure and statistics can be fully tested on machines without a USB device,
+// including concurrency correctness under TSan.
 #pragma once
 
 #include <algorithm>
@@ -23,7 +23,7 @@
 
 namespace tetherkitnext::testing {
 
-/// 模拟设备行为的数据通道。
+/// A data channel that simulates device behavior.
 class MockDataChannel final : public usb::DataChannel {
  public:
   explicit MockDataChannel(std::uint32_t max_transfer_bytes = 16 * 1024)
@@ -37,7 +37,7 @@ class MockDataChannel final : public usb::DataChannel {
   ~MockDataChannel() override { Shutdown(); }
 
   // ---------------------------------------------------------------------------
-  // DataChannel 实现
+  // DataChannel implementation
   // ---------------------------------------------------------------------------
 
   [[nodiscard]] Status StartReceiving(FrameRing& rx_ring,
@@ -53,7 +53,7 @@ class MockDataChannel final : public usb::DataChannel {
       return std::unexpected(Error::Generic("mock：按测试设置让发送失败"));
     }
 
-    // 模拟传输池容量有限：一次最多吃下 accept_limit_ 帧，超出即背压。
+    // Simulates the limited capacity of the transfer pool: accepts at most accept_limit_ frames at a time, and anything beyond is backpressure.
     const std::uint32_t limit = accept_limit_.load(std::memory_order_acquire);
     const auto accepted =
         static_cast<std::uint32_t>(std::min<std::size_t>(frames.size(), limit));
@@ -84,7 +84,7 @@ class MockDataChannel final : public usb::DataChannel {
   void Shutdown() override {
     receiving_.store(false, std::memory_order_release);
     shutdown_called_.store(true, std::memory_order_release);
-    // 唤醒可能在 WaitForSendCapacity 里等容量的线程（与真实实现同款空临界区惯用法）。
+    // Wakes threads that may be waiting for capacity in WaitForSendCapacity (the same empty-critical-section idiom as the real implementation).
     { const std::lock_guard<std::mutex> guard(wait_mutex_); }
     wait_cv_.notify_all();
   }
@@ -101,19 +101,19 @@ class MockDataChannel final : public usb::DataChannel {
     return async_send_errors_.load(std::memory_order_relaxed);
   }
 
-  /// 模拟异步完成回调里发生的错误（真实实现里来自 STALL / 传输失败）。
+  /// Simulates errors happening in the asynchronous completion callback (in the real implementation they come from STALL / transfer failures).
   void InjectAsyncSendError() noexcept {
     async_send_errors_.fetch_add(1, std::memory_order_relaxed);
   }
 
   // ---------------------------------------------------------------------------
-  // 测试注入
+  // Test injection
   // ---------------------------------------------------------------------------
 
-  /// 直接把一批「设备发来的帧」推进桥接层的 RX 队列。
+  /// Pushes a batch of "frames sent by the device" directly into the bridge layer's RX queue.
   ///
-  /// 走 BatchWrite，与真实的 libusb 回调路径一致。返回实际入队的帧数
-  /// （队列满时会少于请求数，这正是要测的丢包路径）。
+  /// Goes through BatchWrite, consistent with the real libusb callback path. Returns the number of frames actually enqueued
+  /// (fewer than requested when the queue is full, which is exactly the drop path under test).
   [[nodiscard]] std::uint32_t InjectFromDevice(
       const std::vector<std::vector<std::byte>>& frames) {
     if (rx_ring_ == nullptr) {
@@ -138,10 +138,10 @@ class MockDataChannel final : public usb::DataChannel {
     return accepted;
   }
 
-  /// 设置一次 SendFrames 最多吃下多少帧。设 0 可模拟传输池完全占满（背压）。
+  /// Sets the maximum number of frames one SendFrames accepts. Setting 0 can simulate the transfer pool being completely full (backpressure).
   ///
-  /// 从 0 恢复为非 0 相当于「传输完成、槽位归还」，会唤醒等在
-  /// WaitForSendCapacity 里的桥接层 TX 线程。
+  /// Going from 0 back to non-zero is equivalent to "transfer complete, slot returned", and wakes the bridge layer's TX thread
+  /// waiting in WaitForSendCapacity.
   void SetAcceptLimit(std::uint32_t limit) {
     accept_limit_.store(limit, std::memory_order_release);
     { const std::lock_guard<std::mutex> guard(wait_mutex_); }
@@ -153,7 +153,7 @@ class MockDataChannel final : public usb::DataChannel {
   }
 
   // ---------------------------------------------------------------------------
-  // 观测
+  // Observation
   // ---------------------------------------------------------------------------
 
   [[nodiscard]] std::uint64_t SentFrameCount() const noexcept {
@@ -180,7 +180,7 @@ class MockDataChannel final : public usb::DataChannel {
     return receiving_.load(std::memory_order_acquire);
   }
 
-  /// WaitForSendCapacity 被调用的次数 —— 断言「桥接层确实在等而不是在丢」。
+  /// The number of times WaitForSendCapacity was called -- asserts that "the bridge layer really is waiting rather than dropping".
   [[nodiscard]] std::uint64_t WaitCalls() const noexcept {
     return wait_calls_.load(std::memory_order_relaxed);
   }

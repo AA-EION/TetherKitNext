@@ -1,7 +1,7 @@
-// FrameRing 的单元测试。
+// Unit tests of FrameRing.
 //
-// FrameRing 是 RX 路径的核心：libusb 回调线程把拆出的以太帧写进去，
-// BPF 写线程取出来 write()。因此这里既测语义，也测并发。
+// FrameRing is the core of the RX path: the libusb callback thread writes the unpacked Ethernet frames into it,
+// and the BPF write thread takes them out and write()s. So both semantics and concurrency are tested here.
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -21,7 +21,7 @@ using tetherkitnext::kCacheLineSize;
 
 namespace {
 
-/// 造一个内容可自校验的帧：首字节是序号，其余按序号推导。
+/// Builds a frame whose content is self-verifying: the first byte is the sequence number, and the rest are derived from the sequence number.
 std::vector<std::byte> MakeFrame(std::uint32_t length, std::uint8_t tag) {
   std::vector<std::byte> frame(length);
   for (std::uint32_t i = 0; i < length; ++i) {
@@ -47,7 +47,7 @@ TEST_CASE("容量向上取整并报告存储开销") {
   FrameRing ring(100, 1514);
   CHECK(ring.Capacity() == 128);
   CHECK(ring.MaxFrameBytes() == 1514);
-  // 每槽 = 128 字节头 + 1514 字节数据 = 1642，向上对齐到 128 的倍数 = 1664。
+  // Each slot = 128-byte header + 1514 bytes of data = 1642, rounded up to a multiple of 128 = 1664.
   CHECK(ring.StorageBytes() == 128 * 1664);
 }
 
@@ -76,7 +76,7 @@ TEST_CASE("超长帧被拒绝且不占用槽位") {
   const std::vector<std::byte> too_long = MakeFrame(129, 0x01);
   CHECK_FALSE(ring.TryPush(too_long));
   CHECK(ring.SizeSnapshot() == 0);
-  // 拒绝一次之后队列仍然可用。
+  // After one rejection the queue is still usable.
   CHECK(ring.TryPush(MakeFrame(128, 0x02)));
 }
 
@@ -93,7 +93,7 @@ TEST_CASE("BeginWrite/CommitWrite 零拷贝路径") {
   FrameRing ring(4, 1514);
   const std::span<std::byte> dst = ring.BeginWrite();
   REQUIRE(dst.size() == 1514);
-  // 直接在预留槽位上原地构造，模拟从 USB 缓冲 memcpy 进来。
+  // Construct in place directly on the reserved slot, simulating a memcpy in from a USB buffer.
   for (std::size_t i = 0; i < 100; ++i) {
     dst[i] = std::byte{static_cast<unsigned char>((0x77 + i) & 0xFFU)};
   }
@@ -107,7 +107,7 @@ TEST_CASE("BeginWrite/CommitWrite 零拷贝路径") {
 
 TEST_CASE("变长帧混合、反复绕环不串数据") {
   FrameRing ring(4, 2048);
-  // 容量 4，跑 500 轮，每轮长度不同，逼迫索引回绕并复用槽位。
+  // Capacity 4, run 500 rounds with a different length each round, forcing the indices to wrap around and reuse slots.
   for (std::uint32_t round = 0; round < 500; ++round) {
     const auto length = static_cast<std::uint32_t>(14 + (round * 37) % 2000);
     const auto tag = static_cast<std::uint8_t>(round & 0xFFU);
@@ -121,7 +121,7 @@ TEST_CASE("变长帧混合、反复绕环不串数据") {
 }
 
 TEST_CASE("每帧数据区起始地址按缓存行对齐") {
-  // 性能正确性断言：帧数据必须落在缓存行边界，memcpy 与 write() 才走最优路径。
+  // Performance correctness assertion: frame data must land on cache line boundaries so that memcpy and write() take the optimal path.
   FrameRing ring(8, 1514);
   for (int i = 0; i < 8; ++i) {
     const std::span<std::byte> dst = ring.BeginWrite();
@@ -210,7 +210,7 @@ TEST_CASE("并发搬运 20 万帧不丢不乱序") {
         std::this_thread::yield();
         continue;
       }
-      // 长度与内容都由序号决定，消费者可独立校验。
+      // Both length and content are determined by the sequence number, so the consumer can verify independently.
       const auto length = static_cast<std::uint32_t>(14 + (sent % 400));
       const auto tag = static_cast<std::uint8_t>(sent & 0xFFU);
       for (std::uint32_t i = 0; i < length; ++i) {
@@ -259,10 +259,10 @@ TEST_CASE("批量写：暂存期间消费者看不到，发布后一次性可见
     }
     CHECK(batch.Staged() == 5);
     CHECK(batch.Published() == 0);
-    // 关键语义：尚未发布，消费者一帧都看不到。
+    // Key semantics: not yet published, so the consumer sees not a single frame.
     CHECK(ring.SizeSnapshot() == 0);
     CHECK(ring.BeginRead().Empty());
-  }  // 析构 → 一次 PublishWrite(5)
+  }  // destructor -> one PublishWrite(5)
   CHECK(ring.SizeSnapshot() == 5);
 }
 
@@ -294,7 +294,7 @@ TEST_CASE("批量写：队列满时 Begin 返回空，已暂存的仍会发布")
       }
       ++accepted;
     }
-    CHECK(accepted == 4);  // 容量 4，能完整利用
+    CHECK(accepted == 4);  // capacity 4, fully utilized
     CHECK(batch.Staged() == 4);
   }
   CHECK(ring.SizeSnapshot() == 4);
@@ -314,17 +314,17 @@ TEST_CASE("批量读：释放前视图有效，释放后槽位才可复用") {
       REQUIRE_FALSE(view.Empty());
       views.push_back(view);
     }
-    CHECK(batch.Next().Empty());  // 取完了
+    CHECK(batch.Next().Empty());  // all taken
     CHECK(batch.Staged() == 4);
-    // 关键语义：尚未释放，所有视图仍指向有效且未被覆写的内容。
-    // 这正是「攒一批零拷贝批量写出去」的前提。
+    // Key semantics: not yet released, so all views still point to valid content that has not been overwritten.
+    // This is exactly the precondition for "gather a batch and write it out zero-copy".
     for (std::size_t i = 0; i < views.size(); ++i) {
       CHECK(views[i].length == 100);
       CHECK(VerifyFrame(views[i].Bytes(), static_cast<std::uint8_t>(0x20 + i)));
     }
-    // 未释放前生产者看到的空闲槽位不应包含这 4 个。
+    // Before release, the free slots the producer sees should not include these 4.
     CHECK(ring.SizeSnapshot() == 4);
-  }  // 析构 → 一次 PublishRead(4)
+  }  // destructor -> one PublishRead(4)
   CHECK(ring.SizeSnapshot() == 0);
 }
 
@@ -350,7 +350,7 @@ TEST_CASE("批量读：显式 Release 后可继续取") {
 
 TEST_CASE("批量与逐帧接口混用仍保持 FIFO 与内容正确") {
   FrameRing ring(16, 1514);
-  // 先逐帧推 2 个，再批量推 3 个，然后批量读 5 个。
+  // First push 2 per frame, then push 3 in a batch, then read 5 in a batch.
   REQUIRE(ring.TryPush(MakeFrame(64, 0)));
   REQUIRE(ring.TryPush(MakeFrame(64, 1)));
   {

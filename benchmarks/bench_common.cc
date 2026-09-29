@@ -1,9 +1,9 @@
-// 基础设施层的微基准。
+// Microbenchmarks of the infrastructure layer.
 //
-// 这些数字是后续判断「哪里是真瓶颈」的基线。特别是：
-//   * memcpy 一帧 vs 一次 SPSC 入队出队 —— 用来验证 FrameRing 注释里那个
-//     「拷贝不是瓶颈」的论断；
-//   * 无锁队列的跨线程吞吐 —— 决定数据路径的理论上限。
+// These numbers are the baseline for later judging "where the real bottleneck is". In particular:
+//   * memcpy of one frame vs one SPSC enqueue+dequeue -- used to verify the claim in the FrameRing comments that
+//     "the copy is not the bottleneck";
+//   * Cross-thread throughput of the lock-free queue -- determines the theoretical ceiling of the data path.
 #include "bench_common.h"
 
 #include <atomic>
@@ -24,7 +24,7 @@
 namespace tetherkitnext::bench {
 namespace {
 
-/// 以太网上最常见的两种帧长：MTU 满帧与 TCP ACK 小帧。
+/// The two most common frame lengths on Ethernet: an MTU-sized full frame and a small TCP ACK frame.
 constexpr std::uint32_t kFullFrameBytes = 1514;
 constexpr std::uint32_t kSmallFrameBytes = 64;
 
@@ -37,14 +37,14 @@ std::vector<std::byte> MakeFrame(std::uint32_t length) {
 }
 
 // ---------------------------------------------------------------------------
-// memcpy 基线
+// memcpy baseline
 // ---------------------------------------------------------------------------
 
-/// 纯 memcpy：FrameRing 单次拷贝成本的下界。
+/// Plain memcpy: the lower bound of FrameRing's single-copy cost.
 ///
-/// 注意这是**全热缓存**下的数字：源与目标都常驻 L1。真实 RX 路径的源是 USB
-/// DMA 写入的缓冲，对 CPU 缓存是冷的，实际成本会更高。这里量的是下界，
-/// 用来和 FrameRing 的往返成本相减，估算队列本身的开销。
+/// Note these are numbers under a **fully hot cache**: both source and destination stay resident in L1. The source on the real RX path is a buffer written by USB
+/// DMA, which is cold to the CPU cache, so the actual cost will be higher. What is measured here is the lower bound,
+/// used to subtract from FrameRing's round-trip cost to estimate the queue's own overhead.
 std::uint64_t BenchMemcpy(std::uint64_t iterations, std::uint32_t frame_bytes) {
   const std::vector<std::byte> source = MakeFrame(frame_bytes);
   std::vector<std::byte> destination(frame_bytes);
@@ -56,13 +56,13 @@ std::uint64_t BenchMemcpy(std::uint64_t iterations, std::uint32_t frame_bytes) {
 }
 
 // ---------------------------------------------------------------------------
-// 字节序读写
+// Byte-order reads and writes
 // ---------------------------------------------------------------------------
 
-/// 解析一个 RNDIS_PACKET_MSG 头部所需的 11 次 LoadLe32。
+/// The 11 LoadLe32 calls needed to parse an RNDIS_PACKET_MSG header.
 std::uint64_t BenchParsePacketHeader(std::uint64_t iterations) {
-  // 44 字节的 REMOTE_NDIS_PACKET_MSG 头部，刻意放在奇数偏移上，
-  // 顺便验证未对齐读取的代价（应该为零）。
+  // A 44-byte REMOTE_NDIS_PACKET_MSG header, deliberately placed at an odd offset,
+  // to also verify the cost of unaligned reads (should be zero).
   std::vector<std::byte> buffer(64);
   for (std::size_t i = 0; i < buffer.size(); ++i) {
     buffer[i] = std::byte{static_cast<unsigned char>(i)};
@@ -70,7 +70,7 @@ std::uint64_t BenchParsePacketHeader(std::uint64_t iterations) {
 
   std::uint32_t accumulator = 0;
   for (std::uint64_t i = 0; i < iterations; ++i) {
-    const std::byte* header = buffer.data() + 1;  // 未对齐
+    const std::byte* header = buffer.data() + 1;  // unaligned
     for (std::size_t field = 0; field < 11; ++field) {
       accumulator += LoadLe32(header + field * 4);
     }
@@ -80,10 +80,10 @@ std::uint64_t BenchParsePacketHeader(std::uint64_t iterations) {
 }
 
 // ---------------------------------------------------------------------------
-// SPSC 队列
+// SPSC queue
 // ---------------------------------------------------------------------------
 
-/// 单线程入队+出队一轮：测纯索引运算与内存序开销（无跨核缓存往返）。
+/// One single-thread enqueue+dequeue round: measures pure index arithmetic and memory-ordering overhead (no cross-core cache round trip).
 std::uint64_t BenchSpscRoundTripSameThread(std::uint64_t iterations) {
   SpscRing<std::uint64_t> ring(1024);
   std::uint64_t sink = 0;
@@ -99,7 +99,7 @@ std::uint64_t BenchSpscRoundTripSameThread(std::uint64_t iterations) {
   return iterations;
 }
 
-/// 跨线程搬运：这是数据路径真正会遇到的情形，包含缓存一致性往返。
+/// Cross-thread movement: this is the situation the data path really encounters, including a cache coherence round trip.
 std::uint64_t BenchSpscCrossThread(std::uint64_t iterations) {
   SpscRing<std::uint64_t> ring(4096);
   std::atomic<bool> start{false};
@@ -133,7 +133,7 @@ std::uint64_t BenchSpscCrossThread(std::uint64_t iterations) {
 // FrameRing
 // ---------------------------------------------------------------------------
 
-/// 单线程「预留-写入-提交-读取-释放」一轮，含一次 memcpy。
+/// One single-thread "reserve-write-commit-read-release" round, including one memcpy.
 std::uint64_t BenchFrameRingRoundTrip(std::uint64_t iterations, std::uint32_t frame_bytes) {
   FrameRing ring(1024, kMaxEthernetFrameBytes);
   const std::vector<std::byte> source = MakeFrame(frame_bytes);
@@ -156,11 +156,11 @@ std::uint64_t BenchFrameRingRoundTrip(std::uint64_t iterations, std::uint32_t fr
   return iterations;
 }
 
-/// 跨线程帧搬运：RX 路径（libusb 回调线程 → BPF 写线程）的真实模型。
+/// Cross-thread frame movement: the real model of the RX path (libusb callback thread -> BPF write thread).
 ///
-/// `batch_size` = 1 时等价于逐帧发布（每帧一次 release store，写位置所在缓存行
-/// 每帧跨核弹一次）；> 1 时用 BatchWrite / BatchRead 把发布摊薄。
-/// 这一组对比是整个数据路径设计里收益最高的单点优化的直接证据。
+/// `batch_size` = 1 is equivalent to per-frame publishing (one release store per frame, and the cache line holding the write position
+/// bounces across cores once per frame); > 1 uses BatchWrite / BatchRead to amortize the publishing.
+/// This comparison is direct evidence for the single highest-payoff optimization in the entire data-path design.
 std::uint64_t BenchFrameRingCrossThread(std::uint64_t iterations, std::uint32_t frame_bytes,
                                        std::uint32_t batch_size) {
   FrameRing ring(4096, kMaxEthernetFrameBytes);
@@ -183,7 +183,7 @@ std::uint64_t BenchFrameRingCrossThread(std::uint64_t iterations, std::uint32_t 
         batch.Commit(frame_bytes);
         ++sent;
       }
-      // batch 析构 → 一次 PublishWrite(n)
+      // batch destructor -> one PublishWrite(n)
     }
   });
 
@@ -196,26 +196,26 @@ std::uint64_t BenchFrameRingCrossThread(std::uint64_t iterations, std::uint32_t 
       if (view.Empty()) {
         break;
       }
-      // 模拟消费者会真的读到帧内容（BPF write 会读整帧）。
+      // Simulate that the consumer really reads the frame content (BPF write reads the whole frame).
       DoNotOptimize(view.data[0]);
       ++received;
     }
-    // batch 析构 → 一次 PublishRead(n)
+    // batch destructor -> one PublishRead(n)
   }
   producer.join();
   return iterations;
 }
 
 // ---------------------------------------------------------------------------
-// 统计计数器
+// Statistics counters
 // ---------------------------------------------------------------------------
 
-/// 每帧都要执行的计数器更新：必须便宜到可以忽略。
+/// The counter update executed for every frame: it must be cheap enough to ignore.
 ///
-/// 循环体里必须放 ClobberMemory()：relaxed 原子的连续读-改-写是**允许**被编译器
-/// 合并的（N 次 +1 折叠成一次 +N），不加屏障测出来会是 0 ns/op —— 那不是计数器
-/// 真实的单次成本。真实数据路径上每两次计数之间都夹着一次系统调用，不存在合并
-/// 机会，所以加编译屏障（无运行时指令）才是正确的模型。
+/// ClobberMemory() must be put in the loop body: consecutive relaxed atomic read-modify-writes are **allowed** to be
+/// merged by the compiler (N increments of +1 folded into one +N), and without the barrier the measurement would be 0 ns/op -- that is not the counter's
+/// true per-call cost. On the real data path a system call sits between every two counts, so there is no opportunity
+/// to merge, and adding a compiler barrier (no runtime instruction) is the correct model.
 std::uint64_t BenchCounterUpdate(std::uint64_t iterations) {
   DirectionCounters counters;
   for (std::uint64_t i = 0; i < iterations; ++i) {
@@ -226,7 +226,7 @@ std::uint64_t BenchCounterUpdate(std::uint64_t iterations) {
   return iterations;
 }
 
-/// 对比：如果用 fetch_add（真原子读-改-写，arm64 上是 LSE 的 ldadd）会贵多少。
+/// Comparison: how much more expensive it would be to use fetch_add (a true atomic read-modify-write, which on arm64 is LSE's ldadd).
 std::uint64_t BenchCounterUpdateFetchAdd(std::uint64_t iterations) {
   std::atomic<std::uint64_t> frames{0};
   std::atomic<std::uint64_t> bytes{0};
@@ -266,8 +266,8 @@ void RegisterCommonBenchmarks(Runner& runner) {
   runner.Add("FrameRing", "单线程往返（64 字节）",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchFrameRingRoundTrip(n, kSmallFrameBytes); });
-  // 批量发布的效果对比。这是整个数据路径最重要的一组数字：同一条队列、
-  // 同样的搬运量，只改「每次 release store 发布多少帧」。
+  // Comparison of the effect of batch publishing. This is the most important group of numbers for the whole data path: the same queue,
+  // the same amount moved, changing only "how many frames each release store publishes".
   for (const std::uint32_t batch : {1U, 4U, 8U, 32U, 64U}) {
     runner.Add(
         "FrameRing 批量发布",

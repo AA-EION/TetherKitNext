@@ -12,10 +12,10 @@
 namespace tetherkitnext::rndis {
 namespace {
 
-/// 构造一个带 RNDIS 状态码名字的错误。
+/// Constructs an error carrying the name of an RNDIS status code.
 ///
-/// 状态码到名字的映射只存在于 protocol.cc 一处（tk_common 不认识 RNDIS），
-/// 因此这里把名字直接拼进 context 串，Error 自身只保留原始数值。
+/// The mapping from status codes to names exists in only one place, protocol.cc (tk_common does not know RNDIS),
+/// so the name is spliced directly into the context string here, and Error itself keeps only the raw numeric value.
 Error MakeStatusError(std::uint32_t status, std::string_view what) {
   const std::string_view name = StatusName(status);
   if (name.empty()) {
@@ -24,7 +24,7 @@ Error MakeStatusError(std::uint32_t status, std::string_view what) {
   return Error::FromRndisStatus(status, Tr(Msg::kRndisStatusSuffix, what, name));
 }
 
-/// 校验缓冲区至少有 `needed` 字节。
+/// Verifies that the buffer has at least `needed` bytes.
 Status RequireBytes(std::span<const std::byte> buffer, std::size_t needed, std::string_view what) {
   if (buffer.size() < needed) {
     return std::unexpected(
@@ -33,7 +33,7 @@ Status RequireBytes(std::span<const std::byte> buffer, std::size_t needed, std::
   return Ok();
 }
 
-/// 校验待写入缓冲区容量。
+/// Verifies the capacity of the buffer to be written.
 Status RequireCapacity(std::span<std::byte> buffer, std::size_t needed, std::string_view what) {
   if (buffer.size() < needed) {
     return std::unexpected(
@@ -42,7 +42,7 @@ Status RequireCapacity(std::span<std::byte> buffer, std::size_t needed, std::str
   return Ok();
 }
 
-/// 校验一条完成消息：类型正确、长度自洽、状态成功。
+/// Verifies a completion message: correct type, self-consistent length, successful status.
 Status ValidateCompletion(std::span<const std::byte> buffer, MessageType expected_type,
                           std::uint32_t minimum_bytes, std::string_view what) {
   TETHERKITNEXT_RETURN_IF_ERROR(RequireBytes(buffer, minimum_bytes, what));
@@ -63,15 +63,15 @@ Status ValidateCompletion(std::span<const std::byte> buffer, MessageType expecte
   return Ok();
 }
 
-/// 写入公共头部（Type + Length）。
+/// Writes the common header (Type + Length).
 void WriteHeader(std::span<std::byte> buffer, MessageType type, std::uint32_t message_length) {
   StoreLe32(buffer.data() + kMessageTypeOffset, ToRaw(type));
   StoreLe32(buffer.data() + kMessageLengthOffset, message_length);
 }
 
-/// 解析一个「偏移 + 长度」描述的内嵌缓冲区，基准点为消息起始 + 8。
+/// Parses an embedded buffer described by an "offset + length", with the base point being message start + 8.
 ///
-/// 返回指向 `buffer` 内部的视图。偏移或长度越界时返回错误。
+/// Returns a view pointing into `buffer`. Returns an error when the offset or length is out of bounds.
 Result<std::span<const std::byte>> ResolveInlineBuffer(std::span<const std::byte> buffer,
                                                        std::uint32_t message_length,
                                                        std::uint32_t relative_offset,
@@ -80,7 +80,7 @@ Result<std::span<const std::byte>> ResolveInlineBuffer(std::span<const std::byte
   if (length == 0) {
     return std::span<const std::byte>{};
   }
-  // 绝对偏移 = 8 + 字段值，见 protocol.h 文件头规则 2。
+  // Absolute offset = 8 + field value; see rule 2 in the file header of protocol.h.
   const std::uint64_t absolute_offset =
       static_cast<std::uint64_t>(kOffsetFieldBase) + relative_offset;
   const std::uint64_t end = absolute_offset + length;
@@ -102,7 +102,7 @@ std::array<char, 18> FormatMac(const MacAddress& mac) noexcept {
 }
 
 // =============================================================================
-// 通用头部
+// Common header
 // =============================================================================
 
 Result<MessageHeader> DecodeMessageHeader(std::span<const std::byte> buffer) {
@@ -159,12 +159,12 @@ Result<InitializeComplete> DecodeInitializeComplete(std::span<const std::byte> b
 Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
                                        std::uint32_t requested_mtu,
                                        std::uint32_t host_transfer_size_limit) {
-  // ---- 介质必须是以太网 ----
+  // ---- The medium must be Ethernet ----
   if (complete.medium != ToRaw(Medium::kEthernet)) {
     return std::unexpected(Error::Generic(Tr(Msg::kRndisUnsupportedMedium, complete.medium)));
   }
 
-  // ---- 面向连接设备不支持 ----
+  // ---- Connection-oriented devices are not supported ----
   const bool connectionless =
       (complete.device_flags & static_cast<std::uint32_t>(DeviceFlags::kConnectionless)) != 0;
   const bool connection_oriented =
@@ -173,11 +173,11 @@ Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
     return std::unexpected(Error::Generic(Tr(Msg::kRndisConnectionOriented)));
   }
   if (!connectionless) {
-    // 有设备两个位都不置。宽容处理：按无连接继续，只告警。
+    // Some devices set neither bit. Handle tolerantly: continue as connectionless, only warn.
     TETHERKITNEXT_WARN_TR(Msg::kRndisNoConnectionlessFlag, complete.device_flags);
   }
 
-  // ---- 版本 ----
+  // ---- Version ----
   if (complete.major_version != kMajorVersion) {
     return std::unexpected(Error::Generic(
         Tr(Msg::kRndisUnsupportedMajorVersion, complete.major_version, kMajorVersion)));
@@ -186,12 +186,12 @@ Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
   NegotiatedParameters params;
   params.connectionless = true;
 
-  // ---- MaxPacketsPerMessage：0 当 1 ----
-  // 主线 Linux gadget 报 1；打了高通上行聚合补丁的 Android 内核报 3 或更多。
+  // ---- MaxPacketsPerMessage: treat 0 as 1 ----
+  // Mainline Linux gadget reports 1; Android kernels with the Qualcomm uplink aggregation patch report 3 or more.
   params.max_packets_per_message = std::max<std::uint32_t>(1, complete.max_packets_per_message);
 
-  // ---- PacketAlignmentFactor：钳到 7 ----
-  // 超过 7 属于协议违规。不钳位的话 1u << factor 会溢出或算出荒谬的填充长度。
+  // ---- PacketAlignmentFactor: clamp to 7 ----
+  // Exceeding 7 is a protocol violation. Without clamping, 1u << factor would overflow or produce an absurd padding length.
   std::uint32_t alignment_factor = complete.packet_alignment_factor;
   if (alignment_factor > kMaxPacketAlignmentFactor) {
     TETHERKITNEXT_WARN_TR(Msg::kRndisAlignmentFactorClamped, alignment_factor,
@@ -200,15 +200,15 @@ Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
   }
   params.tx_alignment_bytes = 1U << alignment_factor;
 
-  // ---- MaxTransferSize：双向钳位 ----
+  // ---- MaxTransferSize: clamp in both directions ----
   std::uint32_t device_limit = complete.max_transfer_size;
   if (device_limit <= kHardHeaderBytes) {
     return std::unexpected(
         Error::Generic(Tr(Msg::kRndisMaxTransferTooSmall, device_limit, kHardHeaderBytes)));
   }
 
-  // 上钳：某些 WinCE / Windows Mobile 设备宣称 8KB 或 16KB 的巨帧上限，
-  // 对这种链路速率毫无意义，只会让我们分配巨大的传输缓冲。不盲从设备。
+  // Clamp upward: some WinCE / Windows Mobile devices claim an 8KB or 16KB jumbo-frame limit,
+  // which is meaningless at this link rate and would only make us allocate huge transfer buffers. Do not follow the device blindly.
   if (device_limit > host_transfer_size_limit) {
     TETHERKITNEXT_INFO_TR(Msg::kRndisMaxTransferClampedToHost, device_limit,
                       host_transfer_size_limit);
@@ -216,8 +216,8 @@ Result<NegotiatedParameters> Negotiate(const InitializeComplete& complete,
   }
   params.device_max_transfer_size = device_limit;
 
-  // 下钳：若设备装不下一个按 requested_mtu 计算的满帧，就反推出可行的 MTU。
-  // 实测案例：HTC Diamond 报 1536，比 hard_mtu(1558) 小，MTU 需降到 1478。
+  // Clamp downward: if the device cannot fit a full frame computed from requested_mtu, back-derive a feasible MTU.
+  // Measured case: the HTC Diamond reports 1536, smaller than hard_mtu(1558), and the MTU needs to drop to 1478.
   params.mtu = requested_mtu;
   const std::uint32_t hard_mtu = HardMtuFor(requested_mtu);
   if (device_limit < hard_mtu) {
@@ -245,9 +245,9 @@ Result<std::uint32_t> EncodeHalt(std::uint32_t request_id, std::span<std::byte> 
 // =============================================================================
 
 Result<std::uint32_t> Encode(const QueryRequest& request, std::span<std::byte> buffer) {
-  // 未文档化但必须遵守的规则（见 QueryRequest::expected_response_bytes 注释）：
-  //   变长 OID → InformationBufferLength 必须为 0；
-  //   定长 OID → 必须 ≥ 期望响应长度，且消息尾部要真的有那么多字节。
+  // An undocumented but mandatory rule (see the comment on QueryRequest::expected_response_bytes):
+  //   variable-length OID -> InformationBufferLength must be 0;
+  //   fixed-length OID -> must be >= the expected response length, and the message tail must really have that many bytes.
   const bool variable_length = IsVariableLengthOid(request.oid);
   const std::uint32_t info_length = variable_length ? 0 : request.expected_response_bytes;
 
@@ -258,12 +258,12 @@ Result<std::uint32_t> Encode(const QueryRequest& request, std::span<std::byte> b
   StoreLe32(buffer.data() + kQuerySetRequestIdOffset, request.request_id);
   StoreLe32(buffer.data() + kQuerySetOidOffset, ToRaw(request.oid));
   StoreLe32(buffer.data() + kQuerySetInfoBufferLengthOffset, info_length);
-  // 长度为 0 时偏移也必须为 0，否则某些设备会拒绝。
+  // When the length is 0, the offset must also be 0, otherwise some devices reject it.
   StoreLe32(buffer.data() + kQuerySetInfoBufferOffsetOffset,
             info_length == 0 ? 0 : kQuerySetInlineInfoOffset);
   StoreLe32(buffer.data() + kQuerySetDeviceVcHandleOffset, 0);
 
-  // 尾部填零，作为设备写回结果的占位区。
+  // Pad with zeros at the tail, as a placeholder area for the device to write the result back into.
   if (info_length != 0) {
     std::memset(buffer.data() + kQuerySetHeaderBytes, 0, info_length);
   }
@@ -288,8 +288,8 @@ Result<QueryComplete> DecodeQueryComplete(std::span<const std::byte> buffer) {
   };
 
   if (status != ToRaw(StatusCode::kSuccess)) {
-    // 失败时不解析信息缓冲区 —— 设备可能没填。把状态原样返回给调用方判断，
-    // 因为「某个可选 OID 不支持」是正常情况，不该一律当致命错误。
+    // On failure the information buffer is not parsed -- the device may not have filled it. The status is returned as-is for the caller to judge,
+    // because "some optional OID is unsupported" is a normal situation and should not always be treated as fatal.
     return complete;
   }
 
@@ -343,7 +343,7 @@ Result<SetComplete> DecodeSetComplete(std::span<const std::byte> buffer) {
 Result<std::uint32_t> EncodeReset(std::span<std::byte> buffer) {
   TETHERKITNEXT_RETURN_IF_ERROR(RequireCapacity(buffer, kResetMsgBytes, "REMOTE_NDIS_RESET_MSG"));
   WriteHeader(buffer, MessageType::kReset, kResetMsgBytes);
-  // offset 8 是 Reserved，不是 RequestId —— 必须写 0。
+  // Offset 8 is Reserved, not RequestId -- 0 must be written.
   StoreLe32(buffer.data() + kResetReservedOffset, 0);
   return kResetMsgBytes;
 }
@@ -351,7 +351,7 @@ Result<std::uint32_t> EncodeReset(std::span<std::byte> buffer) {
 Result<ResetComplete> DecodeResetComplete(std::span<const std::byte> buffer) {
   TETHERKITNEXT_RETURN_IF_ERROR(ValidateCompletion(buffer, MessageType::kResetComplete,
                                                kResetCmpltBytes, "REMOTE_NDIS_RESET_CMPLT"));
-  // 注意偏移：RESET_CMPLT 没有 RequestId，Status 在 offset 8 而非 12。
+  // Note the offset: RESET_CMPLT has no RequestId, and Status is at offset 8 rather than 12.
   return ResetComplete{
       .status = LoadLe32(buffer.data() + kResetCmpltStatusOffset),
       .addressing_reset = LoadLe32(buffer.data() + kResetCmpltAddressingResetOffset) != 0,
@@ -415,16 +415,16 @@ Result<IndicateStatus> DecodeIndicateStatus(std::span<const std::byte> buffer) {
 
   const std::uint32_t buffer_length = LoadLe32(base + kIndicateStatusBufferLengthOffset);
   if (buffer_length == 0) {
-    // 绝大多数情况：MEDIA_CONNECT / MEDIA_DISCONNECT 不带负载。
+    // The vast majority of cases: MEDIA_CONNECT / MEDIA_DISCONNECT carry no payload.
     return indication;
   }
 
-  // StatusBufferOffset 的基准点在规范里是矛盾的，两种解释都试一遍。
-  // 详见 messages.h 中 DecodeIndicateStatus 的文档注释。
+  // The base point of StatusBufferOffset is contradictory in the spec; try both interpretations.
+  // See the documentation comment of DecodeIndicateStatus in messages.h for details.
   const std::uint32_t relative_offset = LoadLe32(base + kIndicateStatusBufferOffsetOffset);
   const std::uint64_t candidates[] = {
-      static_cast<std::uint64_t>(kOffsetFieldBase) + relative_offset,  // 与 QUERY/SET 一致
-      relative_offset,                                                 // 按 MS 文档字面
+      static_cast<std::uint64_t>(kOffsetFieldBase) + relative_offset,  // consistent with QUERY/SET
+      relative_offset,                                                 // literal reading of the MS docs
   };
   for (const std::uint64_t offset : candidates) {
     if (offset + buffer_length <= message_length) {
@@ -435,16 +435,16 @@ Result<IndicateStatus> DecodeIndicateStatus(std::span<const std::byte> buffer) {
   }
 
   if (indication.status_buffer.empty()) {
-    // 两种解释都越界：丢掉可选负载，但**仍然成功返回** —— status 本身有用
-    // （比如它可能就是 MEDIA_DISCONNECT），不能因为解析不了一个可选字段
-    // 就把链路判死。
+    // Both interpretations are out of bounds: discard the optional payload, but **still return success** -- the status itself is useful
+    // (for example it may be MEDIA_DISCONNECT), and the link must not be judged dead
+    // just because an optional field cannot be parsed.
     TETHERKITNEXT_WARN_TR(Msg::kRndisIndicateStatusBufferOutOfBounds, relative_offset, buffer_length,
                       message_length);
     return indication;
   }
 
-  // 恰好 8 字节时按 RNDIS_Diagnostic_Info 解析 —— 设备用它报告我们发过去的
-  // 消息哪里不合法（DiagStatus + ErrorOffset），对排障极有价值。
+  // When exactly 8 bytes, parse as RNDIS_Diagnostic_Info -- the device uses it to report what is invalid in the
+  // message we sent, which is highly valuable for troubleshooting.
   if (indication.status_buffer.size() == kDiagnosticInfoBytes) {
     indication.has_diagnostic_info = true;
     indication.diagnostic_status =
@@ -456,7 +456,7 @@ Result<IndicateStatus> DecodeIndicateStatus(std::span<const std::byte> buffer) {
 }
 
 // =============================================================================
-// OID 负载解析
+// OID payload parsing
 // =============================================================================
 
 Result<std::uint32_t> ParseUint32(std::span<const std::byte> information) {
@@ -465,7 +465,7 @@ Result<std::uint32_t> ParseUint32(std::span<const std::byte> information) {
 }
 
 Result<std::uint64_t> ParseCounter(std::span<const std::byte> information) {
-  // 统计类 OID 可能返回 4 或 8 字节，两者都必须接受。
+  // Statistics OIDs may return 4 or 8 bytes; both must be accepted.
   if (information.size() >= 8) {
     return LoadLe64(information.data());
   }

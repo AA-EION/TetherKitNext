@@ -1,15 +1,15 @@
-// 数据路径统计计数器。
+// Data-path statistics counters.
 //
-// 设计要点：
-//   * 热路径上的计数器**不能**是共享的 std::atomic —— 两个线程对同一个原子做
-//     fetch_add，在 25k~80k pps 下会把那条缓存行打成乒乓球。
-//   * 因此采用「每方向一份私有计数器 + 读取时快照」的结构：写方是单线程，
-//     用 relaxed store 更新（编译后就是一条普通 str 指令）；观测线程用
-//     relaxed load 读快照，允许读到轻微不一致的一组数值 —— 统计不需要
-//     强一致性。
-//   * 用 std::atomic<uint64_t> + relaxed 而非裸 uint64_t，是为了让
-//     ThreadSanitizer 不把「观测线程读、工作线程写」判成数据竞争。
-//     relaxed 原子在 arm64 上就是普通的 ldr/str，无额外开销。
+// Design points:
+//   * Counters on the hot path **must not** be shared std::atomics -- two threads doing
+//     fetch_add on the same atomic would turn that cache line into a ping-pong ball at 25k~80k pps.
+//   * So the structure is "one private counter set per direction + a snapshot at read time": the writer is a single thread
+//     that updates with a relaxed store (which compiles to an ordinary str instruction); the observing thread
+//     reads a snapshot with relaxed loads, allowing it to read a slightly inconsistent set of values -- statistics do not need
+//     strong consistency.
+//   * std::atomic<uint64_t> + relaxed rather than a bare uint64_t is used so that
+//     ThreadSanitizer does not judge "observer thread reads, worker thread writes" a data race.
+//     A relaxed atomic is just an ordinary ldr/str on arm64, with no extra overhead.
 #pragma once
 
 #include <atomic>
@@ -20,19 +20,19 @@
 
 namespace tetherkitnext {
 
-/// 单向（RX 或 TX）的数据路径计数器。
+/// Data-path counters for one direction (RX or TX).
 ///
-/// 只允许**一个**线程调用 Add* 方法；任意线程可以调用 Snapshot()。
+/// Only **one** thread may call the Add* methods; any thread may call Snapshot().
 struct alignas(kCacheLineSize) DirectionCounters {
-  std::atomic<std::uint64_t> frames{0};        ///< 成功搬运的帧数。
-  std::atomic<std::uint64_t> bytes{0};         ///< 成功搬运的字节数（以太帧净荷）。
-  std::atomic<std::uint64_t> dropped_full{0};  ///< 因下游队列满而丢弃的帧数。
-  std::atomic<std::uint64_t> dropped_oversize{0};  ///< 因超过单帧上限而丢弃的帧数。
-  std::atomic<std::uint64_t> dropped_malformed{0};  ///< 因格式非法而丢弃的帧数。
-  std::atomic<std::uint64_t> io_errors{0};     ///< 底层 I/O 失败次数（write/传输错误）。
-  std::atomic<std::uint64_t> batches{0};       ///< 批次数，用来算平均批大小。
+  std::atomic<std::uint64_t> frames{0};        ///< Number of frames successfully moved.
+  std::atomic<std::uint64_t> bytes{0};         ///< Number of bytes successfully moved (Ethernet frame payload).
+  std::atomic<std::uint64_t> dropped_full{0};  ///< Number of frames dropped because the downstream queue was full.
+  std::atomic<std::uint64_t> dropped_oversize{0};  ///< Number of frames dropped for exceeding the per-frame limit.
+  std::atomic<std::uint64_t> dropped_malformed{0};  ///< Number of frames dropped for an invalid format.
+  std::atomic<std::uint64_t> io_errors{0};     ///< Number of underlying I/O failures (write / transfer errors).
+  std::atomic<std::uint64_t> batches{0};       ///< Number of batches, used to compute the average batch size.
 
-  /// 记录一帧成功搬运。这是最热的一行代码，刻意保持只有两次 relaxed 累加。
+  /// Records one frame successfully moved. This is the hottest line of code, deliberately kept to only two relaxed additions.
   void AddFrame(std::uint32_t frame_bytes) noexcept {
     Bump(frames, 1);
     Bump(bytes, frame_bytes);
@@ -53,14 +53,14 @@ struct alignas(kCacheLineSize) DirectionCounters {
   void AddIoError(std::uint64_t count = 1) noexcept { Bump(io_errors, count); }
 
  private:
-  /// relaxed 读-改-写。因为只有单一写线程，这里不需要 fetch_add 的原子性，
-  /// load+store 即可，能省掉 arm64 上的 LSE 原子指令（ldadd）。
+  /// Relaxed read-modify-write. Because there is only a single writer thread, the atomicity of fetch_add is not needed here;
+  /// load+store suffices, saving the LSE atomic instruction (ldadd) on arm64.
   static void Bump(std::atomic<std::uint64_t>& counter, std::uint64_t delta) noexcept {
     counter.store(counter.load(std::memory_order_relaxed) + delta, std::memory_order_relaxed);
   }
 };
 
-/// DirectionCounters 的普通（非原子）快照，便于做差值与格式化。
+/// Plain (non-atomic) snapshot of DirectionCounters, convenient for taking differences and formatting.
 struct DirectionSnapshot {
   std::uint64_t frames = 0;
   std::uint64_t bytes = 0;
@@ -74,7 +74,7 @@ struct DirectionSnapshot {
     return dropped_full + dropped_oversize + dropped_malformed;
   }
 
-  /// 逐字段相减，得到两次采样之间的增量。
+  /// Field-by-field subtraction, yielding the delta between two samples.
   [[nodiscard]] DirectionSnapshot operator-(const DirectionSnapshot& earlier) const noexcept {
     return DirectionSnapshot{
         .frames = frames - earlier.frames,
@@ -100,16 +100,16 @@ struct DirectionSnapshot {
   };
 }
 
-/// 双向数据路径的全部计数器。
+/// All counters of the bidirectional data path.
 ///
-/// RX = 设备 → 主机（USB bulk IN → BPF write）
-/// TX = 主机 → 设备（BPF read → USB bulk OUT）
+/// RX = device -> host (USB bulk IN -> BPF write)
+/// TX = host -> device (BPF read -> USB bulk OUT)
 struct PathCounters {
   DirectionCounters rx;
   DirectionCounters tx;
 };
 
-/// 一段时间窗口内的速率，用于周期性报告。
+/// Rate over a time window, used for periodic reports.
 struct RateReport {
   double seconds = 0.0;
   double rx_pps = 0.0;
@@ -122,12 +122,12 @@ struct RateReport {
   double tx_avg_batch = 0.0;
 };
 
-/// 按固定周期把计数器差值换算成速率。
+/// Converts counter deltas into rates at a fixed period.
 class RateSampler {
  public:
   RateSampler() : last_nanos_(MonotonicNanos()) {}
 
-  /// 采样一次，返回自上次采样以来的速率。
+  /// Samples once, returning the rate since the last sample.
   [[nodiscard]] RateReport Sample(const PathCounters& counters) noexcept {
     const Nanos now = MonotonicNanos();
     const DirectionSnapshot rx_now = Snapshot(counters.rx);

@@ -1,4 +1,4 @@
-// error.h / logging.h 的单元测试。
+// Unit tests of error.h / logging.h.
 #include <cerrno>
 #include <string>
 
@@ -24,7 +24,7 @@ Status SucceedingStep() {
   return Ok();
 }
 
-/// 演示 TETHERKITNEXT_RETURN_IF_ERROR 的传播链。
+/// Demonstrates the propagation chain of TETHERKITNEXT_RETURN_IF_ERROR.
 Status PipelineWithFailure() {
   TETHERKITNEXT_RETURN_IF_ERROR(SucceedingStep());
   TETHERKITNEXT_RETURN_IF_ERROR(FailingStep());
@@ -64,7 +64,7 @@ TEST_CASE("errno 传 0 时自动读取全局 errno") {
 }
 
 TEST_CASE("libusb 域渲染出 libusb 错误名") {
-  // LIBUSB_ERROR_ACCESS == -3，是本项目最常见的失败（未以 root 运行）。
+  // LIBUSB_ERROR_ACCESS == -3 is this project's most common failure (not running as root).
   const Error error = Error::FromLibUsb(-3, "声明 RNDIS 数据接口失败");
   CHECK(error.Domain() == ErrorDomain::kLibUsb);
   const std::string text = error.ToString();
@@ -72,10 +72,10 @@ TEST_CASE("libusb 域渲染出 libusb 错误名") {
 }
 
 TEST_CASE("RNDIS 域输出原始状态码数值") {
-  // tk_common **刻意不认识** RNDIS 状态码的符号名 —— 那张表只存在于
-  // rndis/protocol.cc 一处（单一来源，避免两处不一致）。因此 Error::ToString()
-  // 这里只负责输出十六进制数值；符号名由 rndis 层在构造 Error 时拼进上下文串
-  // （见 rndis/messages.cc 的 MakeStatusError）。
+  // tk_common **deliberately does not know** the symbolic names of RNDIS status codes -- that table exists in only
+  // one place, rndis/protocol.cc (a single source, avoiding inconsistency between two places). So Error::ToString()
+  // here is only responsible for outputting the hexadecimal value; the symbolic name is spliced into the context string by the rndis layer when it constructs the Error
+  // (see MakeStatusError in rndis/messages.cc).
   const Error error = Error::FromRndisStatus(0xC00000BBU, "查询 OID 失败");
   const std::string text = error.ToString();
   CHECK(text.find("查询 OID 失败") != std::string::npos);
@@ -92,7 +92,7 @@ TEST_CASE("WithContext 形成外层到内层的原因链") {
   const auto inner_pos = text.find("ioctl(BIOCSETIF) 失败");
   REQUIRE(outer_pos != std::string::npos);
   REQUIRE(inner_pos != std::string::npos);
-  CHECK(outer_pos < inner_pos);  // 外层原因在前
+  CHECK(outer_pos < inner_pos);  // the outer cause comes first
 }
 
 TEST_CASE("RETURN_IF_ERROR 传播首个失败") {

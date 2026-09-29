@@ -1,7 +1,7 @@
 #include "tetherkitnext/common/i18n.h"
 
-// ContextSeparator() 的声明在 error.h 里（那边不想拖上 <format>），
-// 实现在本文件底部 —— 包含它才能让编译器核对声明与定义一致。
+// The declaration of ContextSeparator() is in error.h (which does not want to drag in <format>),
+// and the implementation is at the bottom of this file -- including it lets the compiler verify that the declaration and definition agree.
 #include "tetherkitnext/common/error.h"
 
 #include <array>
@@ -15,37 +15,37 @@
 namespace tetherkitnext {
 namespace {
 
-/// 文案条数。两张表都按它定长，保证「加了枚举却漏了译文」在编译期就炸。
+/// Number of messages. Both tables are fixed-length by it, guaranteeing that "added an enum but missed a translation" blows up at compile time.
 constexpr std::size_t kMessageCount = static_cast<std::size_t>(Msg::kMessageCount);
 
-/// 中文表。
+/// The Chinese table.
 constexpr std::array<std::string_view, kMessageCount> kChineseTable{
 #define TETHERKITNEXT_MESSAGE(id, zh, en) zh,
 #include "tetherkitnext/common/messages.def"  // NOLINT(bugprone-suspicious-include)
 #undef TETHERKITNEXT_MESSAGE
 };
 
-/// 英文表。
+/// The English table.
 constexpr std::array<std::string_view, kMessageCount> kEnglishTable{
 #define TETHERKITNEXT_MESSAGE(id, zh, en) en,
 #include "tetherkitnext/common/messages.def"  // NOLINT(bugprone-suspicious-include)
 #undef TETHERKITNEXT_MESSAGE
 };
 
-/// 当前语言。进程级单一状态，用原子而非互斥：每条文案都要读它。
+/// The current language. Process-wide single state, using an atomic rather than a mutex: every message needs to read it.
 ///
-/// 默认英文而不是中文：本表的调用点遍布库内部，宿主（命令行 / GUI）会在启动时
-/// 立刻用 SetLanguage 覆盖掉。选英文作缺省是因为「没人设置过语言」通常意味着
-/// 调用方是第三方绑定，英文比中文更可能被看懂。
+/// Default is English rather than Chinese: this table's call sites are all over the library's internals, and the host (CLI / GUI) overrides it at startup
+/// immediately with SetLanguage. English is chosen as the default because "nobody ever set a language" usually means
+/// the caller is a third-party binding, and English is more likely to be understood than Chinese.
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<Language> g_language{Language::kEnglish};
 
-/// ASCII 小写化。只用来比较语言标签，不需要考虑区域设置。
+/// ASCII lowercasing. Used only to compare language tags; locale need not be considered.
 [[nodiscard]] char ToLowerAscii(char c) noexcept {
   return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 }
 
-/// `text` 是否以 `prefix` 开头（ASCII 大小写不敏感）。
+/// Whether `text` starts with `prefix` (ASCII case-insensitive).
 [[nodiscard]] bool StartsWithIgnoreCase(std::string_view text, std::string_view prefix) noexcept {
   if (text.size() < prefix.size()) {
     return false;
@@ -58,10 +58,10 @@ std::atomic<Language> g_language{Language::kEnglish};
   return true;
 }
 
-/// 读一个环境变量，未设置或为空串时返回空 view。
+/// Reads an environment variable; returns an empty view when unset or an empty string.
 [[nodiscard]] std::string_view ReadEnvironment(const char* name) noexcept {
-  // getenv 被 concurrency-mt-unsafe 标记，因为它与 setenv 并发时不安全。这里
-  // 只在进程启动、还没起任何工作线程时读一次，且全项目从不调用 setenv。
+  // getenv is flagged by concurrency-mt-unsafe because it is unsafe when concurrent with setenv. Here it
+  // is read only once at process startup, before any worker thread is started, and the whole project never calls setenv.
   // NOLINTNEXTLINE(concurrency-mt-unsafe)
   const char* value = std::getenv(name);
   if (value == nullptr || *value == '\0') {
@@ -85,15 +85,15 @@ Language LanguageFromLocaleString(std::string_view locale) noexcept {
 }
 
 Language DetectLanguageFromEnvironment() noexcept {
-  // 顺序遵循 POSIX：LC_ALL 压过 LC_MESSAGES，LC_MESSAGES 压过 LANG。
-  // TETHERKITNEXT_LANG 排在最前，好让用户在不动区域设置的前提下只改本程序。
+  // The order follows POSIX: LC_ALL overrides LC_MESSAGES, and LC_MESSAGES overrides LANG.
+  // TETHERKITNEXT_LANG comes first, so users can change only this program without touching locale settings.
   for (const char* name : {"TETHERKITNEXT_LANG", "LC_ALL", "LC_MESSAGES", "LANG"}) {
     const std::string_view value = ReadEnvironment(name);
     if (value.empty()) {
       continue;
     }
-    // 取到第一个非空值就定了，不再往后看 —— 否则 LANG=zh_CN 会被更靠后的
-    // 空值以外的任何东西干扰，语义也和 POSIX 不符。
+    // Once the first non-empty value is found it is decided and we do not look further -- otherwise LANG=zh_CN would be
+    // interfered with by anything other than an empty value further down, and the semantics would not match POSIX either.
     return LanguageFromLocaleString(value);
   }
   return Language::kEnglish;
@@ -142,14 +142,14 @@ std::string FormatMessage(Msg id, std::format_args args) noexcept {
   try {
     return std::vformat(pattern, args);
   } catch (...) {  // NOLINT(bugprone-empty-catch)
-    // 只可能是译文里的占位符与调用点对不上（测试会拦住，但运行期宁可降级也
-    // 不能抛）。退回未替换的原文：信息不全，总好过丢掉整条消息。
+    // This can only be that the placeholders in a translation do not match the call site (tests will catch it, but at runtime we would rather degrade than
+    // throw). Fall back to the unsubstituted original text: incomplete information is still better than losing the whole message.
     return std::string{pattern};
   }
 }
 
 std::string_view ContextSeparator() noexcept {
-  // 中文用全角冒号（前后不留空格），英文用半角冒号加空格。
+  // Chinese uses a full-width colon (no spaces around it); English uses a half-width colon plus a space.
   return GetLanguage() == Language::kChinese ? "：" : ": ";
 }
 

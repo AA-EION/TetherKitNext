@@ -14,29 +14,29 @@
 namespace tetherkitnext {
 namespace {
 
-// 日志配置是进程级的单一状态，天然是可变全局量；用原子保证线程安全后，
-// 再拆成单例类只会增加间接层而无实质收益，故此处整体豁免相关检查。
+// Logging configuration is a process-wide single state, naturally a mutable global; after using atomics for thread safety,
+// splitting it into a singleton class would only add an indirection layer with no real benefit, so the related checks are exempted wholesale here.
 // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
 
-/// 运行期日志下限。用原子而非 mutex：读取发生在每条日志的判断分支上。
+/// Runtime log floor. An atomic rather than a mutex: it is read in the check branch of every log line.
 std::atomic<LogLevel> g_runtime_level{LogLevel::kInfo};
 
-/// 是否输出 ANSI 颜色。惰性初始化为 `isatty(STDERR_FILENO)`。
+/// Whether to output ANSI colors. Lazily initialized to `isatty(STDERR_FILENO)`.
 std::atomic<int> g_color_enabled{-1};
 
-/// 保护 stderr 的整行输出，避免多线程日志交错。
-/// 日志不在数据热路径上，锁竞争可以忽略。
+/// Protects the whole-line output to stderr, avoiding interleaving of multi-threaded logs.
+/// Logging is not on the data hot path, so lock contention can be ignored.
 std::mutex& OutputMutex() {
   static std::mutex mutex;
   return mutex;
 }
 
-/// 宿主安装的日志汇。sink 与 user 必须**成对**更新，所以用 OutputMutex 保护
-/// 而不是两个独立的原子 —— 两个原子无法一起原子更新，会读到错配的组合。
+/// The log sink installed by the host. sink and user must be updated **as a pair**, so they are protected by OutputMutex
+/// rather than two independent atomics -- two atomics cannot be updated atomically together, and a mismatched combination could be read.
 LogSink g_log_sink = nullptr;
 void* g_log_sink_user = nullptr;
 
-/// 线程名。thread_local 而非查询 pthread_getname_np：后者是系统调用。
+/// Thread name. thread_local rather than querying pthread_getname_np: the latter is a system call.
 constexpr std::size_t kThreadNameCapacity = 16;
 thread_local std::array<char, kThreadNameCapacity> t_thread_name{};
 
@@ -47,10 +47,10 @@ std::string_view CurrentThreadName() {
   return {t_thread_name.data(), std::strlen(t_thread_name.data())};
 }
 
-/// 级别标签与 ANSI 颜色码。
+/// Level labels and ANSI color codes.
 ///
-/// 刻意用 `const char*` 而非 `std::string_view`：这些值会直接喂给 `%s`，
-/// 而空 string_view 的 `data()` 是 nullptr，传给 printf 是未定义行为。
+/// Deliberately `const char*` rather than `std::string_view`: these values are fed directly to `%s`,
+/// and the `data()` of an empty string_view is nullptr, which is undefined behavior when passed to printf.
 struct LevelStyle {
   const char* label;
   const char* color;
@@ -59,15 +59,15 @@ struct LevelStyle {
 LevelStyle StyleFor(LogLevel level) {
   switch (level) {
     case LogLevel::kTrace:
-      return {"TRACE", "\033[90m"};  // 亮黑（灰）
+      return {"TRACE", "\033[90m"};  // bright black (gray)
     case LogLevel::kDebug:
-      return {"DEBUG", "\033[36m"};  // 青
+      return {"DEBUG", "\033[36m"};  // cyan
     case LogLevel::kInfo:
-      return {"INFO ", "\033[32m"};  // 绿
+      return {"INFO ", "\033[32m"};  // green
     case LogLevel::kWarn:
-      return {"WARN ", "\033[33m"};  // 黄
+      return {"WARN ", "\033[33m"};  // yellow
     case LogLevel::kError:
-      return {"ERROR", "\033[31m"};  // 红
+      return {"ERROR", "\033[31m"};  // red
     case LogLevel::kOff:
       break;
   }
@@ -83,9 +83,9 @@ bool ColorEnabled() {
   return cached != 0;
 }
 
-/// 把当前墙上时间格式化成 `HH:MM:SS.mmm`。
+/// Formats the current wall-clock time as `HH:MM:SS.mmm`.
 ///
-/// 用墙上时间而非单调时间：日志是给人看的，需要能和其他系统日志对齐。
+/// Wall time is used rather than monotonic time: logs are for humans to read and need to line up with other system logs.
 void FormatTimestamp(std::array<char, 16>& out) {
   ::timespec ts{};
   ::clock_gettime(CLOCK_REALTIME, &ts);
@@ -122,7 +122,7 @@ void SetCurrentThreadName(std::string_view name) noexcept {
   const std::size_t copy_len = std::min(name.size(), kThreadNameCapacity - 1);
   std::memcpy(t_thread_name.data(), name.data(), copy_len);
   t_thread_name[copy_len] = '\0';
-  // 同步给内核，使 lldb / Instruments / `sample` 也能看到有意义的线程名。
+  // Sync to the kernel, so lldb / Instruments / `sample` can also see a meaningful thread name.
   ::pthread_setname_np(t_thread_name.data());
 }
 
@@ -143,18 +143,18 @@ void EmitLogLine(LogLevel level, std::string_view file, unsigned line,
   const char* color_off = color ? "\033[0m" : "";
   const std::string_view thread_name = CurrentThreadName();
 
-  // 用一次 fprintf 输出整行，配合互斥锁保证行不交错。
-  // 不用 std::format 是为了避免这里也可能抛异常 —— 日志路径必须 noexcept。
-  // file / thread_name / message 是可能不带终止符的 string_view，
-  // 因此统一用 `%.*s` 显式传长度。
+  // Output the whole line with a single fprintf, together with the mutex to guarantee that lines do not interleave.
+  // std::format is not used, to avoid the possibility of an exception here too -- the logging path must be noexcept.
+  // file / thread_name / message are string_views that may lack a terminator,
+  // so `%.*s` is used uniformly to pass the length explicitly.
   const std::lock_guard<std::mutex> guard(OutputMutex());
   std::fprintf(stderr, "%s%s%s %s [%-10.*s] %.*s:%u  %.*s\n", color_on, style.label, color_off,
                timestamp.data(), static_cast<int>(thread_name.size()), thread_name.data(),
                static_cast<int>(file.size()), file.data(), line, static_cast<int>(message.size()),
                message.data());
 
-  // 转交给宿主。在锁内调用是刻意的：这样宿主看到的行序与 stderr 完全一致。
-  // 代价是 sink 里绝不能再打日志（会自等死锁），该约束写在 logging.h 上。
+  // Hand off to the host. Calling inside the lock is deliberate: this way the line order the host sees is exactly the same as on stderr.
+  // The cost is that the sink must never log again (a self-wait deadlock); this constraint is written in logging.h.
   if (g_log_sink != nullptr) {
     g_log_sink(level, thread_name, message, g_log_sink_user);
   }

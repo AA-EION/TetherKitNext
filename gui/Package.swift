@@ -5,41 +5,41 @@
 // what provides the macOS 26 SDK the Liquid Glass UI is compiled against; the
 // app still deploys back to macOS 14.
 //
-// TetherKitNext 的图形界面。
+// TetherKitNext's graphical interface.
 //
-// ★ 为什么是 SwiftPM 而不是 CMake 或 Xcode 工程 ★
+// * Why SwiftPM rather than CMake or an Xcode project *
 //
-//   * CMake 的 Swift 支持只在 Ninja / Xcode 生成器下可用，而本仓库用的是
-//     Unix Makefiles，硬换生成器会打扰现有的 C++ 构建流程；
-//   * Xcode 工程文件是不可读、不可靠地手写的 XML，进版本库只会带来合并冲突；
-//   * SwiftPM 只需要一个 Package.swift，`swift build` 即可，和源码分发
-//     （Homebrew formula）的路线也一致。
+//   * CMake's Swift support is only available under the Ninja / Xcode generators, while this repository uses
+//     Unix Makefiles, and forcibly switching generators would disturb the existing C++ build flow;
+//   * An Xcode project file is unreadable, unreliably hand-written XML, and checking it in would only bring merge conflicts;
+//   * SwiftPM needs only a Package.swift and `swift build` suffices, which is also consistent with the source-distribution
+//     (Homebrew formula) route.
 //
-//   .app 包由 Scripts/build-gui.sh 组装 —— SwiftPM 只产出可执行文件，
-//   Info.plist、图标、内嵌 dylib 都在脚本里拼。
+//   The .app bundle is assembled by Scripts/build-gui.sh -- SwiftPM produces only the executable,
+//   and the Info.plist, icon and embedded dylib are all put together in the script.
 //
-// ★ 怎么找到 libtetherkitnext ★
+// * How to find libtetherkitnext *
 //
-//   C++ 侧先构建，产物在 <repo>/build/lib。路径通过环境变量传进来：
+//   The C++ side is built first, with its products in <repo>/build/lib. The path is passed in via an environment variable:
 //
 //     export TETHERKITNEXT_LIB_DIR=$PWD/build/lib
 //     swift build --package-path gui
 //
-//   Scripts/build-gui.sh 会替你设好。没设时退回仓库默认的 build/lib，
-//   这样在仓库里直接 `swift build` 也能用。
+//   Scripts/build-gui.sh sets it up for you. When not set it falls back to the repository default build/lib,
+//   so a direct `swift build` inside the repository also works.
 import Foundation
 import PackageDescription
 
-/// libtetherkitnext 所在目录。
+/// The directory where libtetherkitnext lives.
 ///
-/// 用绝对路径：SwiftPM 的工作目录随调用方式变化，相对路径会在
-/// `swift build --package-path gui` 与 `cd gui && swift build` 之间给出不同结果。
+/// An absolute path is used: SwiftPM's working directory varies with how it is invoked, and a relative path would give different results between
+/// `swift build --package-path gui` and `cd gui && swift build`.
 let libraryDirectory: String = {
     if let fromEnvironment = ProcessInfo.processInfo.environment["TETHERKITNEXT_LIB_DIR"],
        !fromEnvironment.isEmpty {
         return fromEnvironment
     }
-    // Package.swift 位于 <repo>/gui，因此 ../build/lib 就是默认产物目录。
+    // Package.swift is located in <repo>/gui, so ../build/lib is the default product directory.
     let packageDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     return packageDirectory
         .deletingLastPathComponent()
@@ -47,26 +47,26 @@ let libraryDirectory: String = {
         .path
 }()
 
-/// 链接 libtetherkitnext 所需的全部标志。
+/// All the flags needed to link libtetherkitnext.
 ///
-/// 这里必须用 unsafeFlags —— SwiftPM 没有「加一个库搜索路径」的安全接口。
-/// 本包是根包、不会被别人依赖，unsafeFlags 的限制不适用。
+/// unsafeFlags must be used here -- SwiftPM has no safe interface for "add a library search path".
+/// This package is the root package and will not be depended on by others, so the restriction of unsafeFlags does not apply.
 let tetherkitnextLinkerSettings: [LinkerSetting] = [
     .unsafeFlags([
         "-L\(libraryDirectory)",
-        // rpath 必须用 -Xlinker 逐段传给链接器。
-        // 写成 gcc 风格的 "-Wl,-rpath,..." 会被 swiftc 当成自己的参数，
-        // 报「unknown argument」—— 这不是链接错误，而是驱动层就拒了。
+        // rpath must be passed to the linker segment by segment with -Xlinker.
+        // Writing it in gcc style "-Wl,-rpath,..." would be taken by swiftc as its own argument,
+        // reporting "unknown argument" -- this is not a link error but a rejection at the driver level.
         //
-        // 三条 rpath 各有用途，**顺序有讲究**（dyld 按声明顺序逐条试）：
-        //   1. ../Frameworks —— 装进 .app 之后 dylib 在那里；
-        //   2. 可执行文件同级 —— helper 是裸可执行文件，dylib 就在它旁边；
-        //   3. 构建产物目录 —— 开发时 `swift run` 直接能跑。
+        // The three rpaths each have a purpose, and **the order matters** (dyld tries them one by one in declaration order):
+        //   1. ../Frameworks -- where the dylib is after being installed into the .app;
+        //   2. Next to the executable -- the helper is a bare executable, and the dylib is right beside it;
+        //   3. The build product directory -- so that `swift run` works directly during development.
         //
-        // 构建目录必须排在**最后**：它是一个绝对路径，在开发机上一定存在。
-        // 排在前面的话，打好包的 .app 在本机加载的仍是构建目录里的那份，
-        // 内嵌的副本永远得不到验证 —— 等换台机器才暴露，而那时已经晚了。
-        // （Scripts/build-gui.sh 还会把这条 rpath 从发布产物里彻底删掉。）
+        // The build directory must be placed **last**: it is an absolute path and certainly exists on the development machine.
+        // If placed earlier, the packaged .app on this machine would still load the copy in the build directory,
+        // and the embedded copy would never be verified -- only exposed on another machine, by which time it is too late.
+        // (Scripts/build-gui.sh also removes this rpath completely from release products.)
         "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
         "-Xlinker", "-rpath", "-Xlinker", "@executable_path",
         "-Xlinker", "-rpath", "-Xlinker", libraryDirectory,
@@ -76,36 +76,36 @@ let tetherkitnextLinkerSettings: [LinkerSetting] = [
 
 let package = Package(
     name: "TetherKitNextGUI",
-    // macOS 14：@Observable 与 ContentUnavailableView 需要它。命令行部分仍然
-    // 支持 13.3，两者是各自独立的产物，不必对齐。
+    // macOS 14: @Observable and ContentUnavailableView need it. The command-line part still
+    // supports 13.3; the two are independent products and need not be aligned.
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "TetherKitNextApp", targets: ["TetherKitNextApp"]),
         .executable(name: "tetherkitnext-helper", targets: ["TetherKitNextHelper"]),
     ],
     targets: [
-        // C ABI 的模块映射。头文件是指向 include/tetherkitnext/capi/tetherkitnext_c.h
-        // 的符号链接，因此永远和 C++ 侧同步，不需要任何生成步骤。
+        // The C ABI's module map. The header is a symbolic link to include/tetherkitnext/capi/tetherkitnext_c.h,
+        // and therefore is always in sync with the C++ side, needing no generation step.
         .target(name: "CTetherKitNext"),
 
-        // App 与 helper 共享的 XPC 协议与数据模型。
-        // 两边靠同一份源码保持一致，而不是各自抄一遍。
+        // The XPC protocol and data models shared by the App and the helper.
+        // The two sides stay consistent through the same source code, rather than each copying its own.
         .target(name: "TetherKitNextIPC"),
 
-        // C ABI 的 Swift 封装：把 tk_* 翻译成 Swift 的类型与错误。
+        // The C ABI's Swift wrapper: translates tk_* into Swift types and errors.
         .target(name: "TetherKitNextCore",
                 dependencies: ["CTetherKitNext", "TetherKitNextIPC"],
                 linkerSettings: tetherkitnextLinkerSettings),
 
-        // 以 root 运行的特权 helper。
+        // The privileged helper running as root.
         .executableTarget(name: "TetherKitNextHelper",
                           dependencies: ["TetherKitNextCore", "TetherKitNextIPC"]),
 
-        // 用户看到的 SwiftUI App（普通用户身份运行）。
+        // The SwiftUI App that users see (running as an ordinary user).
         .executableTarget(name: "TetherKitNextApp",
                           dependencies: ["TetherKitNextCore", "TetherKitNextIPC"]),
 
-        // 只测 TetherKitNextIPC：它是唯一「纯逻辑、不碰硬件也不需要 root」的层。
-        // 会话与网卡配置的测试在 C++ 侧（tests/test_capi.cc），不在这里重复。
+        // Tests only TetherKitNextIPC: it is the only "pure logic, touches no hardware and needs no root" layer.
+        // Tests of sessions and NIC configuration are on the C++ side (tests/test_capi.cc), and are not repeated here.
         .testTarget(name: "TetherKitNextIPCTests", dependencies: ["TetherKitNextIPC"]),
     ])

@@ -1,14 +1,14 @@
-// 文案表的一致性检查。
+// Consistency check of the message table.
 //
-// ★ 这个 suite 存在的唯一理由 ★
+// * The sole reason this suite exists *
 //
-//   Tr() 的格式串来自运行期查表，编译器**没法**再检查占位符与参数是否匹配 ——
-//   这是把 std::format 换成 vformat 付出的代价。占位符对不上时 vformat 会抛
-//   std::format_error（我们在 FormatMessage 里吞掉了，降级成未替换的原文），
-//   于是错误会安静地变成「日志里有一行长得很奇怪」，可能几个月都没人发现。
+//   The format strings of Tr() come from a runtime table lookup, and the compiler **can no longer** check whether the placeholders match the arguments --
+//   this is the price paid for replacing std::format with vformat. When placeholders do not match, vformat throws
+//   std::format_error (we swallow it in FormatMessage, degrading to the unsubstituted original text),
+//   so the error quietly turns into "one oddly shaped line in the log", which may go unnoticed for months.
 //
-//   所以那道保障必须在这里补回来：逐条比对两种语言引用的参数下标与类型。
-//   messages.def 里每加一条文案，都会自动被本 suite 覆盖，不需要手动登记。
+//   So that safeguard must be made up here: compare, entry by entry, the argument indices and types referenced by the two languages.
+//   Every message added to messages.def is automatically covered by this suite, with no manual registration.
 #include <cctype>
 #include <cstddef>
 #include <format>
@@ -28,21 +28,21 @@ using tetherkitnext::Msg;
 
 constexpr std::size_t kMessageCount = static_cast<std::size_t>(Msg::kMessageCount);
 
-/// 一个格式串里出现的所有替换字段。
+/// All replacement fields appearing in one format string.
 struct ParsedFormat {
-  /// 下标 → 该下标用到的「表现类型」字符集合。
+  /// Index -> the set of "presentation type" characters used by that index.
   ///
-  /// 表现类型就是格式规格的最后一个字母（`x` / `f` / `d`……），它决定了实参
-  /// 必须是什么类型。宽度、对齐、填充刻意**不比**：译文换了语言之后想调列宽
-  /// 是完全正当的，那不影响类型安全。
+  /// The presentation type is the last letter of the format spec (`x` / `f` / `d`...), and it determines what type
+  /// the argument must be. Width, alignment and fill are deliberately **not compared**: after a translation changes language, adjusting column width
+  /// is entirely legitimate and does not affect type safety.
   std::map<std::size_t, std::string> types;
-  /// 是否在同一个串里混用了自动编号与手工编号（std::format 会直接抛）。
+  /// Whether automatic numbering and manual numbering are mixed in the same string (std::format throws directly).
   bool mixed_indexing = false;
-  /// 是否有未闭合的 `{`。
+  /// Whether there is an unclosed `{`.
   bool malformed = false;
 };
 
-/// 从格式规格里取出表现类型字符。没有规格、或规格以非字母结尾时返回空串。
+/// Extracts the presentation type character from a format spec. Returns an empty string when there is no spec or the spec ends with a non-letter.
 [[nodiscard]] std::string PresentationType(std::string_view spec) {
   if (spec.empty()) {
     return {};
@@ -51,10 +51,10 @@ struct ParsedFormat {
   return (std::isalpha(static_cast<unsigned char>(last)) != 0) ? std::string{last} : std::string{};
 }
 
-/// 解析一个 std::format 格式串，收集替换字段。
+/// Parses a std::format format string and collects the replacement fields.
 ///
-/// 只实现我们文案里真正用到的语法子集：`{}`、`{n}`、`{:spec}`、`{n:spec}`，
-/// 外加 `{{` / `}}` 转义。嵌套的动态宽度（`{:{}}`）本表里没有，出现即视为畸形。
+/// Implements only the syntax subset our messages actually use: `{}`, `{n}`, `{:spec}`, `{n:spec}`,
+/// plus the `{{` / `}}` escapes. Nested dynamic widths (`{:{}}`) do not exist in this table, and their appearance is treated as malformed.
 [[nodiscard]] ParsedFormat ParseFormat(std::string_view text) {
   ParsedFormat parsed;
   std::size_t auto_index = 0;
@@ -63,7 +63,7 @@ struct ParsedFormat {
 
   for (std::size_t i = 0; i < text.size(); ++i) {
     if (text[i] == '}') {
-      // 合法的 `}}` 转义，跳过第二个。
+      // A legal `}}` escape; skip the second one.
       if (i + 1 < text.size() && text[i + 1] == '}') {
         ++i;
       }
@@ -73,7 +73,7 @@ struct ParsedFormat {
       continue;
     }
     if (i + 1 < text.size() && text[i + 1] == '{') {
-      ++i;  // `{{` 转义
+      ++i;  // `{{` escape
       continue;
     }
 
@@ -85,13 +85,13 @@ struct ParsedFormat {
     const std::string_view body = text.substr(i + 1, close - i - 1);
     i = close;
 
-    // 拆成「下标」与「规格」两半。
+    // Split into the "index" and "spec" halves.
     const std::size_t colon = body.find(':');
     const std::string_view index_text = body.substr(0, colon);
     const std::string_view spec =
         colon == std::string_view::npos ? std::string_view{} : body.substr(colon + 1);
     if (spec.find('{') != std::string_view::npos) {
-      parsed.malformed = true;  // 动态宽度，本表不该出现
+      parsed.malformed = true;  // dynamic width; should not appear in this table
       continue;
     }
 
@@ -116,8 +116,8 @@ struct ParsedFormat {
   return parsed;
 }
 
-/// 给报错用的可读标签。文案表里没存标识名（X-macro 只展开出文字），所以用
-/// 序号 + 英文原文的开头，足够定位到 messages.def 的哪一行。
+/// A readable label for error reports. The message table does not store identifier names (the X-macro expands only the text), so it uses
+/// the ordinal + the beginning of the English text, enough to locate which line of messages.def.
 [[nodiscard]] std::string Label(std::size_t index) {
   const std::string_view english = tetherkitnext::TextIn(Language::kEnglish, static_cast<Msg>(index));
   return std::format("message #{} (\"{}\")", index, english.substr(0, 48));
@@ -171,7 +171,7 @@ TEST_CASE("越界的 Msg 返回空串而不是崩溃") {
   CHECK(tetherkitnext::TextIn(Language::kChinese, out_of_range).empty());
 }
 
-// 本 suite 的核心：编译器不再检查的那件事，在这里逐条检查。
+// The core of this suite: the thing the compiler no longer checks is checked here entry by entry.
 TEST_CASE("两种语言的占位符下标与类型一致") {
   for (std::size_t i = 0; i < kMessageCount; ++i) {
     const auto id = static_cast<Msg>(i);
@@ -181,21 +181,21 @@ TEST_CASE("两种语言的占位符下标与类型一致") {
     CAPTURE(Label(i));
     CHECK_FALSE(chinese.malformed);
     CHECK_FALSE(english.malformed);
-    // 同一个串里混用 `{}` 与 `{0}` 会让 std::format 直接抛，编译期又拦不住。
+    // Mixing `{}` and `{0}` in one string makes std::format throw directly, and the compile time cannot stop it.
     CHECK_FALSE(chinese.mixed_indexing);
     CHECK_FALSE(english.mixed_indexing);
 
-    // 参数个数与下标必须完全一致：少一个就会渲染出残缺的句子，多一个直接抛。
+    // The number and indices of arguments must match exactly: one fewer renders an incomplete sentence, one more throws directly.
     CHECK(chinese.types.size() == english.types.size());
     for (const auto& [index, type] : chinese.types) {
       const auto found = english.types.find(index);
       REQUIRE(found != english.types.end());
-      // 类型字符不同意味着两边期待的实参类型不同，必然有一边会抛。
+      // Different type characters mean the two sides expect different argument types, so one side is bound to throw.
       CHECK(found->second == type);
     }
 
-    // 下标必须是连续的 0..n-1：留空档时 std::format 照样能渲染，但那说明有个
-    // 实参被两种语言同时忽略了，几乎总是写错。
+    // Indices must be consecutive 0..n-1: leaving a gap std::format can still render, but that means some
+    // argument is ignored by both languages at once, which is almost always a mistake.
     std::size_t expected = 0;
     for (const auto& [index, type] : chinese.types) {
       CHECK(index == expected);
@@ -223,7 +223,7 @@ TEST_CASE("ParseLanguage 认得常见写法") {
   CHECK(tetherkitnext::ParseLanguage("english", &language));
   CHECK(language == Language::kEnglish);
 
-  // auto 走环境推断，只要求它成功并给出两种语言之一。
+  // auto uses environment inference; only require it to succeed and give one of the two languages.
   CHECK(tetherkitnext::ParseLanguage("auto", &language));
 
   CHECK_FALSE(tetherkitnext::ParseLanguage("klingon", &language));
@@ -237,7 +237,7 @@ TEST_CASE("区域设置串只按 zh 前缀判定") {
   CHECK(tetherkitnext::LanguageFromLocaleString("en_US.UTF-8") == Language::kEnglish);
   CHECK(tetherkitnext::LanguageFromLocaleString("C") == Language::kEnglish);
   CHECK(tetherkitnext::LanguageFromLocaleString("") == Language::kEnglish);
-  // 「不以 zh 开头」就是英文，哪怕串里别处有 zh。
+  // "Not starting with zh" is English, even if zh appears elsewhere in the string.
   CHECK(tetherkitnext::LanguageFromLocaleString("en_zh") == Language::kEnglish);
 }
 
@@ -249,8 +249,8 @@ TEST_CASE("语言标签") {
 TEST_CASE("错误上下文的分隔符随语言变化") {
   const Language original = tetherkitnext::GetLanguage();
 
-  // Context() 返回的是 view，必须先把 Error 落到具名变量上再取，
-  // 否则临时对象在语句末尾析构，view 当场悬垂。
+  // Context() returns a view, so the Error must first be put into a named variable before taking it,
+  // otherwise the temporary is destroyed at the end of the statement and the view dangles on the spot.
   tetherkitnext::SetLanguage(Language::kChinese);
   const tetherkitnext::Error chinese = tetherkitnext::Error::Generic("inner").WithContext("outer");
   CHECK(chinese.Context().starts_with("outer："));

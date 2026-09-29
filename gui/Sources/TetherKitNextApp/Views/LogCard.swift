@@ -1,11 +1,11 @@
 import SwiftUI
 import TetherKitNextIPC
 
-/// 日志面板。常驻右栏底部，把两栏布局剩下的高度全部吃掉 —— 窗口越大看到的
-/// 越多，而不是折叠起来等用户展开（旧版折叠是单列布局塞不下的妥协）。
+/// The log panel. Resident at the bottom of the right column, consuming all the height left over by the two-column layout -- the larger the window the more
+/// can be seen, rather than being folded up waiting for the user to expand it (the old version's folding was a compromise a single-column layout could not fit).
 ///
-/// 出问题时它是唯一有用的东西，所以做了三件事：可按级别过滤、自动滚到底、
-/// 一键复制全部（用户报 issue 时能直接贴过来）。
+/// When something goes wrong it is the only useful thing, so three things were done: filterable by level, automatic scroll to the bottom,
+/// and one-click copy of everything (users can paste it directly when reporting an issue).
 struct LogCard: View {
     @Bindable var model: AppModel
     @State private var autoScroll = true
@@ -75,14 +75,14 @@ struct LogCard: View {
                 .padding(Design.Spacing.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // 高度弹性：吃掉右栏剩余空间。最小值保证极端情况下（窗口压到最小、
-            // 上面的卡都在最高状态）仍能看到几行，而不是被挤成一条缝。
-            // 90 ≈ 四行 —— 整页的预算是「最小窗口（内容高 700）也放得下」，
-            // 左栏加了特权组件管理行之后，这里是唯一合理的伸缩吸收层。
+            // Flexible height: consumes the remaining space of the right column. The minimum guarantees that in extreme cases (window pressed to the minimum,
+            // the cards above all in their tallest state) a few lines can still be seen, rather than being squeezed into a slit.
+            // 90 ~= four lines -- the whole page's budget is "fits even in the minimum window (content height 700)",
+            // and after the left column gained the privileged-component management row, this is the only reasonable stretch-absorbing layer.
             //
-            // idealHeight 必须钉死：整页外面有一层兜底 ScrollView，它测量内容
-            // 用的是理想尺寸，而内嵌 ScrollView 的理想高度 = 全部日志展开的高度
-            // —— 不钉住的话日志一多整页就被撑开，滚动又回来了。
+            // idealHeight must be pinned: outside the whole page there is a backstop ScrollView, which measures content
+            // using ideal sizes, and the ideal height of a nested ScrollView = the height of all logs expanded
+            // -- if not pinned, once there are many logs the whole page gets stretched open, and scrolling comes back.
             .frame(minHeight: 90, idealHeight: 90, maxHeight: .infinity)
             .background(.quaternary.opacity(0.35),
                         in: RoundedRectangle(cornerRadius: Design.Radius.control))
@@ -118,7 +118,7 @@ private struct LogRow: View {
                 .foregroundStyle(.tertiary)
             Text(entry.latest.level.label)
                 .foregroundStyle(Design.logColor(for: entry.latest.level))
-                // 固定宽度让级别列对齐，扫读时眼睛不用横向找。
+                // A fixed width keeps the level column aligned, so the eye need not search horizontally when skimming.
                 .frame(width: 46, alignment: .leading)
             Text(entry.latest.message)
                 .foregroundStyle(Design.logColor(for: entry.latest.level))

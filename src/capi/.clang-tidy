@@ -1,7 +1,7 @@
-# C ABI 实现层的检查豁免
+# Check exemptions for the C ABI implementation layer
 #
-# 理由同 include/tetherkitnext/capi/.clang-tidy：导出的函数名必须是 C 惯例的
-# `tk_snake_case`，且实现里不可避免地要写 C 风格的定长缓冲拷贝与裸指针。
+# Reason same as include/tetherkitnext/capi/.clang-tidy: exported function names must follow the C convention
+# `tk_snake_case`, and the implementation inevitably has to write C-style fixed-size buffer copies and raw pointers.
 InheritParentConfig: true
 
 Checks: >

@@ -1,27 +1,27 @@
 import Foundation
 
-// App 与 helper 之间传输的数据模型。
+// Data models transferred between the App and the helper.
 //
-// ★ 为什么全部走 Codable + Data，而不是 NSSecureCoding 类 ★
-//   XPC 只接受 plist 类型或实现了 NSSecureCoding 的类，后者要求两端注册允许的
-//   类集合，写错一个就是运行时的「不允许的类」异常，而且报错信息很难定位。
-//   直接把 Codable 结构体编成 JSON Data 传过去，两端共用同一份类型定义，
-//   校验交给 JSONDecoder —— 简单，且加字段天然向后兼容。
+// * Why everything goes through Codable + Data rather than NSSecureCoding classes *
+//   XPC accepts only plist types or classes implementing NSSecureCoding, and the latter requires both ends to register the allowed
+//   class set; getting one wrong is a runtime "disallowed class" exception, with an error message that is hard to pin down.
+//   Directly encoding Codable structs into JSON Data and passing them over lets both ends share the same type definitions,
+//   with validation left to JSONDecoder -- simple, and adding fields is naturally backward compatible.
 
-// MARK: - 会话
+// MARK: - Sessions
 
-/// RNDIS 会话的启动配置。字段与 C ABI 的 tk_session_config_t 一一对应。
+/// The startup configuration of an RNDIS session. The fields correspond one-to-one with the C ABI's tk_session_config_t.
 public struct SessionConfiguration: Codable, Hashable, Sendable {
-    /// 设备筛选。全为 0 表示用第一个找到的 RNDIS 设备。
+    /// Device filter. All 0 means use the first RNDIS device found.
     public var vendorID: UInt16
     public var productID: UInt16
-    /// 总线号与设备地址必须同时给出，用于区分两台同型号设备。
+    /// The bus number and device address must be given together, used to tell apart two devices of the same model.
     public var busNumber: UInt8
     public var deviceAddress: UInt8
 
-    /// 希望使用的 MTU。设备装不下时会被协商下调。
+    /// The desired MTU. Lowered by negotiation when the device cannot fit it.
     public var mtu: UInt32
-    /// 是否把系统侧网卡的 MAC 设为设备汇报的地址。
+    /// Whether to set the system-side NIC's MAC to the address the device reported.
     public var adoptDeviceMAC: Bool
 
     public init(vendorID: UInt16 = 0,
@@ -39,7 +39,7 @@ public struct SessionConfiguration: Codable, Hashable, Sendable {
     }
 }
 
-/// 会话生命周期状态。原始值与 C 的 tk_run_state_t 对齐。
+/// Session lifecycle state. Raw values are aligned with C's tk_run_state_t.
 public enum RunState: Int32, Codable, Sendable {
     case idle = 0
     case starting = 1
@@ -48,34 +48,34 @@ public enum RunState: Int32, Codable, Sendable {
     case stopped = 4
     case failed = 5
 
-    /// 是否处于「正在忙」的过渡态 —— 界面据此禁用按钮并显示进度。
+    /// Whether it is in a "busy" transitional state -- the UI uses it to disable buttons and show progress.
     public var isTransitional: Bool { self == .starting || self == .stopping }
 }
 
-/// RNDIS 主机侧状态。原始值与 C 的 tk_rndis_state_t 对齐。
+/// RNDIS host-side state. Raw values are aligned with C's tk_rndis_state_t.
 public enum RndisState: Int32, Codable, Sendable {
     case uninitialized = 0
     case initializing = 1
     case initialized = 2
-    /// 数据开始流动。
+    /// Data starts flowing.
     case dataInitialized = 3
     case halting = 4
 }
 
-/// 会话状态快照。
+/// Session state snapshot.
 public struct SessionStatus: Codable, Hashable, Sendable {
     public var runState: RunState
     public var rndisState: RndisState
     public var linkUp: Bool
-    /// 数据搬运是否处于暂停（链路 down 或设备软复位期间）。
+    /// Whether data movement is paused (during link down or a device soft reset).
     public var paused: Bool
 
-    /// 系统侧网卡名 —— 用户要在这张上配 IP。
+    /// System-side NIC name -- the user configures IP on this one.
     public var systemInterface: String
-    /// 驱动侧网卡名，仅用于排障展示。
+    /// Driver-side NIC name, for troubleshooting display only.
     public var driverInterface: String
 
-    /// 形如 "aa:bb:cc:dd:ee:ff"；未协商时为空。
+    /// In the form "aa:bb:cc:dd:ee:ff"; empty when not negotiated.
     public var deviceMAC: String
     public var mtu: UInt32
     public var linkSpeedMbps: UInt32
@@ -92,14 +92,14 @@ public struct SessionStatus: Codable, Hashable, Sendable {
     public var linkKernelDrops: UInt64
     public var txBackpressure: UInt64
 
-    /// 采样时刻的单调纳秒计数。**算速率必须用它做分母**，不能用界面定时器的
-    /// 周期 —— 两次拉取之间的真实间隔会被调度拉长，那样算出来的速率偏高。
+    /// Monotonic nanosecond count at the sampling moment. **It must be used as the denominator when computing rates**, and the period of the UI timer
+    /// must not be used -- the real interval between two pulls gets stretched by scheduling, and rates computed that way come out too high.
     public var monotonicNanos: Int64
 
-    /// runState == .failed 时的原因。
+    /// The cause when runState == .failed.
     public var fatalMessage: String
 
-    /// 未连接时的空状态。
+    /// The empty state when not connected.
     public static let idle = SessionStatus(
         runState: .idle, rndisState: .uninitialized, linkUp: false, paused: false,
         systemInterface: "", driverInterface: "", deviceMAC: "", mtu: 0, linkSpeedMbps: 0,
@@ -140,29 +140,29 @@ public struct SessionStatus: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - 设备
+// MARK: - Devices
 
-/// 一台被识别为 RNDIS 的 USB 设备。
+/// A USB device recognized as RNDIS.
 public struct DeviceDescriptor: Codable, Hashable, Identifiable, Sendable {
     public var vendorID: UInt16
     public var productID: UInt16
     public var busNumber: UInt8
     public var deviceAddress: UInt8
-    /// 厂商名 / 产品名 / 序列号是尽力而为的：读它们要打开设备，设备被占用时
-    /// 会拿不到 —— 但 helper 会回填上次成功读到的值，所以连接前后名字保持
-    /// 稳定。连回填值都没有（helper 启动后从未读到过）才是空串，界面此时
-    /// 回落到显示 `description`。
+    /// Vendor name / product name / serial number are best effort: reading them requires opening the device, and when the device is occupied
+    /// they cannot be obtained -- but the helper backfills the value last read successfully, so the name stays
+    /// stable before and after connecting. Only when even the backfill value is missing (never read since the helper started) is it an empty string, and the UI then
+    /// falls back to showing `description`.
     public var manufacturer: String
     public var product: String
     public var serial: String
-    /// 形如 "Bus 020 Device 003: 18d1:4ee4"，任何情况下都可用。
+    /// In the form "Bus 020 Device 003: 18d1:4ee4", usable in any situation.
     public var summary: String
     public var usedAndroidQuirk: Bool
 
-    /// 总线 + 地址唯一确定一台已连接的设备；同型号两台也能区分。
+    /// Bus + address uniquely identify one connected device; two of the same model can also be told apart.
     public var id: String { "\(busNumber).\(deviceAddress)" }
 
-    /// 界面上显示的主标题。
+    /// The primary title displayed in the UI.
     public var displayName: String {
         if !product.isEmpty {
             return manufacturer.isEmpty ? product : "\(manufacturer) \(product)"
@@ -185,13 +185,13 @@ public struct DeviceDescriptor: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-// MARK: - 网络配置
+// MARK: - Network configuration
 
-/// 上网方式。原始值与 C 的 tk_ip_mode_t 对齐。
+/// Connectivity method. Raw values are aligned with C's tk_ip_mode_t.
 public enum IPMode: Int32, Codable, CaseIterable, Sendable {
     case dhcp = 0
     case manual = 1
-    /// 撤销配置。
+    /// Revokes the configuration.
     case none = 2
 
     public var displayName: String {
@@ -203,19 +203,19 @@ public enum IPMode: Int32, Codable, CaseIterable, Sendable {
     }
 }
 
-/// 网卡的上网方式配置。
+/// The connectivity method configuration of the NIC.
 public struct NetworkConfiguration: Codable, Hashable, Sendable {
     public var mode: IPMode
-    /// 以下四项仅在 mode == .manual 时使用。
+    /// The following four items are used only when mode == .manual.
     public var address: String
     public var netmask: String
     public var router: String
     public var dnsServers: [String]
-    /// 是否把**全局**默认路由也指向本网卡。
+    /// Whether to point the **global** default route at this NIC as well.
     ///
-    /// 不开时只有一条绑定到本接口的 scoped 默认路由。只有在同时存在更高优先级的
-    /// 连通服务（Wi-Fi、VPN）时才需要开 —— 而 USB 网络共享的典型场景恰恰是
-    /// 没有别的网络可用，那时本网卡自然就是主服务。
+    /// When off there is only one scoped default route bound to this interface. It only needs to be turned on when a higher-priority
+    /// connected service (Wi-Fi, VPN) exists at the same time -- while the typical USB tethering scenario is precisely
+    /// that no other network is available, in which case this NIC is naturally the primary service.
     public var setDefaultRoute: Bool
 
     public static let dhcp = NetworkConfiguration(mode: .dhcp)
@@ -235,22 +235,22 @@ public struct NetworkConfiguration: Codable, Hashable, Sendable {
     }
 }
 
-/// 网卡当前**真实生效**的状态。
+/// The state the NIC **actually has in effect** at present.
 ///
-/// 刻意不复述「我们下发了什么」而是回读系统：静态模式下 DNS 能不能生效取决于
-/// IPMonitor 认不认这个服务，只有回读才能给用户准确的反馈。
+/// Deliberately does not restate "what we applied" but reads back the system: in static mode whether DNS takes effect depends on
+/// whether IPMonitor accepts this service, and only a readback gives the user accurate feedback.
 public struct NetworkState: Codable, Hashable, Sendable {
     public var hasAddress: Bool
     public var address: String
     public var netmask: String
     public var router: String
     public var dnsServers: [String]
-    /// IPConfiguration 汇报的配置方式（"DHCP" / "MANUAL" / ""）。
+    /// The configuration method reported by IPConfiguration ("DHCP" / "MANUAL" / "").
     public var method: String
-    /// IPConfiguration 汇报的服务状态（如 "BOUND"）。
+    /// The service state reported by IPConfiguration (such as "BOUND").
     public var serviceState: String
     public var hasDefaultRoute: Bool
-    /// 全局默认路由当前是否指向本网卡。
+    /// Whether the global default route currently points at this NIC.
     public var isPrimaryDefaultRoute: Bool
 
     public static let empty = NetworkState(
@@ -272,7 +272,7 @@ public struct NetworkState: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - 日志与事件
+// MARK: - Logs and events
 
 public enum LogLevel: Int32, Codable, Comparable, Sendable {
     case trace = 0
@@ -313,15 +313,15 @@ public struct LogEntry: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// helper 一次「取走待处理内容」的应答。
+/// The reply to one helper "take away pending content".
 ///
-/// 事件与日志合并成一次调用，是为了把 XPC 往返次数压到每个刷新周期一次 ——
-/// 界面每 500 ms 刷一次，分开取就是双倍的进程间往返。
+/// Events and logs are merged into one call to press the number of XPC round trips down to one per refresh period --
+/// the UI refreshes once every 500 ms, and fetching them separately would double the inter-process round trips.
 public struct HelperFeed: Codable, Sendable {
     public var logs: [LogEntry]
-    /// 被丢弃的日志条数（缓冲写满时丢最旧的）。界面据此提示「日志有缺口」。
+    /// The number of dropped log entries (the oldest are dropped when the buffer fills). The UI uses it to show "the log has gaps".
     public var droppedLogs: UInt64
-    /// 已发生但尚未被界面消费的关键事件，用文字形式给出。
+    /// Key events that have occurred but not yet been consumed by the UI, given in text form.
     public var notices: [String]
 
     public static let empty = HelperFeed(logs: [], droppedLogs: 0, notices: [])
@@ -333,13 +333,13 @@ public struct HelperFeed: Codable, Sendable {
     }
 }
 
-// MARK: - 环境
+// MARK: - Environment
 
-/// 运行环境预检结果。
+/// Runtime environment preflight result.
 public struct EnvironmentReport: Codable, Hashable, Sendable {
     public var isRoot: Bool
     public var sysctlsOK: Bool
-    /// sysctl 不合格时的具体说明（含修正命令）。
+    /// Specific explanation when the sysctls are unacceptable (including fix commands).
     public var sysctlDetail: String
     public var fethMaxMTU: UInt32
     public var version: String
