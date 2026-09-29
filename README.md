@@ -260,28 +260,6 @@ export TETHERKITNEXT_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)
 ./scripts/build-release.sh
 ```
 
-### Releases
-
-GitHub Actions builds and tests every push on Apple Silicon and Intel Macs. Pushing a tag
-publishes a release:
-
-- `v0.3.0` → a normal release. It needs signing secrets, so the DMG is signed and notarized
-  by Apple.
-- `v0.3.0-beta.1` → a pre-release. It can be unsigned, for testing.
-
-Repository secrets for signed releases:
-
-| Secret | What it is |
-|---|---|
-| `MACOS_CERTIFICATE_P12` | Your "Developer ID Application" certificate and private key, exported as .p12, base64-encoded |
-| `MACOS_CERTIFICATE_PASSWORD` | The password you set when exporting the .p12 |
-| `NOTARY_KEY_P8` | An App Store Connect API key (.p8), base64-encoded |
-| `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` | That key's ID and your issuer ID, from App Store Connect |
-
-Implementation notes and lessons learned are in [AGENTS.md](AGENTS.md).
-
----
-
 ## License
 
 MIT, see [LICENSE](LICENSE).
