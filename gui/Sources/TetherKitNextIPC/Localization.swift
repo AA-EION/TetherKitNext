@@ -22,7 +22,7 @@ import Foundation
 // * Adding a message *
 //
 //   1. Add a case to `L10nKey` in LocalizedStrings.swift;
-//   2. Fill in both the Chinese and English versions in the `localizations` switch in the same file.
+//   2. Fill in every language (english, spanish, chinese, japanese, german, korean) in the per-language switches in the same file.
 //   The switch is exhaustive, so **omissions fail to compile** -- one notch stronger than the X-macro on the C++ side.
 
 /// The language preferences a user can choose. `system` means follow macOS.
@@ -46,11 +46,11 @@ public enum Language: String, CaseIterable, Codable, Sendable {
     case korean
 
     /// Aligned with the C ABI's `tk_language_t` (TK_LANGUAGE_ENGLISH = 0, CHINESE = 1).
+    /// The C++ library only ships English and Chinese tables, so the other languages fall back to English there.
     public var cValue: Int32 {
         switch self {
-        case .english: return 0
         case .chinese: return 1
-        default: return 0
+        case .english, .spanish, .japanese, .german, .korean: return 0
         }
     }
 }

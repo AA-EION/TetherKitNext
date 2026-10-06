@@ -365,7 +365,13 @@ final class AppModel {
         }
 
         // The device list is refreshed only when not running: while running the device is held exclusively and the list should not change.
-        // If an active session just ended (e.g. device unplugged), refresh immediately without waiting for the 2-second throttle.
+        //
+        // And **refreshed more slowly than state**. One enumeration has to read USB string descriptors, which needs
+        // libusb_open to really open the device once -- doing this at the 500 ms state-polling pace
+        // amounts to opening and closing the user's device twice a second, both wasteful and possibly disruptive to it. A 2-second slower plug/unplug response
+        // does not affect the perceived experience at all.
+        //
+        // The exception: when an active session just ended (e.g. device unplugged), refresh immediately so the list is not stale.
         let sessionJustEnded = wasActive && (status.runState != .running && status.runState != .starting)
 
         if status.runState != .running, (sessionJustEnded || shouldRefreshDevices()) {
@@ -377,22 +383,6 @@ final class AppModel {
                    !devices.contains(where: { $0.id == selected }) {
                     selectedDeviceID = nil
                 }
-            }
-        }
-
-        // Graceful disconnect & reconnect handling:
-        // When a device is unplugged without disconnecting properly:
-        // 1. The disconnect is handled gracefully: whether no device remains or an unplug occurred,
-        //    the UI avoids an alarming persistent error state and returns to idle.
-        // 2. Next time a device is connected, the UI changes to the preparation of the connection
-        //    of that device (showing like there was no disconnection and just showing the available device ready to connect).
-        if status.runState != .running && status.runState != .starting && status.runState != .stopping {
-            if status.runState == .failed || status.runState == .stopped {
-                status = .idle
-                previousStatus = nil
-                sessionStartedAt = nil
-                throughput = .zero
-                networkState = .empty
             }
         }
 

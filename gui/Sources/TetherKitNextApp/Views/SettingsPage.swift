@@ -181,6 +181,10 @@ struct SettingsPage: View {
 
     // MARK: Support & Donations
 
+    private static let donationEmail = "juanesgtgt2@gmail.com"
+    private static let donationURL = URL(
+        string: "https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group")
+
     private var donationSection: some View {
         Section(L(.settingsDonationSection)) {
             VStack(alignment: .leading, spacing: Design.Spacing.small) {
@@ -195,7 +199,7 @@ struct SettingsPage: View {
 
                 HStack(spacing: Design.Spacing.small) {
                     Button {
-                        if let url = URL(string: "https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group") {
+                        if let url = Self.donationURL {
                             NSWorkspace.shared.open(url)
                         }
                     } label: {
@@ -206,7 +210,7 @@ struct SettingsPage: View {
 
                     Button(copiedPayPal ? L(.copied) : L(.copyPayPalEmail)) {
                         NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString("juanesgtgt2@gmail.com", forType: .string)
+                        NSPasteboard.general.setString(Self.donationEmail, forType: .string)
                         copiedPayPal = true
                         Task {
                             try? await Task.sleep(for: .seconds(2))

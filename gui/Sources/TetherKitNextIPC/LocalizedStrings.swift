@@ -52,6 +52,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case copyPayPalEmail
     case licensesTitle
     case licensesDone
+    case licensesTabNotices
     case usbDeviceFallbackName
     case ipModeDhcp
     case ipModeManual
@@ -277,11 +278,6 @@ extension L10nKey {
         }
     }
 
-    /// Kept for backward compatibility.
-    public var localizations: (chinese: String, english: String) {
-        (chinese, english)
-    }
-
     public var english: String {
         switch self {
         case .ok: return "OK"
@@ -314,6 +310,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "Copy PayPal Email (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "Open Source Licenses"
         case .licensesDone: return "Done"
+        case .licensesTabNotices: return "Notices"
         case .usbDeviceFallbackName: return "USB device %04lx:%04lx"
         case .ipModeDhcp: return "Automatic (DHCP)"
         case .ipModeManual: return "Static IP"
@@ -558,6 +555,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "Copiar correo de PayPal (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "Licencias de código abierto"
         case .licensesDone: return "Listo"
+        case .licensesTabNotices: return "Avisos"
         case .usbDeviceFallbackName: return "Dispositivo USB %04lx:%04lx"
         case .ipModeDhcp: return "Automático (DHCP)"
         case .ipModeManual: return "IP estática"
@@ -802,6 +800,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "复制 PayPal 邮箱 (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "开源许可证"
         case .licensesDone: return "完成"
+        case .licensesTabNotices: return "声明"
         case .usbDeviceFallbackName: return "USB 设备 %04lx:%04lx"
         case .ipModeDhcp: return "自动（DHCP）"
         case .ipModeManual: return "静态 IP"
@@ -1046,6 +1045,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "PayPal メールをコピー (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "オープンソースライセンス"
         case .licensesDone: return "完了"
+        case .licensesTabNotices: return "通知"
         case .usbDeviceFallbackName: return "USB デバイス %04lx:%04lx"
         case .ipModeDhcp: return "自動 (DHCP)"
         case .ipModeManual: return "静的 IP"
@@ -1290,6 +1290,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "PayPal-E-Mail kopieren (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "Open-Source-Lizenzen"
         case .licensesDone: return "Fertig"
+        case .licensesTabNotices: return "Hinweise"
         case .usbDeviceFallbackName: return "USB-Gerät %04lx:%04lx"
         case .ipModeDhcp: return "Automatisch (DHCP)"
         case .ipModeManual: return "Statische IP"
@@ -1534,6 +1535,7 @@ extension L10nKey {
         case .copyPayPalEmail: return "PayPal 이메일 복사 (juanesgtgt2@gmail.com)"
         case .licensesTitle: return "오픈 소스 라이선스"
         case .licensesDone: return "완료"
+        case .licensesTabNotices: return "고지 사항"
         case .usbDeviceFallbackName: return "USB 장치 %04lx:%04lx"
         case .ipModeDhcp: return "자동 (DHCP)"
         case .ipModeManual: return "수동 IP"
