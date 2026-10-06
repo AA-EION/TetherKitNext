@@ -237,8 +237,9 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 | 42 | `feat!: rename to TetherKitNext 1.0.0; new icon; guided DMG layout; Issen Software Group` | ✅ | Preserves `HelperConstants.Legacy` (`com.tetherkit.helper`) for clean upgrades |
 | 43 | `feat(gui): Touch ID confirmation for privileged actions (1.1.0)` | ✅ | `LAContext` + Team ID XPC pinning + `admin` group check; XPC rev 5 |
 | 44 | `fix(gui): make background component restart reliable on first click (1.1.1)` | ✅ | `HelperInstaller.reregister()` waits for `launchd` state transition and retries |
+| 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback |
 
-### Current Status (TetherKitNext, 2026-09-25)
+### Current Status (TetherKitNext, 2026-10-06)
 
 - **Distribution**: Signed and notarized universal DMG (`scripts/build-release.sh`, shared across CI and releases). Security audit documented in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 - **Privileged Daemon**: `SMAppService` with label `com.tetherkitnext.helperd`, executed in-place from the `.app` bundle; automatically cleans up legacy `com.tetherkit.helper` installs on first run. XPC protocol revision 5.

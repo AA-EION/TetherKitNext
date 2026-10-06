@@ -28,17 +28,31 @@ import Foundation
 /// The language preferences a user can choose. `system` means follow macOS.
 public enum LanguagePreference: String, CaseIterable, Codable, Sendable {
     case system
-    case chinese
     case english
+    case spanish
+    case chinese
+    case japanese
+    case german
+    case korean
 }
 
-/// The language actually in effect. When the preference is `system`, `L10n` resolves it into one of these two.
+/// The language actually in effect. When the preference is `system`, `L10n` resolves it into one of these.
 public enum Language: String, CaseIterable, Codable, Sendable {
-    case chinese
     case english
+    case spanish
+    case chinese
+    case japanese
+    case german
+    case korean
 
     /// Aligned with the C ABI's `tk_language_t` (TK_LANGUAGE_ENGLISH = 0, CHINESE = 1).
-    public var cValue: Int32 { self == .chinese ? 1 : 0 }
+    public var cValue: Int32 {
+        switch self {
+        case .english: return 0
+        case .chinese: return 1
+        default: return 0
+        }
+    }
 }
 
 /// Message lookup and language state.
@@ -79,34 +93,51 @@ public enum L10n {
         return resolved
     }
 
-    /// Maps macOS's current preferred language onto one of the two we support.
-    ///
-    /// It looks at `Locale.preferredLanguages` rather than `Locale.current`: the latter is affected by regional format
-    /// settings (someone sets the region to China but the UI language to English), and the former is the list that answers "which
-    /// language the UI should use".
+    /// Directly applies a language (used by the helper daemon when informed by the client App).
+    @discardableResult
+    public static func apply(_ language: Language) -> Language {
+        lock.lock()
+        storedPreference = LanguagePreference(rawValue: language.rawValue) ?? .system
+        storedLanguage = language
+        lock.unlock()
+        return language
+    }
+
+    /// Maps macOS's current preferred languages onto one of the supported languages.
+    /// Checks preferred languages in order and defaults to English when no supported language matches.
     public static var systemLanguage: Language {
-        let preferred = Locale.preferredLanguages.first ?? "en"
-        return preferred.lowercased().hasPrefix("zh") ? .chinese : .english
+        for preferred in Locale.preferredLanguages {
+            let lower = preferred.lowercased()
+            if lower.hasPrefix("es") { return .spanish }
+            if lower.hasPrefix("zh") { return .chinese }
+            if lower.hasPrefix("ja") { return .japanese }
+            if lower.hasPrefix("de") { return .german }
+            if lower.hasPrefix("ko") { return .korean }
+            if lower.hasPrefix("en") { return .english }
+        }
+        return .english
     }
 
     private static func resolve(_ preference: LanguagePreference) -> Language {
         switch preference {
         case .system: return systemLanguage
-        case .chinese: return .chinese
         case .english: return .english
+        case .spanish: return .spanish
+        case .chinese: return .chinese
+        case .japanese: return .japanese
+        case .german: return .german
+        case .korean: return .korean
         }
     }
 
     /// Gets the original text of a message in the current language (without argument substitution).
     public static func text(_ key: L10nKey) -> String {
-        let (chinese, english) = key.localizations
-        return language == .chinese ? chinese : english
+        return key.translation(for: language)
     }
 
     /// Gets the original text of a message in the **specified** language. Tests use it to check placeholders language by language.
     public static func text(_ key: L10nKey, in language: Language) -> String {
-        let (chinese, english) = key.localizations
-        return language == .chinese ? chinese : english
+        return key.translation(for: language)
     }
 }
 

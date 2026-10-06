@@ -23,6 +23,8 @@ struct SettingsPage: View {
     @AppStorage(PreferenceKey.updateCheckDisabled) private var updateCheckDisabled = false
     @AppStorage(AppModel.autoConfigureNetworkKey) private var autoConfigureNetwork = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var showingLicenses = false
+    @State private var copiedPayPal = false
 
     var body: some View {
         Form {
@@ -30,11 +32,15 @@ struct SettingsPage: View {
             commandLineSection
             generalSection
             updatesSection
+            donationSection
             aboutSection
         }
         .formStyle(.grouped)
         .frame(maxWidth: Design.Window.contentMaxWidth)
         .frame(maxWidth: .infinity)
+        .sheet(isPresented: $showingLicenses) {
+            LicensesSheet()
+        }
     }
 
     // MARK: Background component
@@ -173,6 +179,48 @@ struct SettingsPage: View {
         }
     }
 
+    // MARK: Support & Donations
+
+    private var donationSection: some View {
+        Section(L(.settingsDonationSection)) {
+            VStack(alignment: .leading, spacing: Design.Spacing.small) {
+                Label(L(.donationTitle), systemImage: "heart.fill")
+                    .foregroundStyle(.pink)
+                    .font(.headline)
+
+                Text(L(.donationExplanation))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: Design.Spacing.small) {
+                    Button {
+                        if let url = URL(string: "https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    } label: {
+                        Label(L(.donateViaPayPal), systemImage: "heart.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.pink)
+
+                    Button(copiedPayPal ? L(.copied) : L(.copyPayPalEmail)) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString("juanesgtgt2@gmail.com", forType: .string)
+                        copiedPayPal = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            copiedPayPal = false
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, Design.Spacing.tight)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     // MARK: About
 
     private var aboutSection: some View {
@@ -192,11 +240,7 @@ struct SettingsPage: View {
                 }
                 Spacer()
                 Button(L(.showLicenses)) {
-                    let licenses = Bundle.main.resourceURL?
-                        .appendingPathComponent("Licenses", isDirectory: true)
-                    if let licenses, FileManager.default.fileExists(atPath: licenses.path) {
-                        NSWorkspace.shared.activateFileViewerSelecting([licenses])
-                    }
+                    showingLicenses = true
                 }
             }
         }

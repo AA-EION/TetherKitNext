@@ -66,10 +66,26 @@ final class HelperService: NSObject, TetherKitNextHelperProtocol, @unchecked Sen
     }
 
     func sessionStatus(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        let status = withState { $0?.status() } ?? .idle
-        // Also collect session events into the hint queue -- status polling happens once per refresh period anyway,
-        // and riding along saves one XPC round trip.
-        if let notices = withState({ $0?.drainNotices() }), !notices.isEmpty {
+        let (status, deadSession) = stateLock.withLock { () -> (SessionStatus, TetherKitNextSession?) in
+            guard let session else { return (.idle, nil) }
+            let s = session.status()
+            // When a session stops or fails (such as device unplugged), clean it up so subsequent
+            // queries return .idle and the helper does not hold onto dead state.
+            if s.runState == .failed || s.runState == .stopped {
+                self.session = nil
+                return (s, session)
+            }
+            return (s, nil)
+        }
+        if let deadSession {
+            let notices = deadSession.drainNotices()
+            if !notices.isEmpty {
+                appendNotices(notices)
+            }
+            lifecycleQueue.async {
+                deadSession.stop()
+            }
+        } else if let notices = withState({ $0?.drainNotices() }), !notices.isEmpty {
             appendNotices(notices)
         }
         respond(with: status, reply: reply)
@@ -94,7 +110,7 @@ final class HelperService: NSObject, TetherKitNextHelperProtocol, @unchecked Sen
         // If it is not recognized, leave things as they are. Better to keep using the previous language than to fall back to the default because the App passed a new value
         // -- that would show up as "switched language, and the helper's logs turned back to English instead".
         if let language = Language(rawValue: rawValue) {
-            L10n.apply(language == .chinese ? .chinese : .english)
+            L10n.apply(language)
             TetherKitNextLibrary.setLanguage(language)
         }
         reply()
