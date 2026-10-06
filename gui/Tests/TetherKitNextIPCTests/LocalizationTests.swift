@@ -134,53 +134,53 @@ final class LocalizationTests: XCTestCase {
         let original = L10n.preference
         defer { L10n.apply(original) }
 
-        XCTAssertEqual(L10n.apply(.english), .english)
+        XCTAssertEqual(L10n.apply(LanguagePreference.english), .english)
         XCTAssertEqual(L10n.text(.ok), "OK")
 
-        XCTAssertEqual(L10n.apply(.spanish), .spanish)
+        XCTAssertEqual(L10n.apply(LanguagePreference.spanish), .spanish)
         XCTAssertEqual(L10n.text(.ok), "Aceptar")
 
-        XCTAssertEqual(L10n.apply(.chinese), .chinese)
+        XCTAssertEqual(L10n.apply(LanguagePreference.chinese), .chinese)
         XCTAssertEqual(L10n.text(.ok), "好")
 
-        XCTAssertEqual(L10n.apply(.japanese), .japanese)
+        XCTAssertEqual(L10n.apply(LanguagePreference.japanese), .japanese)
         XCTAssertEqual(L10n.text(.ok), "OK")
 
-        XCTAssertEqual(L10n.apply(.german), .german)
+        XCTAssertEqual(L10n.apply(LanguagePreference.german), .german)
         XCTAssertEqual(L10n.text(.ok), "OK")
 
-        XCTAssertEqual(L10n.apply(.korean), .korean)
+        XCTAssertEqual(L10n.apply(LanguagePreference.korean), .korean)
         XCTAssertEqual(L10n.text(.ok), "확인")
 
         // `.system` resolves to one of the supported languages, depending on the test machine.
-        XCTAssertTrue(Language.allCases.contains(L10n.apply(.system)))
+        XCTAssertTrue(Language.allCases.contains(L10n.apply(LanguagePreference.system)))
     }
 
     func testFormattingSubstitutesArguments() {
         let original = L10n.preference
         defer { L10n.apply(original) }
 
-        L10n.apply(.chinese)
+        L10n.apply(Language.chinese)
         XCTAssertTrue(L(.helperConnectFailed, "连不上").contains("连不上"))
 
-        L10n.apply(.english)
+        L10n.apply(Language.english)
         let english = L(.helperConnectFailed, "unreachable")
         XCTAssertTrue(english.contains("unreachable"))
         XCTAssertFalse(english.contains("%@"), "Argument was not substituted: \(english)")
 
-        L10n.apply(.spanish)
+        L10n.apply(Language.spanish)
         let spanish = L(.helperConnectFailed, "no accesible")
         XCTAssertTrue(spanish.contains("no accesible"))
 
-        L10n.apply(.japanese)
+        L10n.apply(Language.japanese)
         let japanese = L(.helperConnectFailed, "接続不可")
         XCTAssertTrue(japanese.contains("接続不可"))
 
-        L10n.apply(.german)
+        L10n.apply(Language.german)
         let german = L(.helperConnectFailed, "nicht erreichbar")
         XCTAssertTrue(german.contains("nicht erreichbar"))
 
-        L10n.apply(.korean)
+        L10n.apply(Language.korean)
         let korean = L(.helperConnectFailed, "연결 불가")
         XCTAssertTrue(korean.contains("연결 불가"))
 
