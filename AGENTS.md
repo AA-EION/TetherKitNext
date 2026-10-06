@@ -237,7 +237,7 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 | 42 | `feat!: rename to TetherKitNext 1.0.0; new icon; guided DMG layout; Issen Software Group` | ✅ | Preserves `HelperConstants.Legacy` (`com.tetherkit.helper`) for clean upgrades |
 | 43 | `feat(gui): Touch ID confirmation for privileged actions (1.1.0)` | ✅ | `LAContext` + Team ID XPC pinning + `admin` group check; XPC rev 5 |
 | 44 | `fix(gui): make background component restart reliable on first click (1.1.1)` | ✅ | `HelperInstaller.reregister()` waits for `launchd` state transition and retries |
-| 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback; GUI supports 6 languages but the C++ library only en/zh (`Language.cValue` falls back to English); failed sessions stay visible (no forced reset to idle) |
+| 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect (1.2.0)` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback; GUI supports 6 languages but the C++ library only en/zh (`Language.cValue` falls back to English); failed sessions stay visible (no forced reset to idle) |
 
 ### Current Status (TetherKitNext, 2026-10-06)
 
