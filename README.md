@@ -13,6 +13,12 @@
   <sub>By <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
 </p>
 
+<p align="center">
+  <a href="https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group">
+    <img src="https://img.shields.io/badge/Donate-PayPal-00457C.svg?logo=paypal&logoColor=white&style=flat-square" alt="Donate with PayPal">
+  </a>
+</p>
+
 ---
 
 ## What it does
@@ -28,7 +34,7 @@ connection, so your Mac gets online through your phone's mobile data or Wi-Fi.
 - **One click to connect.** Plug in, click **Connect**, and you're online.
 - **Lives in the menu bar**, with an optional live speed readout.
 - **Command-line tool included** for scripts and power users.
-- **Interface in English and Chinese.**
+- **Interface in 6 languages** (English, Spanish, Chinese, Japanese, German, and Korean).
 
 Tested with real phones at about **325 Mbps download / 240–300 Mbps upload** over USB 2.0,
 close to what the cable can carry.
@@ -126,8 +132,8 @@ disconnect, or reopen the window. The connection keeps running even if you quit 
 **VPNs work.** In automatic (DHCP) mode, the connection is registered as a regular macOS
 network service, so VPN apps such as FortiClient can use it.
 
-**Language**: switch between System, English and Chinese at any time from the TetherKitNext menu, the
-menu bar panel, or Settings.
+**Language**: switch between System, English, Spanish, Chinese, Japanese, German, and Korean at
+any time from the TetherKitNext menu, the menu bar panel, or Settings.
 
 **Updates**: TetherKitNext checks this project's GitHub releases once a day and tells you when
 there's a new version. You can turn this off in Settings. It never downloads or installs
@@ -259,6 +265,23 @@ an ad-hoc build, so to try the full app, sign with your own Apple certificate:
 export TETHERKITNEXT_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
 ./scripts/build-release.sh
 ```
+
+---
+
+## Support & Donations
+
+TetherKitNext is free and open-source software. If it has been helpful to you, consider supporting its ongoing development:
+
+<p align="center">
+  <a href="https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group">
+    <img src="https://img.shields.io/badge/Donate-PayPal-00457C.svg?logo=paypal&logoColor=white&style=for-the-badge" alt="Donate with PayPal">
+  </a>
+</p>
+
+* **PayPal**: [Donate via PayPal](https://www.paypal.com/donate/?business=juanesgtgt2%40gmail.com&no_recurring=0&item_name=Issen+Software+Group)
+* **PayPal Email**: `juanesgtgt2@gmail.com`
+
+---
 
 ## License
 
