@@ -2,25 +2,25 @@ import Foundation
 
 // All user-facing messages of the GUI and the helper.
 //
-// To add one: add a case in `L10nKey`, then fill in both the Chinese and English versions in the switch below. The switch is
-// exhaustive, and omissions simply fail to compile.
+// Supported languages:
+//   - Spanish (es)
+//   - English (en)
+//   - Chinese (zh)
+//   - Japanese (ja)
+//   - German (de)
+//   - Korean (ko)
+// Default to English when the system language is not available.
 //
 // * Placeholder rules *
 //
 //   Goes through `String(format:)`, printf style: `%@` string, `%ld` integer, `%.1f` float.
-//   **The placeholders of the two languages must correspond one to one** (count, order, type). When a translation needs a different word order,
-//   switch both sides to the positional form (`%1$@`, `%2$ld`) -- having only one side positional is also legal
-//   printf, but then the argument meanings of the two strings would silently misalign.
+//   The placeholders across all languages must correspond one to one (count, order, type).
+//   When a translation needs a different word order, switch to the positional form (`%1$@`, `%2$ld`).
 //
-//   Call sites uniformly convert to `Int` / `Double` / `String` before passing arguments: feeding an integer type such as `UInt32` directly
-//   to `%ld` behaves inconsistently between 32/64 bits, and converting once is the least trouble.
-//
-//   These two rules are checked entry by entry by LocalizationTests in TetherKitNextIPCTests.
+//   These rules are checked entry by entry by LocalizationTests in TetherKitNextIPCTests.
 
 /// The identifier of a message.
 public enum L10nKey: String, CaseIterable, Sendable {
-
-    // MARK: - General
 
     case ok
     case cancel
@@ -36,53 +36,44 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case router
     case notConfigured
     case listSeparator
-
-    // MARK: - Language settings
-
     case languageLabel
     case languageSystem
     case languageChinese
     case languageEnglish
+    case languageSpanish
+    case languageJapanese
+    case languageGerman
+    case languageKorean
     case languageMenuTitle
-
-    // MARK: - Data models (Models.swift)
-
+    case settingsDonationSection
+    case donationTitle
+    case donationExplanation
+    case donateViaPayPal
+    case copyPayPalEmail
+    case licensesTitle
+    case licensesDone
+    case licensesTabNotices
     case usbDeviceFallbackName
     case ipModeDhcp
     case ipModeManual
     case ipModeNone
-
-    // MARK: - Authorization (Authorization.swift)
-
     case authorizationCancelled
     case authorizationDenied
     case authorizationSessionFailed
     case authorizationBlobMalformed
     case authorizationRestoreFailed
     case authorizationRightMissing
-
-    // MARK: - Library errors (TetherKitNextError.swift)
-
     case libraryGenericFailure
-
-    // MARK: - Session events (TetherKitNextSession.swift)
-
     case eventLinkUp
     case eventLinkDown
     case eventDeviceResetReplayed
     case eventDeviceReset
     case eventNegotiated
-
-    // MARK: - Network parameter validation (NetworkConfigurator.swift)
-
     case invalidIPAddress
     case invalidNetmask
     case invalidRouter
     case routerRequiredForDefaultRoute
     case invalidDNSServer
-
-    // MARK: - helper service (HelperService.swift / main.swift / InstallerMode.swift)
-
     case helperSessionAlreadyRunning
     case helperSessionStopped
     case helperNetworkApplied
@@ -92,35 +83,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case helperOrphanCleanupFailed
     case helperSigtermReceived
     case helperReady
-
-    // MARK: - helper client (HelperClient.swift / HelperInstaller.swift)
-
     case helperConnectFailed
     case helperReplyUnparsable
-
-    // MARK: - Update check (UpdateChecker.swift)
-
     case updateNoReleases
     case updateHTTPStatus
     case updateBadResponse
-
-
-    // MARK: - Distribution & system integration
-
-    case confirmHelperUpdateTitle
-    case confirmUninstallTitle
-    case helperUpdateWhileRunningWarning
-    case helperVersionMismatchTooltip
-    case installHelperButton
-    case installHelperDetail
-    case installingProgress
-    case needInstallBody
-    case needInstallTitle
-    case uninstallExplanation
-    case uninstallHelperMenuItem
-    case updateAvailable
-    case updateHelperButton
-    case updateHelperDetail
     case cliLinkNotInBundle
     case cliLinkToolMissing
     case cliLinkDirectoryUnsafe
@@ -138,6 +105,20 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case commandLineToolOccupied
     case installCommandLineTool
     case removeCommandLineTool
+    case needInstallBody
+    case installHelperDetail
+    case installHelperButton
+    case installingProgress
+    case updateHelperDetail
+    case helperVersionMismatchTooltip
+    case helperUpdateWhileRunningWarning
+    case uninstallExplanation
+    case updateAvailable
+    case uninstallHelperMenuItem
+    case confirmUninstallTitle
+    case needInstallTitle
+    case updateHelperButton
+    case confirmHelperUpdateTitle
     case paneOverview
     case paneDevice
     case paneNetwork
@@ -169,9 +150,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case showLicenses
     case autoConfigureNetwork
     case autoConfigureNetworkHelp
-
-    // MARK: - Connection status (DesignSystem.swift)
-
     case statusDisconnected
     case statusConnecting
     case statusConnected
@@ -179,17 +157,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case statusDisconnecting
     case statusStopped
     case statusFailed
-
-    // MARK: - App model (AppModel.swift)
-
-    case authPromptSession
     case presenceReasonSession
     case presenceReasonCommandLineTool
     case helperPresenceNotAccepted
+    case authPromptSession
     case interfaceNotReadyYet
-
-    // MARK: - Main screen (ContentView.swift)
-
     case menuCheckForUpdates
     case alertOperationFailed
     case updateCheckTitle
@@ -209,9 +181,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case copyCommand
     case sysctlNeedsFixTitle
     case sysctlNeedsFixBody
-
-    // MARK: - Device card (DeviceCard.swift)
-
     case usbDeviceSectionTitle
     case cannotRescanWhileRunning
     case rescanUSBDevices
@@ -228,9 +197,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case adoptDeviceMACTooltip
     case compatibilityMode
     case compatibilityModeTooltip
-
-    // MARK: - Log card (LogCard.swift)
-
     case logSectionTitle
     case logDroppedNotice
     case logLevelLabel
@@ -244,9 +210,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case logClear
     case logRepeatSuffix
     case logRepeatTooltip
-
-    // MARK: - Menu bar panel (MenuBarPanel.swift)
-
     case downstreamShort
     case upstreamShort
     case noIPConfigured
@@ -255,9 +218,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case openMainWindow
     case quit
     case quitTooltip
-
-    // MARK: - Network card (NetworkCard.swift)
-
     case dnsEffectivenessTooltip
     case ipModeLabel
     case connectBeforeConfiguring
@@ -275,9 +235,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case primaryDefaultRoute
     case notEffective
     case noAddressYet
-
-    // MARK: - Status card (StatusHeroCard.swift)
-
     case linkUp
     case linkDown
     case transferPaused
@@ -286,9 +243,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case interfaceLabel
     case interfaceCreating
     case connectDisabledHint
-
-    // MARK: - Throughput card (ThroughputCard.swift)
-
     case throughputSectionTitle
     case throughputLive
     case throughputDownstream
@@ -312,542 +266,1486 @@ public enum L10nKey: String, CaseIterable, Sendable {
 
 extension L10nKey {
 
-    /// The Chinese and English versions of one message. **The placeholders of both sides must correspond one to one.**
-    // swiftlint:disable:next function_body_length cyclomatic_complexity
-    public var localizations: (chinese: String, english: String) {
-        switch self {
-
-        // MARK: General
-
-        case .ok: return ("好", "OK")
-        case .cancel: return ("取消", "Cancel")
-        case .copy: return ("复制", "Copy")
-        case .copied: return ("已复制", "Copied")
-        case .add: return ("添加", "Add")
-        case .apply: return ("应用", "Apply")
-        case .connect: return ("连接", "Connect")
-        case .disconnect: return ("断开", "Disconnect")
-        case .uninstall: return ("卸载", "Uninstall")
-        case .ipAddress: return ("IP 地址", "IP address")
-        case .netmask: return ("子网掩码", "Subnet mask")
-        case .router: return ("网关", "Router")
-        case .notConfigured: return ("未配置", "Not configured")
-        case .listSeparator: return ("、", ", ")
-
-        // MARK: Language settings
-
-        case .languageLabel: return ("界面语言", "Language")
-        case .languageSystem: return ("跟随系统", "Follow system")
-        case .languageChinese: return ("中文", "中文")
-        case .languageEnglish: return ("English", "English")
-        case .languageMenuTitle: return ("语言", "Language")
-
-        // MARK: Data models
-
-        case .usbDeviceFallbackName: return ("USB 设备 %04lx:%04lx", "USB device %04lx:%04lx")
-        case .ipModeDhcp: return ("自动（DHCP）", "Automatic (DHCP)")
-        case .ipModeManual: return ("静态 IP", "Static IP")
-        case .ipModeNone: return ("不配置", "None")
-
-        // MARK: Authorization
-
-        case .authorizationCancelled: return ("已取消授权", "Authorization cancelled")
-        case .authorizationDenied: return ("授权未通过（%ld）", "Authorization was denied (%ld)")
-        case .authorizationSessionFailed:
-            return ("无法创建授权会话（%ld）", "Cannot create an authorization session (%ld)")
-        case .authorizationBlobMalformed:
-            return ("授权凭据格式不正确", "The authorization credential is malformed")
-        case .authorizationRestoreFailed:
-            return ("无法还原授权凭据（%ld）", "Cannot restore the authorization credential (%ld)")
-        case .authorizationRightMissing:
-            return ("调用方没有执行该操作所需的授权（%ld）",
-                    "The caller lacks the authorization this operation requires (%ld)")
-
-        // MARK: Library errors
-
-        case .libraryGenericFailure:
-            return ("操作失败（错误码 %ld）", "The operation failed (error code %ld)")
-
-        // MARK: Session events
-
-        case .eventLinkUp: return ("链路已连接", "Link is up")
-        case .eventLinkDown: return ("链路已断开", "Link is down")
-        case .eventDeviceResetReplayed:
-            return ("设备已软复位，寻址信息已重放",
-                    "The device soft-reset; addressing information has been replayed")
-        case .eventDeviceReset: return ("设备已软复位", "The device soft-reset")
-        case .eventNegotiated:
-            return ("RNDIS 协商完成：MTU %1$ld，链路 %2$ld Mbps",
-                    "RNDIS negotiation complete: MTU %1$ld, link %2$ld Mbps")
-
-        // MARK: Network parameter validation
-
-        case .invalidIPAddress: return ("IP 地址格式不正确", "The IP address is not valid")
-        case .invalidNetmask:
-            return ("子网掩码不正确（必须是连续的掩码，如 255.255.255.0）",
-                    "The subnet mask is not valid (it must be contiguous, e.g. 255.255.255.0)")
-        case .invalidRouter: return ("网关地址格式不正确", "The router address is not valid")
-        case .routerRequiredForDefaultRoute:
-            return ("要把流量默认走这张网卡，必须填写网关地址",
-                    "Routing traffic through this interface by default requires a router address")
-        case .invalidDNSServer:
-            return ("DNS 服务器 %@ 格式不正确", "DNS server %@ is not a valid address")
-
-        // MARK: helper service
-
-        case .helperSessionAlreadyRunning: return ("会话已经在运行了", "A session is already running")
-        case .helperSessionStopped: return ("会话已停止", "Session stopped")
-        case .helperNetworkApplied:
-            return ("已应用网络配置：%@", "Applied the network configuration: %@")
-        case .helperRequestDecodeFailed:
-            return ("请求参数无法解析：%@", "Cannot decode the request arguments: %@")
-        case .helperReplyEncodeFailed: return ("应答编码失败：%@", "Cannot encode the reply: %@")
-        case .helperOrphansCleaned:
-            return ("已清理 %ld 张上次残留的虚拟网卡",
-                    "Cleaned up %ld leftover virtual interface(s) from a previous run")
-        case .helperOrphanCleanupFailed:
-            return ("清理残留虚拟网卡失败：%@",
-                    "Failed to clean up leftover virtual interfaces: %@")
-        case .helperSigtermReceived: return ("收到 SIGTERM，正在停机", "Received SIGTERM; shutting down")
-        case .helperReady: return ("tetherkitnext-helper 已就绪：%@", "tetherkitnext-helper ready: %@")
-
-        // MARK: helper client
-
-        case .helperConnectFailed:
-            return ("无法连接到特权组件：%@", "Cannot reach the privileged helper: %@")
-        case .helperReplyUnparsable:
-            return ("特权组件的应答无法解析，可能是版本不一致",
-                    "The helper's reply could not be parsed; the versions may not match")
-
-        // MARK: Update check
-
-        case .updateNoReleases: return ("仓库还没有发布任何版本", "The repository has no releases yet")
-        case .updateHTTPStatus: return ("GitHub 返回了 %ld", "GitHub returned %ld")
-        case .updateBadResponse: return ("响应格式不符合预期", "The response was not in the expected format")
-
-
-        case .cliLinkNotInBundle:
-            return ("命令行工具只能在从 TetherKitNext.app 注册的后台组件中安装。",
-                    "The command-line tool can only be installed by the background component registered from TetherKitNext.app.")
-        case .cliLinkToolMissing:
-            return ("App 包内找不到命令行工具：%@",
-                    "The command-line tool is missing from the app bundle: %@")
-        case .cliLinkDirectoryUnsafe:
-            return ("%@ 不是普通目录，出于安全考虑不在其中创建链接。",
-                    "%@ is not a regular directory, so no link is created there for safety.")
-        case .cliLinkOccupied:
-            return ("%@ 已被其他程序占用，请先移除它。",
-                    "%@ is already taken by something else. Remove it first.")
-        case .cliLinkSystemError:
-            return ("%1$@ 失败：%2$@",
-                    "%1$@ failed: %2$@")
-        case .moveToApplicationsRequired:
-            return ("请先把 TetherKitNext 拖到“应用程序”文件夹再运行。macOS 不允许从磁盘映像或临时位置注册后台组件。",
-                    "Move TetherKitNext to the Applications folder and open it from there first. macOS does not allow background components to be registered from a disk image or a temporary location.")
-        case .helperRegisterFailed:
-            return ("无法注册后台组件：%@",
-                    "Could not register the background component: %@")
-        case .authPromptCommandLineTool:
-            return ("TetherKitNext 需要管理员权限来在 /usr/local/bin 中安装或移除 tetherkitnext-cli 命令。",
-                    "TetherKitNext needs administrator privileges to add or remove the tetherkitnext-cli command in /usr/local/bin.")
-        case .helperApprovalTitle:
-            return ("在系统设置中允许 TetherKitNext",
-                    "Allow TetherKitNext in System Settings")
-        case .helperApprovalBody:
-            return ("后台组件已注册，但 macOS 需要你确认。请在“系统设置 › 通用 › 登录项与扩展”中打开 TetherKitNext 的开关，本页会自动继续。",
-                    "The background component is registered, but macOS needs your approval. Turn on TetherKitNext in System Settings › General › Login Items & Extensions; this page continues automatically.")
-        case .openLoginItemsSettings:
-            return ("打开登录项设置",
-                    "Open Login Items Settings")
-        case .commandLineToolTitle:
-            return ("命令行工具",
-                    "Command-line tool")
-        case .commandLineToolInstalled:
-            return ("已安装：在终端中运行 tetherkitnext-cli",
-                    "Installed: run tetherkitnext-cli in Terminal")
-        case .commandLineToolNotInstalled:
-            return ("未安装。安装后可在任何终端中使用 tetherkitnext-cli。",
-                    "Not installed. Install it to use tetherkitnext-cli from any terminal.")
-        case .commandLineToolOccupied:
-            return ("%@ 已被其他程序占用",
-                    "%@ is used by something else")
-        case .installCommandLineTool:
-            return ("安装命令",
-                    "Install Command")
-        case .removeCommandLineTool:
-            return ("移除命令",
-                    "Remove Command")
-        case .needInstallBody:
-            return ("创建虚拟网卡和打开数据链路需要管理员权限。TetherKitNext 把这部分放在一个独立的后台组件里，App 本身以普通用户身份运行。",
-                    "Creating the virtual interface and opening the data link require administrator privileges. TetherKitNext keeps that work in a separate background component so the app itself runs as a normal user.")
-        case .installHelperDetail:
-            return ("组件随 App 一起签名，直接从 App 内运行，不会复制到系统目录。macOS 会请你在“登录项”中允许它一次。",
-                    "The component is signed with the app and runs from inside it; nothing is copied into system folders. macOS asks you to allow it once in Login Items.")
-        case .installHelperButton:
-            return ("启用后台组件",
-                    "Enable Background Component")
-        case .installingProgress:
-            return ("正在启用……",
-                    "Enabling…")
-        case .updateHelperDetail:
-            return ("将从当前 App 重新启动后台组件，完成后本页自动恢复。",
-                    "The background component restarts from this copy of the app. This page recovers on its own afterwards.")
-        case .helperVersionMismatchTooltip:
-            return ("正在运行的后台组件仍是 %1$@，而 App 已经是 %2$@。点一下即可从当前 App 重新启动它。",
-                    "The running background component is still %1$@ while the app is %2$@. One click restarts it from this app.")
-        case .helperUpdateWhileRunningWarning:
-            return ("重启后台组件会断开当前连接并销毁虚拟网卡，完成后重新连接即可。",
-                    "Restarting the background component drops the current connection and destroys the virtual interface. Just reconnect afterwards.")
-        case .uninstallExplanation:
-            return ("将停用后台组件并移除 tetherkitnext-cli 命令。之后随时可以重新启用；把 App 移到废纸篓也会一并移除它。",
-                    "This disables the background component and removes the tetherkitnext-cli command. You can enable it again at any time; moving the app to the Trash removes it too.")
-        case .updateAvailable:
-            return ("发现新版本 v%@。请从发布页下载新的 DMG，并用它替换“应用程序”中的 TetherKitNext。",
-                    "Version v%@ is available. Download the new DMG from the release page and replace TetherKitNext in your Applications folder.")
-        case .uninstallHelperMenuItem:
-            return ("停用后台组件…",
-                    "Disable Background Component…")
-        case .confirmUninstallTitle:
-            return ("停用后台组件？",
-                    "Disable the background component?")
-        case .needInstallTitle:
-            return ("启用 TetherKitNext 后台组件",
-                    "Enable the TetherKitNext background component")
-        case .updateHelperButton:
-            return ("重启后台组件",
-                    "Restart Background Component")
-        case .confirmHelperUpdateTitle:
-            return ("重启后台组件？",
-                    "Restart the background component?")
-        case .paneOverview:
-            return ("概览",
-                    "Overview")
-        case .paneDevice:
-            return ("设备",
-                    "Device")
-        case .paneNetwork:
-            return ("网络",
-                    "Network")
-        case .paneActivity:
-            return ("日志",
-                    "Activity")
-        case .paneSettings:
-            return ("设置",
-                    "Settings")
-        case .configureNetwork:
-            return ("配置…",
-                    "Configure…")
-        case .setupTitle:
-            return ("欢迎使用 TetherKitNext",
-                    "Welcome to TetherKitNext")
-        case .setupSubtitle:
-            return ("只需几步，就能把 Android 手机的 USB 网络共享变成 Mac 上的一张网卡。",
-                    "A few steps turn your Android phone's USB tethering into a network interface on your Mac.")
-        case .setupStepMoveTitle:
-            return ("放入“应用程序”文件夹",
-                    "Put TetherKitNext in Applications")
-        case .showInFinder:
-            return ("在访达中显示",
-                    "Show in Finder")
-        case .waitingForApproval:
-            return ("正在等待批准……",
-                    "Waiting for approval…")
-        case .settingsBackgroundSection:
-            return ("后台组件",
-                    "Background Component")
-        case .settingsBackgroundStatus:
-            return ("状态",
-                    "Status")
-        case .backgroundRunning:
-            return ("运行中 · %@",
-                    "Running · %@")
-        case .settingsGeneralSection:
-            return ("通用",
-                    "General")
-        case .menuBarShowSpeed:
-            return ("在菜单栏显示实时速率",
-                    "Show live speed in the menu bar")
-        case .launchAtLogin:
-            return ("登录时打开 TetherKitNext",
-                    "Open TetherKitNext at login")
-        case .launchAtLoginFailed:
-            return ("无法更改登录项：%@",
-                    "Could not change the login item: %@")
-        case .settingsUpdatesSection:
-            return ("更新",
-                    "Updates")
-        case .autoCheckUpdates:
-            return ("每天自动检查更新",
-                    "Check for updates daily")
-        case .checkNow:
-            return ("立即检查",
-                    "Check Now")
-        case .currentVersion:
-            return ("当前版本 %@",
-                    "Current version %@")
-        case .settingsAboutSection:
-            return ("关于",
-                    "About")
-        case .aboutCredits:
-            return ("由 Issen Software Group 开发，基于 XiaoMiku01 的 TetherKit（MIT 许可证）。",
-                    "Made by Issen Software Group. Based on TetherKit by XiaoMiku01 (MIT License).")
-        case .vendorWebsite:
-            return ("Issen Software Group 官网",
-                    "Issen Software Group Website")
-        case .madeByVendor:
-            return ("由 Issen Software Group 开发",
-                    "Made by Issen Software Group")
-        case .aboutApp:
-            return ("关于 TetherKitNext",
-                    "About TetherKitNext")
-        case .projectWebsite:
-            return ("项目主页",
-                    "Project Website")
-        case .showLicenses:
-            return ("查看许可证",
-                    "Show Licenses")
-        case .autoConfigureNetwork:
-            return ("连接后自动配置网络",
-                    "Configure the network automatically on connect")
-        case .autoConfigureNetworkHelp:
-            return ("连接成功后立即应用“网络”页选择的方式（默认自动 DHCP），无需再点“应用”。",
-                    "Applies the mode chosen on the Network page (DHCP by default) right after connecting, so internet works without another click.")
-
-        // MARK: Connection status
-
-        case .statusDisconnected: return ("未连接", "Not connected")
-        case .statusConnecting: return ("正在连接", "Connecting")
-        case .statusConnected: return ("已连接", "Connected")
-        case .statusReadyLinkDown: return ("已就绪（链路未连通）", "Ready (link down)")
-        case .statusDisconnecting: return ("正在断开", "Disconnecting")
-        case .statusStopped: return ("已断开", "Disconnected")
-        case .statusFailed: return ("连接失败", "Connection failed")
-
-        // MARK: App model
-
-        // Shown by macOS as "TetherKitNext is trying to <reason>." (English)
-        // / "“TetherKitNext”正在尝试<reason>。" (Chinese): a verb phrase, no
-        // final punctuation.
-        case .presenceReasonSession:
-            return ("连接手机并配置网络",
-                    "connect your phone and set up the network")
-        case .presenceReasonCommandLineTool:
-            return ("安装或移除 tetherkitnext-cli 命令",
-                    "add or remove the tetherkitnext-cli command")
-        case .helperPresenceNotAccepted:
-            return ("此操作需要管理员授权。",
-                    "This action needs administrator authorization.")
-        case .authPromptSession:
-            return ("TetherKitNext 需要管理员权限来创建虚拟网卡、打开数据链路并配置 IP 地址。",
-                    "TetherKitNext needs administrator privileges to create the virtual interface, "
-                    + "open the data link and configure IP addresses.")
-        case .interfaceNotReadyYet:
-            return ("虚拟网卡还没创建，请先连接设备",
-                    "The virtual interface does not exist yet -- connect a device first")
-
-        // MARK: Main screen
-
-        case .menuCheckForUpdates: return ("检查更新…", "Check for Updates…")
-        case .alertOperationFailed: return ("操作失败", "Operation failed")
-        case .updateCheckTitle: return ("检查更新", "Check for updates")
-        case .openReleasePage: return ("前往发布页", "Open the release page")
-        case .updateUpToDate:
-            return ("当前已是最新版本（v%@）。", "You are on the latest version (v%@).")
-        case .updateCheckFailed: return ("无法完成检查：%@", "The check could not be completed: %@")
-        case .updateDevBuild:
-            return ("这是开发构建（没有版本号），无从比较。",
-                    "This is a development build with no version number, so there is nothing to "
-                    + "compare against.")
-        case .uninstallWhileRunningWarning:
-            return ("当前连接会被断开、虚拟网卡销毁。",
-                    "The current connection will be dropped and the virtual interface destroyed.")
-        case .helperComponentVersion: return ("特权组件 · %@", "Helper · %@")
-        case .helperVersionMismatch: return ("特权组件 %1$@ · App %2$@", "Helper %1$@ · app %2$@")
-        case .helperUpdateBadge: return ("有新版 %@", "%@ available")
-        case .checkingHelper: return ("正在检查特权组件……", "Checking the privileged helper…")
-        case .showConnectFailureDetail:
-            return ("查看连接失败的详细原因", "Show why the connection failed")
-        case .helperNeedsUpdateTitle:
-            return ("重启后台组件以完成更新", "Restart the background component to finish updating")
-        case .helperNeedsUpdateBody:
-            return ("TetherKitNext 已更新，但后台组件仍在运行旧版本。重启一次即可，不需要重新安装。",
-                    "TetherKitNext was updated, but its background component is still running "
-                    + "the previous version. Restart it once; nothing needs reinstalling.")
-        case .copiedToClipboard: return ("已复制到剪贴板", "Copied to the clipboard")
-        case .copyCommand: return ("复制命令", "Copy the command")
-        case .sysctlNeedsFixTitle: return ("系统参数需要调整", "System parameters need adjusting")
-        case .sysctlNeedsFixBody:
-            return ("下面这些开关会在虚拟网卡**创建时**被快照进去，创建后再改无效，\n"
-                    + "因此必须先修正再连接：",
-                    "These switches are snapshotted into the virtual interface **when it is\n"
-                    + "created**, so changing them afterwards has no effect. Fix them before\n"
-                    + "connecting:")
-
-        // MARK: Device card
-
-        case .usbDeviceSectionTitle: return ("USB 设备", "USB device")
-        case .cannotRescanWhileRunning:
-            return ("运行中无法刷新设备列表", "The device list cannot be refreshed while running")
-        case .rescanUSBDevices: return ("重新扫描 USB 设备", "Rescan USB devices")
-        case .noDeviceDetected: return ("没有检测到设备", "No device detected")
-        case .deviceChecklistCable:
-            return ("① 用的是数据线，而不是只能供电的充电线",
-                    "1. The cable carries data and is not charge-only")
-        case .deviceChecklistTethering:
-            return ("② 手机上已打开「USB 网络共享 / USB tethering」",
-                    "2. \"USB tethering\" is switched on for the phone")
-        case .deviceChecklistUnlocked:
-            return ("③ 手机已解锁并信任本机", "3. The phone is unlocked and trusts this Mac")
-        case .mtuBytes: return ("%@ 字节", "%@ bytes")
-        case .mtuHelp:
-            return ("超出设备能力时会在协商阶段自动下调。",
-                    "Values beyond the device's capability are lowered during negotiation.")
-        case .mtuHelpWithLimit:
-            return ("超出设备能力时会在协商阶段自动下调（本机上限 %ld）。",
-                    "Values beyond the device's capability are lowered during negotiation "
-                    + "(this Mac allows up to %ld).")
-        case .mtuTooltip:
-            return ("协商阶段以设备汇报的能力为准，填大了会自动下调。"
-                    + "上限受系统的 net.link.fake.max_mtu 约束。",
-                    "Negotiation honours whatever the device reports, so an oversized value is "
-                    + "lowered automatically. The ceiling comes from the system's "
-                    + "net.link.fake.max_mtu.")
-        case .adoptDeviceMAC: return ("采用设备汇报的 MAC 地址", "Adopt the MAC address the device reports")
-        case .adoptDeviceMACHelp:
-            return ("只有排查 MAC 冲突时才需要关掉。",
-                    "Only turn this off when investigating a MAC address conflict.")
-        case .adoptDeviceMACTooltip:
-            return ("RNDIS 语义下设备就是这块网卡，对端的 ARP 表与 DHCP 租约都按设备的 MAC 建立。",
-                    "Under RNDIS the device *is* the network interface, so the peer's ARP table "
-                    + "and DHCP leases are all keyed on the device's MAC.")
-        case .compatibilityMode: return ("兼容模式", "Compatibility mode")
-        case .compatibilityModeTooltip:
-            return ("该设备的 CDC 描述符不规范，已按 Android 的惯例推断接口编号",
-                    "This device's CDC descriptors are non-standard, so the interface numbers "
-                    + "were inferred using the usual Android layout")
-
-        // MARK: Log card
-
-        case .logSectionTitle: return ("运行日志", "Log")
-        case .logDroppedNotice:
-            return ("有 %ld 条日志因缓冲写满被丢弃", "%ld log lines were dropped because the buffer filled up")
-        case .logLevelLabel: return ("级别", "Level")
-        case .logLevelAll: return ("全部", "All")
-        case .logLevelDebug: return ("调试", "Debug")
-        case .logLevelInfo: return ("信息", "Info")
-        case .logLevelWarning: return ("警告", "Warning")
-        case .logLevelError: return ("错误", "Error")
-        case .logAutoScroll: return ("自动滚动", "Auto-scroll")
-        case .logCopyAll: return ("复制全部日志", "Copy all log lines")
-        case .logClear: return ("清空日志", "Clear the log")
-        case .logRepeatSuffix: return ("（×%1$ld，自 %2$@ 起）", " (x%1$ld, since %2$@)")
-        case .logRepeatTooltip:
-            return ("这句话连续出现了 %1$ld 次，首次在 %2$@",
-                    "This line repeated %1$ld times in a row, first at %2$@")
-
-        // MARK: Menu bar panel
-
-        case .downstreamShort: return ("下行", "Down")
-        case .upstreamShort: return ("上行", "Up")
-        case .noIPConfigured: return ("未配置 IP", "No IP address")
-        case .menuBarNoDevice:
-            return ("未检测到设备。用数据线连接手机并开启 USB 网络共享。",
-                    "No device detected. Connect a phone with a data cable and turn on USB "
-                    + "tethering.")
-        case .menuBarReady:
-            return ("已就绪：%@。打开主窗口即可连接。",
-                    "Ready: %@. Open the main window to connect.")
-        case .openMainWindow: return ("打开主窗口", "Open the main window")
-        case .quit: return ("退出", "Quit")
-        case .quitTooltip:
-            return ("退出只是关闭界面，已建立的连接会继续运行。",
-                    "Quitting only closes the interface; an established connection keeps running.")
-
-        // MARK: Network card
-
-        case .dnsEffectivenessTooltip:
-            return ("静态模式下 DNS 是否生效取决于系统的解析器管理，请以「当前生效」里的回读结果为准。",
-                    "In manual mode, whether DNS takes effect is up to the system resolver, so "
-                    + "trust what \"Currently effective\" reads back.")
-        case .ipModeLabel: return ("上网方式", "Configure IPv4")
-        case .connectBeforeConfiguring:
-            return ("连接设备后才能配置网络", "Connect a device before configuring the network")
-        case .dhcpHelp:
-            return ("由系统向设备申请地址，DNS 与路由都自动配好",
-                    "The system asks the device for an address; DNS and routes are set up "
-                    + "automatically")
-        case .dhcpTooltip:
-            return ("绝大多数手机的 USB 网络共享都自带 DHCP 服务器，这是推荐选项。"
-                    + "应用后最多等待 10 秒；超时通常意味着设备侧没有开启网络共享。",
-                    "Nearly every phone's USB tethering runs its own DHCP server, so this is the "
-                    + "recommended choice. Applying it waits up to 10 seconds; a timeout usually "
-                    + "means tethering is not enabled on the device.")
-        case .routerOptional: return ("可留空", "Optional")
-        case .deleteThisEntry: return ("删除这一条", "Remove this entry")
-        case .addDNSServer: return ("添加 DNS 服务器（最多 4 条）", "Add a DNS server (up to 4)")
-        case .setDefaultRoute: return ("让所有流量默认走这张网卡", "Route all traffic through this interface")
-        case .setDefaultRouteHelp:
-            return ("开启后手机成为主网络：上网与 DNS 都走它，优先于以太网或 Wi-Fi（本地局域网仍可访问）。",
-                    "Makes the phone the primary connection: internet traffic and DNS use it ahead "
-                    + "of Ethernet or Wi-Fi (local network devices stay reachable).")
-        case .setDefaultRouteTooltip:
-            return ("适合同时连着一个不能上网的局域网的情况。开启后 TetherKitNext 会把自己的网络服务"
-                    + "排到服务顺序的第一位（等同于“系统设置 › 网络 › 设定服务顺序”）。"
-                    + "只连着手机时不需要开。",
-                    "Use this when the Mac is also on a network without internet access. TetherKitNext "
-                    + "moves its network service to the top of the service order (the same as "
-                    + "System Settings › Network › Set Service Order). Not needed when the phone "
-                    + "is your only connection.")
-        case .clearConfiguration: return ("撤销配置", "Clear the configuration")
-        case .clearConfigurationTooltip:
-            return ("等同于 ipconfig set <网卡> NONE，会移除地址与相关路由",
-                    "Equivalent to ipconfig set <interface> NONE; removes the address and its "
-                    + "routes")
-        case .currentlyEffective: return ("当前生效", "Currently effective")
-        case .primaryDefaultRoute: return ("主默认路由", "Primary default route")
-        case .notEffective: return ("未生效", "Not in effect")
-        case .noAddressYet:
-            return ("%@ 目前没有 IP 地址。选择上网方式后点「应用」。",
-                    "%@ has no IP address yet. Pick a configuration and press Apply.")
-
-        // MARK: Status card
-
-        case .linkUp: return ("链路已连通", "Link up")
-        case .linkDown: return ("链路未连通", "Link down")
-        case .transferPaused: return ("已暂停搬运", "Transfer paused")
-        case .pendingDevice: return ("待连接：%@", "Ready to connect: %@")
-        case .noRNDISDeviceDetected:
-            return ("没有检测到 RNDIS 设备。请用数据线连接手机，并在手机上打开「USB 网络共享」。",
-                    "No RNDIS device detected. Connect a phone with a data cable and turn on "
-                    + "\"USB tethering\" on the phone.")
-        case .interfaceLabel: return ("网卡", "Interface")
-        case .interfaceCreating: return ("创建中…", "Creating…")
-        case .connectDisabledHint:
-            return ("先连接一台开启了 USB 网络共享的设备",
-                    "Connect a device with USB tethering switched on first")
-
-        // MARK: Throughput card
-
-        case .throughputSectionTitle: return ("吞吐", "Throughput")
-        case .throughputLive: return ("实时", "Live")
-        case .throughputDownstream: return ("下行（设备 → 本机）", "Down (device -> Mac)")
-        case .throughputUpstream: return ("上行（本机 → 设备）", "Up (Mac -> device)")
-        case .throughputDownstreamFPS: return ("下行帧率", "Down frame rate")
-        case .throughputUpstreamFPS: return ("上行帧率", "Up frame rate")
-        case .chartTime: return ("时间", "Time")
-        case .chartRate: return ("速率", "Rate")
-        case .chartDirection: return ("方向", "Direction")
-        case .throughputCollecting: return ("正在采集…", "Collecting…")
-        case .throughputPlaceholder:
-            return ("连接后显示实时吞吐", "Live throughput appears once you connect")
-        case .totalDownstream: return ("累计下行", "Total down")
-        case .totalUpstream: return ("累计上行", "Total up")
-        case .downstreamFrames: return ("下行帧数", "Down frames")
-        case .upstreamFrames: return ("上行帧数", "Up frames")
-        case .downstreamDropped: return ("下行丢弃", "Down dropped")
-        case .upstreamDropped: return ("上行丢弃", "Up dropped")
-        case .kernelDrops: return ("内核丢包", "Kernel drops")
-        case .transmitBackpressure: return ("发送背压", "TX backpressure")
+    /// Retrieves the localized string for the specified language.
+    public func translation(for language: Language) -> String {
+        switch language {
+        case .english: return english
+        case .spanish: return spanish
+        case .chinese: return chinese
+        case .japanese: return japanese
+        case .german: return german
+        case .korean: return korean
         }
     }
+
+    public var english: String {
+        switch self {
+        case .ok: return "OK"
+        case .cancel: return "Cancel"
+        case .copy: return "Copy"
+        case .copied: return "Copied"
+        case .add: return "Add"
+        case .apply: return "Apply"
+        case .connect: return "Connect"
+        case .disconnect: return "Disconnect"
+        case .uninstall: return "Uninstall"
+        case .ipAddress: return "IP address"
+        case .netmask: return "Subnet mask"
+        case .router: return "Router"
+        case .notConfigured: return "Not configured"
+        case .listSeparator: return ", "
+        case .languageLabel: return "Language"
+        case .languageSystem: return "Follow system"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "Language"
+        case .settingsDonationSection: return "Support & Donations"
+        case .donationTitle: return "Support TetherKitNext Development"
+        case .donationExplanation: return "Issen Software Group is managed solely by me, and for now, software development depends on donations to stay alive. After Issen Software Group reaches certain sustainability and income goals, the free apps will stop asking for donations."
+        case .donateViaPayPal: return "Donate via PayPal"
+        case .copyPayPalEmail: return "Copy PayPal Email (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "Open Source Licenses"
+        case .licensesDone: return "Done"
+        case .licensesTabNotices: return "Notices"
+        case .usbDeviceFallbackName: return "USB device %04lx:%04lx"
+        case .ipModeDhcp: return "Automatic (DHCP)"
+        case .ipModeManual: return "Static IP"
+        case .ipModeNone: return "None"
+        case .authorizationCancelled: return "Authorization cancelled"
+        case .authorizationDenied: return "Authorization was denied (%ld)"
+        case .authorizationSessionFailed: return "Cannot create an authorization session (%ld)"
+        case .authorizationBlobMalformed: return "The authorization credential is malformed"
+        case .authorizationRestoreFailed: return "Cannot restore the authorization credential (%ld)"
+        case .authorizationRightMissing: return "The caller lacks the authorization this operation requires (%ld)"
+        case .libraryGenericFailure: return "The operation failed (error code %ld)"
+        case .eventLinkUp: return "Link is up"
+        case .eventLinkDown: return "Link is down"
+        case .eventDeviceResetReplayed: return "The device soft-reset; addressing information has been replayed"
+        case .eventDeviceReset: return "The device soft-reset"
+        case .eventNegotiated: return "RNDIS negotiation complete: MTU %1$ld, link %2$ld Mbps"
+        case .invalidIPAddress: return "The IP address is not valid"
+        case .invalidNetmask: return "The subnet mask is not valid (it must be contiguous, e.g. 255.255.255.0)"
+        case .invalidRouter: return "The router address is not valid"
+        case .routerRequiredForDefaultRoute: return "Routing traffic through this interface by default requires a router address"
+        case .invalidDNSServer: return "DNS server %@ is not a valid address"
+        case .helperSessionAlreadyRunning: return "A session is already running"
+        case .helperSessionStopped: return "Session stopped"
+        case .helperNetworkApplied: return "Applied the network configuration: %@"
+        case .helperRequestDecodeFailed: return "Cannot decode the request arguments: %@"
+        case .helperReplyEncodeFailed: return "Cannot encode the reply: %@"
+        case .helperOrphansCleaned: return "Cleaned up %ld leftover virtual interface(s) from a previous run"
+        case .helperOrphanCleanupFailed: return "Failed to clean up leftover virtual interfaces: %@"
+        case .helperSigtermReceived: return "Received SIGTERM; shutting down"
+        case .helperReady: return "tetherkitnext-helper ready: %@"
+        case .helperConnectFailed: return "Cannot reach the privileged helper: %@"
+        case .helperReplyUnparsable: return "The helper's reply could not be parsed; the versions may not match"
+        case .updateNoReleases: return "The repository has no releases yet"
+        case .updateHTTPStatus: return "GitHub returned %ld"
+        case .updateBadResponse: return "The response was not in the expected format"
+        case .cliLinkNotInBundle: return "The command-line tool can only be installed by the background component registered from TetherKitNext.app."
+        case .cliLinkToolMissing: return "The command-line tool is missing from the app bundle: %@"
+        case .cliLinkDirectoryUnsafe: return "%@ is not a regular directory, so no link is created there for safety."
+        case .cliLinkOccupied: return "%@ is already taken by something else. Remove it first."
+        case .cliLinkSystemError: return "%1$@ failed: %2$@"
+        case .moveToApplicationsRequired: return "Move TetherKitNext to the Applications folder and open it from there first. macOS does not allow background components to be registered from a disk image or a temporary location."
+        case .helperRegisterFailed: return "Could not register the background component: %@"
+        case .authPromptCommandLineTool: return "TetherKitNext needs administrator privileges to add or remove the tetherkitnext-cli command in /usr/local/bin."
+        case .helperApprovalTitle: return "Allow TetherKitNext in System Settings"
+        case .helperApprovalBody: return "The background component is registered, but macOS needs your approval. Turn on TetherKitNext in System Settings › General › Login Items & Extensions; this page continues automatically."
+        case .openLoginItemsSettings: return "Open Login Items Settings"
+        case .commandLineToolTitle: return "Command-line tool"
+        case .commandLineToolInstalled: return "Installed: run tetherkitnext-cli in Terminal"
+        case .commandLineToolNotInstalled: return "Not installed. Install it to use tetherkitnext-cli from any terminal."
+        case .commandLineToolOccupied: return "%@ is used by something else"
+        case .installCommandLineTool: return "Install Command"
+        case .removeCommandLineTool: return "Remove Command"
+        case .needInstallBody: return "Creating the virtual interface and opening the data link require administrator privileges. TetherKitNext keeps that work in a separate background component so the app itself runs as a normal user."
+        case .installHelperDetail: return "The component is signed with the app and runs from inside it; nothing is copied into system folders. macOS asks you to allow it once in Login Items."
+        case .installHelperButton: return "Enable Background Component"
+        case .installingProgress: return "Enabling…"
+        case .updateHelperDetail: return "The background component restarts from this copy of the app. This page recovers on its own afterwards."
+        case .helperVersionMismatchTooltip: return "The running background component is still %1$@ while the app is %2$@. One click restarts it from this app."
+        case .helperUpdateWhileRunningWarning: return "Restarting the background component drops the current connection and destroys the virtual interface. Just reconnect afterwards."
+        case .uninstallExplanation: return "This disables the background component and removes the tetherkitnext-cli command. You can enable it again at any time; moving the app to the Trash removes it too."
+        case .updateAvailable: return "Version v%@ is available. Download the new DMG from the release page and replace TetherKitNext in your Applications folder."
+        case .uninstallHelperMenuItem: return "Disable Background Component…"
+        case .confirmUninstallTitle: return "Disable the background component?"
+        case .needInstallTitle: return "Enable the TetherKitNext background component"
+        case .updateHelperButton: return "Restart Background Component"
+        case .confirmHelperUpdateTitle: return "Restart the background component?"
+        case .paneOverview: return "Overview"
+        case .paneDevice: return "Device"
+        case .paneNetwork: return "Network"
+        case .paneActivity: return "Activity"
+        case .paneSettings: return "Settings"
+        case .configureNetwork: return "Configure…"
+        case .setupTitle: return "Welcome to TetherKitNext"
+        case .setupSubtitle: return "A few steps turn your Android phone's USB tethering into a network interface on your Mac."
+        case .setupStepMoveTitle: return "Put TetherKitNext in Applications"
+        case .showInFinder: return "Show in Finder"
+        case .waitingForApproval: return "Waiting for approval…"
+        case .settingsBackgroundSection: return "Background Component"
+        case .settingsBackgroundStatus: return "Status"
+        case .backgroundRunning: return "Running · %@"
+        case .settingsGeneralSection: return "General"
+        case .menuBarShowSpeed: return "Show live speed in the menu bar"
+        case .launchAtLogin: return "Open TetherKitNext at login"
+        case .launchAtLoginFailed: return "Could not change the login item: %@"
+        case .settingsUpdatesSection: return "Updates"
+        case .autoCheckUpdates: return "Check for updates daily"
+        case .checkNow: return "Check Now"
+        case .currentVersion: return "Current version %@"
+        case .settingsAboutSection: return "About"
+        case .aboutCredits: return "Made by Issen Software Group. Based on TetherKit by XiaoMiku01 (MIT License)."
+        case .projectWebsite: return "Project Website"
+        case .vendorWebsite: return "Issen Software Group Website"
+        case .madeByVendor: return "Made by Issen Software Group"
+        case .aboutApp: return "About TetherKitNext"
+        case .showLicenses: return "Show Licenses"
+        case .autoConfigureNetwork: return "Configure the network automatically on connect"
+        case .autoConfigureNetworkHelp: return "Applies the mode chosen on the Network page (DHCP by default) right after connecting, so internet works without another click."
+        case .statusDisconnected: return "Not connected"
+        case .statusConnecting: return "Connecting"
+        case .statusConnected: return "Connected"
+        case .statusReadyLinkDown: return "Ready (link down)"
+        case .statusDisconnecting: return "Disconnecting"
+        case .statusStopped: return "Disconnected"
+        case .statusFailed: return "Connection failed"
+        case .presenceReasonSession: return "connect your phone and set up the network"
+        case .presenceReasonCommandLineTool: return "add or remove the tetherkitnext-cli command"
+        case .helperPresenceNotAccepted: return "This action needs administrator authorization."
+        case .authPromptSession: return "TetherKitNext needs administrator privileges to create the virtual interface, open the data link and configure IP addresses."
+        case .interfaceNotReadyYet: return "The virtual interface does not exist yet -- connect a device first"
+        case .menuCheckForUpdates: return "Check for Updates…"
+        case .alertOperationFailed: return "Operation failed"
+        case .updateCheckTitle: return "Check for updates"
+        case .openReleasePage: return "Open the release page"
+        case .updateUpToDate: return "You are on the latest version (v%@)."
+        case .updateCheckFailed: return "The check could not be completed: %@"
+        case .updateDevBuild: return "This is a development build with no version number, so there is nothing to compare against."
+        case .uninstallWhileRunningWarning: return "The current connection will be dropped and the virtual interface destroyed."
+        case .helperComponentVersion: return "Helper · %@"
+        case .helperVersionMismatch: return "Helper %1$@ · app %2$@"
+        case .helperUpdateBadge: return "%@ available"
+        case .checkingHelper: return "Checking the privileged helper…"
+        case .showConnectFailureDetail: return "Show why the connection failed"
+        case .helperNeedsUpdateTitle: return "Restart the background component to finish updating"
+        case .helperNeedsUpdateBody: return "TetherKitNext was updated, but its background component is still running the previous version. Restart it once; nothing needs reinstalling."
+        case .copiedToClipboard: return "Copied to the clipboard"
+        case .copyCommand: return "Copy the command"
+        case .sysctlNeedsFixTitle: return "System parameters need adjusting"
+        case .sysctlNeedsFixBody: return "These switches are snapshotted into the virtual interface **when it is\ncreated**, so changing them afterwards has no effect. Fix them before\nconnecting:"
+        case .usbDeviceSectionTitle: return "USB device"
+        case .cannotRescanWhileRunning: return "The device list cannot be refreshed while running"
+        case .rescanUSBDevices: return "Rescan USB devices"
+        case .noDeviceDetected: return "No device detected"
+        case .deviceChecklistCable: return "1. The cable carries data and is not charge-only"
+        case .deviceChecklistTethering: return "2. \"USB tethering\" is switched on for the phone"
+        case .deviceChecklistUnlocked: return "3. The phone is unlocked and trusts this Mac"
+        case .mtuBytes: return "%@ bytes"
+        case .mtuHelp: return "Values beyond the device's capability are lowered during negotiation."
+        case .mtuHelpWithLimit: return "Values beyond the device's capability are lowered during negotiation (this Mac allows up to %ld)."
+        case .mtuTooltip: return "Negotiation honours whatever the device reports, so an oversized value is lowered automatically. The ceiling comes from the system's net.link.fake.max_mtu."
+        case .adoptDeviceMAC: return "Adopt the MAC address the device reports"
+        case .adoptDeviceMACHelp: return "Only turn this off when investigating a MAC address conflict."
+        case .adoptDeviceMACTooltip: return "Under RNDIS the device *is* the network interface, so the peer's ARP table and DHCP leases are all keyed on the device's MAC."
+        case .compatibilityMode: return "Compatibility mode"
+        case .compatibilityModeTooltip: return "This device's CDC descriptors are non-standard, so the interface numbers were inferred using the usual Android layout"
+        case .logSectionTitle: return "Log"
+        case .logDroppedNotice: return "%ld log lines were dropped because the buffer filled up"
+        case .logLevelLabel: return "Level"
+        case .logLevelAll: return "All"
+        case .logLevelDebug: return "Debug"
+        case .logLevelInfo: return "Info"
+        case .logLevelWarning: return "Warning"
+        case .logLevelError: return "Error"
+        case .logAutoScroll: return "Auto-scroll"
+        case .logCopyAll: return "Copy all log lines"
+        case .logClear: return "Clear the log"
+        case .logRepeatSuffix: return " (x%1$ld, since %2$@)"
+        case .logRepeatTooltip: return "This line repeated %1$ld times in a row, first at %2$@"
+        case .downstreamShort: return "Down"
+        case .upstreamShort: return "Up"
+        case .noIPConfigured: return "No IP address"
+        case .menuBarNoDevice: return "No device detected. Connect a phone with a data cable and turn on USB tethering."
+        case .menuBarReady: return "Ready: %@. Open the main window to connect."
+        case .openMainWindow: return "Open the main window"
+        case .quit: return "Quit"
+        case .quitTooltip: return "Quitting only closes the interface; an established connection keeps running."
+        case .dnsEffectivenessTooltip: return "In manual mode, whether DNS takes effect is up to the system resolver, so trust what \"Currently effective\" reads back."
+        case .ipModeLabel: return "Configure IPv4"
+        case .connectBeforeConfiguring: return "Connect a device before configuring the network"
+        case .dhcpHelp: return "The system asks the device for an address; DNS and routes are set up automatically"
+        case .dhcpTooltip: return "Nearly every phone's USB tethering runs its own DHCP server, so this is the recommended choice. Applying it waits up to 10 seconds; a timeout usually means tethering is not enabled on the device."
+        case .routerOptional: return "Optional"
+        case .deleteThisEntry: return "Remove this entry"
+        case .addDNSServer: return "Add a DNS server (up to 4)"
+        case .setDefaultRoute: return "Route all traffic through this interface"
+        case .setDefaultRouteHelp: return "Makes the phone the primary connection: internet traffic and DNS use it ahead of Ethernet or Wi-Fi (local network devices stay reachable)."
+        case .setDefaultRouteTooltip: return "Use this when the Mac is also on a network without internet access. TetherKitNext moves its network service to the top of the service order (the same as System Settings › Network › Set Service Order). Not needed when the phone is your only connection."
+        case .clearConfiguration: return "Clear the configuration"
+        case .clearConfigurationTooltip: return "Equivalent to ipconfig set <interface> NONE; removes the address and its routes"
+        case .currentlyEffective: return "Currently effective"
+        case .primaryDefaultRoute: return "Primary default route"
+        case .notEffective: return "Not in effect"
+        case .noAddressYet: return "%@ has no IP address yet. Pick a configuration and press Apply."
+        case .linkUp: return "Link up"
+        case .linkDown: return "Link down"
+        case .transferPaused: return "Transfer paused"
+        case .pendingDevice: return "Ready to connect: %@"
+        case .noRNDISDeviceDetected: return "No RNDIS device detected. Connect a phone with a data cable and turn on \"USB tethering\" on the phone."
+        case .interfaceLabel: return "Interface"
+        case .interfaceCreating: return "Creating…"
+        case .connectDisabledHint: return "Connect a device with USB tethering switched on first"
+        case .throughputSectionTitle: return "Throughput"
+        case .throughputLive: return "Live"
+        case .throughputDownstream: return "Down (device -> Mac)"
+        case .throughputUpstream: return "Up (Mac -> device)"
+        case .throughputDownstreamFPS: return "Down frame rate"
+        case .throughputUpstreamFPS: return "Up frame rate"
+        case .chartTime: return "Time"
+        case .chartRate: return "Rate"
+        case .chartDirection: return "Direction"
+        case .throughputCollecting: return "Collecting…"
+        case .throughputPlaceholder: return "Live throughput appears once you connect"
+        case .totalDownstream: return "Total down"
+        case .totalUpstream: return "Total up"
+        case .downstreamFrames: return "Down frames"
+        case .upstreamFrames: return "Up frames"
+        case .downstreamDropped: return "Down dropped"
+        case .upstreamDropped: return "Up dropped"
+        case .kernelDrops: return "Kernel drops"
+        case .transmitBackpressure: return "TX backpressure"
+        }
+    }
+
+    public var spanish: String {
+        switch self {
+        case .ok: return "Aceptar"
+        case .cancel: return "Cancelar"
+        case .copy: return "Copiar"
+        case .copied: return "Copiado"
+        case .add: return "Añadir"
+        case .apply: return "Aplicar"
+        case .connect: return "Conectar"
+        case .disconnect: return "Desconectar"
+        case .uninstall: return "Desinstalar"
+        case .ipAddress: return "Dirección IP"
+        case .netmask: return "Máscara de subred"
+        case .router: return "Puerta de enlace"
+        case .notConfigured: return "No configurado"
+        case .listSeparator: return ", "
+        case .languageLabel: return "Idioma"
+        case .languageSystem: return "Seguir el sistema"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "Idioma"
+        case .settingsDonationSection: return "Apoyo y donaciones"
+        case .donationTitle: return "Apoya el desarrollo de TetherKitNext"
+        case .donationExplanation: return "Issen Software Group está gestionado únicamente por mí y, por ahora, el software depende de donaciones para mantener el desarrollo activo. Cuando Issen Software Group alcance ciertos objetivos e ingresos, las aplicaciones gratuitas dejarán de pedir donaciones."
+        case .donateViaPayPal: return "Donar con PayPal"
+        case .copyPayPalEmail: return "Copiar correo de PayPal (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "Licencias de código abierto"
+        case .licensesDone: return "Listo"
+        case .licensesTabNotices: return "Avisos"
+        case .usbDeviceFallbackName: return "Dispositivo USB %04lx:%04lx"
+        case .ipModeDhcp: return "Automático (DHCP)"
+        case .ipModeManual: return "IP estática"
+        case .ipModeNone: return "Sin configurar"
+        case .authorizationCancelled: return "Autorización cancelada"
+        case .authorizationDenied: return "Autorización denegada (%ld)"
+        case .authorizationSessionFailed: return "No se puede crear la sesión de autorización (%ld)"
+        case .authorizationBlobMalformed: return "La credencial de autorización tiene un formato incorrecto"
+        case .authorizationRestoreFailed: return "No se puede restaurar la credencial de autorización (%ld)"
+        case .authorizationRightMissing: return "El autor de la llamada carece de la autorización requerida para esta operación (%ld)"
+        case .libraryGenericFailure: return "La operación falló (código de error %ld)"
+        case .eventLinkUp: return "Enlace conectado"
+        case .eventLinkDown: return "Enlace desconectado"
+        case .eventDeviceResetReplayed: return "Reinicio suave del dispositivo; la información de direccionamiento se ha vuelto a aplicar"
+        case .eventDeviceReset: return "Reinicio suave del dispositivo"
+        case .eventNegotiated: return "Negociación RNDIS completada: MTU %1$ld, enlace %2$ld Mbps"
+        case .invalidIPAddress: return "La dirección IP no es válida"
+        case .invalidNetmask: return "La máscara de subred no es válida (debe ser contigua, p. ej. 255.255.255.0)"
+        case .invalidRouter: return "La dirección de la puerta de enlace no es válida"
+        case .routerRequiredForDefaultRoute: return "Para enrutar el tráfico a través de esta interfaz por defecto, se requiere una dirección de puerta de enlace"
+        case .invalidDNSServer: return "El servidor DNS %@ no es una dirección válida"
+        case .helperSessionAlreadyRunning: return "Ya hay una sesión en ejecución"
+        case .helperSessionStopped: return "Sesión detenida"
+        case .helperNetworkApplied: return "Configuración de red aplicada: %@"
+        case .helperRequestDecodeFailed: return "No se pueden descodificar los argumentos de la solicitud: %@"
+        case .helperReplyEncodeFailed: return "No se puede codificar la respuesta: %@"
+        case .helperOrphansCleaned: return "Se limpiaron %ld interfaces virtuales residuales de una ejecución anterior"
+        case .helperOrphanCleanupFailed: return "Error al limpiar las interfaces virtuales residuales: %@"
+        case .helperSigtermReceived: return "Se recibió SIGTERM; apagando"
+        case .helperReady: return "tetherkitnext-helper listo: %@"
+        case .helperConnectFailed: return "No se puede conectar con el componente privilegiado: %@"
+        case .helperReplyUnparsable: return "No se pudo analizar la respuesta del asistente; las versiones podrían no coincidir"
+        case .updateNoReleases: return "El repositorio aún no tiene versiones publicadas"
+        case .updateHTTPStatus: return "GitHub devolvió %ld"
+        case .updateBadResponse: return "La respuesta no tenía el formato esperado"
+        case .cliLinkNotInBundle: return "La herramienta de línea de comandos solo se puede instalar desde el componente en segundo plano registrado desde TetherKitNext.app."
+        case .cliLinkToolMissing: return "La herramienta de línea de comandos no se encuentra en el paquete de la aplicación: %@"
+        case .cliLinkDirectoryUnsafe: return "%@ no es un directorio normal, por seguridad no se crea un enlace allí."
+        case .cliLinkOccupied: return "%@ ya está ocupado por otro programa. Elimínalo primero."
+        case .cliLinkSystemError: return "%1$@ falló: %2$@"
+        case .moveToApplicationsRequired: return "Mueve TetherKitNext a la carpeta Aplicaciones y ábrelo desde allí primero. macOS no permite registrar componentes en segundo plano desde una imagen de disco o una ubicación temporal."
+        case .helperRegisterFailed: return "No se pudo registrar el componente en segundo plano: %@"
+        case .authPromptCommandLineTool: return "TetherKitNext necesita privilegios de administrador para añadir o quitar el comando tetherkitnext-cli en /usr/local/bin."
+        case .helperApprovalTitle: return "Permitir TetherKitNext en Ajustes del Sistema"
+        case .helperApprovalBody: return "El componente en segundo plano está registrado, pero macOS necesita tu confirmación. Activa TetherKitNext en Ajustes del Sistema › General › Ítems de inicio y extensiones; esta página continuará automáticamente."
+        case .openLoginItemsSettings: return "Abrir ajustes de ítems de inicio"
+        case .commandLineToolTitle: return "Herramienta de línea de comandos"
+        case .commandLineToolInstalled: return "Instalado: ejecuta tetherkitnext-cli en Terminal"
+        case .commandLineToolNotInstalled: return "No instalado. Instálalo para usar tetherkitnext-cli desde cualquier terminal."
+        case .commandLineToolOccupied: return "%@ está siendo utilizado por otro programa"
+        case .installCommandLineTool: return "Instalar comando"
+        case .removeCommandLineTool: return "Eliminar comando"
+        case .needInstallBody: return "Crear la interfaz virtual y abrir el enlace de datos requiere privilegios de administrador. TetherKitNext mantiene ese trabajo en un componente en segundo plano independiente para que la app se ejecute como usuario normal."
+        case .installHelperDetail: return "El componente está firmado con la app y se ejecuta desde su interior; no se copia nada en carpetas del sistema. macOS solo pedirá que lo autorices una vez en Ítems de inicio."
+        case .installHelperButton: return "Activar componente en segundo plano"
+        case .installingProgress: return "Activando…"
+        case .updateHelperDetail: return "El componente en segundo plano se reiniciará desde esta copia de la app. Esta página se restaurará automáticamente después."
+        case .helperVersionMismatchTooltip: return "El componente en segundo plano en ejecución sigue siendo %1$@ mientras que la app es %2$@. Un clic lo reinicia desde esta app."
+        case .helperUpdateWhileRunningWarning: return "Reiniciar el componente en segundo plano interrumpirá la conexión actual y destruirá la interfaz virtual. Simplemente vuelve a conectar después."
+        case .uninstallExplanation: return "Esto desactiva el componente en segundo plano y elimina el comando tetherkitnext-cli. Puedes reactivarlo en cualquier momento; trasladar la app a la Papelera también lo eliminará."
+        case .updateAvailable: return "La versión v%@ está disponible. Descarga el nuevo DMG desde la página de versiones y reemplaza TetherKitNext en tu carpeta Aplicaciones."
+        case .uninstallHelperMenuItem: return "Desactivar componente en segundo plano…"
+        case .confirmUninstallTitle: return "¿Desactivar el componente en segundo plano?"
+        case .needInstallTitle: return "Activar el componente en segundo plano de TetherKitNext"
+        case .updateHelperButton: return "Reiniciar componente en segundo plano"
+        case .confirmHelperUpdateTitle: return "¿Reiniciar el componente en segundo plano?"
+        case .paneOverview: return "Resumen"
+        case .paneDevice: return "Dispositivo"
+        case .paneNetwork: return "Red"
+        case .paneActivity: return "Actividad"
+        case .paneSettings: return "Ajustes"
+        case .configureNetwork: return "Configurar…"
+        case .setupTitle: return "Bienvenido a TetherKitNext"
+        case .setupSubtitle: return "Unos sencillos pasos transforman la conexión compartida por USB de tu Android en una interfaz de red en tu Mac."
+        case .setupStepMoveTitle: return "Coloca TetherKitNext en Aplicaciones"
+        case .showInFinder: return "Mostrar en el Finder"
+        case .waitingForApproval: return "Esperando aprobación…"
+        case .settingsBackgroundSection: return "Componente en segundo plano"
+        case .settingsBackgroundStatus: return "Estado"
+        case .backgroundRunning: return "En ejecución · %@"
+        case .settingsGeneralSection: return "General"
+        case .menuBarShowSpeed: return "Mostrar velocidad en tiempo real en la barra de menús"
+        case .launchAtLogin: return "Abrir TetherKitNext al iniciar sesión"
+        case .launchAtLoginFailed: return "No se pudo cambiar el elemento de inicio de sesión: %@"
+        case .settingsUpdatesSection: return "Actualizaciones"
+        case .autoCheckUpdates: return "Buscar actualizaciones a diario"
+        case .checkNow: return "Buscar ahora"
+        case .currentVersion: return "Versión actual: %@"
+        case .settingsAboutSection: return "Acerca de"
+        case .aboutCredits: return "Creado por Issen Software Group. Basado en TetherKit de XiaoMiku01 (Licencia MIT)."
+        case .projectWebsite: return "Sitio web del proyecto"
+        case .vendorWebsite: return "Sitio web de Issen Software Group"
+        case .madeByVendor: return "Creado por Issen Software Group"
+        case .aboutApp: return "Acerca de TetherKitNext"
+        case .showLicenses: return "Mostrar licencias"
+        case .autoConfigureNetwork: return "Configurar la red automáticamente al conectar"
+        case .autoConfigureNetworkHelp: return "Aplica el método seleccionado en la pestaña «Red» (DHCP automático por defecto) justo después de conectar, para que internet funcione sin clics adicionales."
+        case .statusDisconnected: return "No conectado"
+        case .statusConnecting: return "Conectando"
+        case .statusConnected: return "Conectado"
+        case .statusReadyLinkDown: return "Listo (enlace inactivo)"
+        case .statusDisconnecting: return "Desconectando"
+        case .statusStopped: return "Desconectado"
+        case .statusFailed: return "Error de conexión"
+        case .presenceReasonSession: return "conectar tu teléfono y configurar la red"
+        case .presenceReasonCommandLineTool: return "añadir o eliminar el comando tetherkitnext-cli"
+        case .helperPresenceNotAccepted: return "Esta acción requiere autorización de administrador."
+        case .authPromptSession: return "TetherKitNext necesita privilegios de administrador para crear la interfaz virtual, abrir el enlace de datos y configurar direcciones IP."
+        case .interfaceNotReadyYet: return "La interfaz virtual aún no existe; conecta un dispositivo primero"
+        case .menuCheckForUpdates: return "Buscar actualizaciones…"
+        case .alertOperationFailed: return "Operación fallida"
+        case .updateCheckTitle: return "Buscar actualizaciones"
+        case .openReleasePage: return "Abrir la página de versiones"
+        case .updateUpToDate: return "Ya tienes la última versión (v%@)."
+        case .updateCheckFailed: return "No se pudo completar la comprobación: %@"
+        case .updateDevBuild: return "Esta es una compilación de desarrollo sin número de versión, por lo que no hay nada con qué comparar."
+        case .uninstallWhileRunningWarning: return "La conexión actual se interrumpirá y la interfaz virtual será destruida."
+        case .helperComponentVersion: return "Asistente · %@"
+        case .helperVersionMismatch: return "Asistente %1$@ · app %2$@"
+        case .helperUpdateBadge: return "%@ disponible"
+        case .checkingHelper: return "Comprobando el componente privilegiado…"
+        case .showConnectFailureDetail: return "Mostrar por qué falló la conexión"
+        case .helperNeedsUpdateTitle: return "Reinicia el componente en segundo plano para completar la actualización"
+        case .helperNeedsUpdateBody: return "TetherKitNext se actualizó, pero su componente en segundo plano aún ejecuta la versión anterior. Reinícialo una vez; no es necesario reinstalar nada."
+        case .copiedToClipboard: return "Copiado al portapapeles"
+        case .copyCommand: return "Copiar el comando"
+        case .sysctlNeedsFixTitle: return "Es necesario ajustar los parámetros del sistema"
+        case .sysctlNeedsFixBody: return "Estos parámetros se copian en la interfaz virtual **en el momento de crearla**,\npor lo que cambiarlos después no tiene efecto. Corrígelos antes\nde conectar:"
+        case .usbDeviceSectionTitle: return "Dispositivo USB"
+        case .cannotRescanWhileRunning: return "No se puede actualizar la lista de dispositivos durante la ejecución"
+        case .rescanUSBDevices: return "Volver a escanear dispositivos USB"
+        case .noDeviceDetected: return "Ningún dispositivo detectado"
+        case .deviceChecklistCable: return "1. El cable transmite datos y no es solo de carga"
+        case .deviceChecklistTethering: return "2. La opción «Conexión compartida por USB» está activada en el teléfono"
+        case .deviceChecklistUnlocked: return "3. El teléfono está desbloqueado y confía en este Mac"
+        case .mtuBytes: return "%@ bytes"
+        case .mtuHelp: return "Los valores que superen la capacidad del dispositivo se reducirán durante la negociación."
+        case .mtuHelpWithLimit: return "Los valores que superen la capacidad del dispositivo se reducirán durante la negociación (este Mac permite hasta %ld)."
+        case .mtuTooltip: return "La negociación respeta lo que informe el dispositivo, por lo que un valor excesivo se reducirá automáticamente. El límite superior lo determina net.link.fake.max_mtu del sistema."
+        case .adoptDeviceMAC: return "Adoptar la dirección MAC que informe el dispositivo"
+        case .adoptDeviceMACHelp: return "Desactiva esto únicamente si estás investigando un conflicto de direcciones MAC."
+        case .adoptDeviceMACTooltip: return "Bajo RNDIS el dispositivo *es* la interfaz de red, por lo que la tabla ARP del par y las concesiones DHCP se asocian a su MAC."
+        case .compatibilityMode: return "Modo de compatibilidad"
+        case .compatibilityModeTooltip: return "Los descriptores CDC de este dispositivo no son estándar, por lo que los números de interfaz se dedujeron según el diseño habitual de Android"
+        case .logSectionTitle: return "Registro"
+        case .logDroppedNotice: return "Se descartaron %ld líneas de registro porque el búfer se llenó"
+        case .logLevelLabel: return "Nivel"
+        case .logLevelAll: return "Todos"
+        case .logLevelDebug: return "Depuración"
+        case .logLevelInfo: return "Información"
+        case .logLevelWarning: return "Advertencia"
+        case .logLevelError: return "Error"
+        case .logAutoScroll: return "Desplazamiento automático"
+        case .logCopyAll: return "Copiar todas las líneas de registro"
+        case .logClear: return "Borrar el registro"
+        case .logRepeatSuffix: return " (×%1$ld, desde %2$@)"
+        case .logRepeatTooltip: return "Esta línea se repitió %1$ld veces consecutivas, la primera a las %2$@"
+        case .downstreamShort: return "Bajada"
+        case .upstreamShort: return "Subida"
+        case .noIPConfigured: return "Sin dirección IP"
+        case .menuBarNoDevice: return "Ningún dispositivo detectado. Conecta un teléfono con un cable de datos y activa la conexión compartida por USB."
+        case .menuBarReady: return "Listo: %@. Abre la ventana principal para conectar."
+        case .openMainWindow: return "Abrir la ventana principal"
+        case .quit: return "Salir"
+        case .quitTooltip: return "Salir solo cierra la interfaz; una conexión establecida seguirá funcionando."
+        case .dnsEffectivenessTooltip: return "En modo manual, que el DNS surta efecto depende del resolución del sistema; confía en el valor de «Actualmente en vigor»."
+        case .ipModeLabel: return "Configurar IPv4"
+        case .connectBeforeConfiguring: return "Conecta un dispositivo antes de configurar la red"
+        case .dhcpHelp: return "El sistema solicita una dirección al dispositivo; el DNS y las rutas se configuran automáticamente"
+        case .dhcpTooltip: return "Casi todas las conexiones compartidas por USB de teléfonos ejecutan su propio servidor DHCP, por lo que esta es la opción recomendada. La aplicación espera hasta 10 segundos; un tiempo de espera suele indicar que la conexión compartida no está activada en el dispositivo."
+        case .routerOptional: return "Opcional"
+        case .deleteThisEntry: return "Eliminar esta entrada"
+        case .addDNSServer: return "Añadir servidor DNS (hasta 4)"
+        case .setDefaultRoute: return "Enrutar todo el tráfico a través de esta interfaz"
+        case .setDefaultRouteHelp: return "Convierte el teléfono en la conexión principal: el tráfico de internet y el DNS lo usan con prioridad sobre Ethernet o Wi-Fi (los dispositivos de la red local siguen siendo accesibles)."
+        case .setDefaultRouteTooltip: return "Úsalo cuando el Mac también esté conectado a una red sin acceso a internet. TetherKitNext situará su servicio de red en el primer puesto del orden de servicios (equivalente a Ajustes del Sistema › Red › Definir orden de servicios). No es necesario si el teléfono es tu única conexión."
+        case .clearConfiguration: return "Borrar la configuración"
+        case .clearConfigurationTooltip: return "Equivalente a ipconfig set <interfaz> NONE; elimina la dirección y sus rutas"
+        case .currentlyEffective: return "Actualmente en vigor"
+        case .primaryDefaultRoute: return "Ruta predeterminada principal"
+        case .notEffective: return "Sin efecto"
+        case .noAddressYet: return "%@ aún no tiene dirección IP. Selecciona una configuración y pulsa Aplicar."
+        case .linkUp: return "Enlace activo"
+        case .linkDown: return "Enlace inactivo"
+        case .transferPaused: return "Transferencia en pausa"
+        case .pendingDevice: return "Listo para conectar: %@"
+        case .noRNDISDeviceDetected: return "No se detectó ningún dispositivo RNDIS. Conecta un teléfono con un cable de datos y activa la «Conexión compartida por USB» en el teléfono."
+        case .interfaceLabel: return "Interfaz"
+        case .interfaceCreating: return "Creando…"
+        case .connectDisabledHint: return "Conecta primero un dispositivo con la conexión compartida por USB activada"
+        case .throughputSectionTitle: return "Rendimiento"
+        case .throughputLive: return "En vivo"
+        case .throughputDownstream: return "Bajada (dispositivo -> Mac)"
+        case .throughputUpstream: return "Subida (Mac -> dispositivo)"
+        case .throughputDownstreamFPS: return "Tasa de tramas de bajada"
+        case .throughputUpstreamFPS: return "Tasa de tramas de subida"
+        case .chartTime: return "Tiempo"
+        case .chartRate: return "Velocidad"
+        case .chartDirection: return "Dirección"
+        case .throughputCollecting: return "Recopilando…"
+        case .throughputPlaceholder: return "El rendimiento en tiempo real aparecerá una vez te conectes"
+        case .totalDownstream: return "Bajada total"
+        case .totalUpstream: return "Subida total"
+        case .downstreamFrames: return "Tramas de bajada"
+        case .upstreamFrames: return "Tramas de subida"
+        case .downstreamDropped: return "Bajada descartada"
+        case .upstreamDropped: return "Subida descartada"
+        case .kernelDrops: return "Descartes de kernel"
+        case .transmitBackpressure: return "Retropresión TX"
+        }
+    }
+
+    public var chinese: String {
+        switch self {
+        case .ok: return "好"
+        case .cancel: return "取消"
+        case .copy: return "复制"
+        case .copied: return "已复制"
+        case .add: return "添加"
+        case .apply: return "应用"
+        case .connect: return "连接"
+        case .disconnect: return "断开"
+        case .uninstall: return "卸载"
+        case .ipAddress: return "IP 地址"
+        case .netmask: return "子网掩码"
+        case .router: return "网关"
+        case .notConfigured: return "未配置"
+        case .listSeparator: return "、"
+        case .languageLabel: return "界面语言"
+        case .languageSystem: return "跟随系统"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "语言"
+        case .settingsDonationSection: return "支持与赞助"
+        case .donationTitle: return "支持 TetherKitNext 开发"
+        case .donationExplanation: return "Issen Software Group 仅由我一人管理，目前软件依赖赞助来维持开发。在 Issen Software Group 达成特定目标和收入后，免费应用将不再请求赞助。"
+        case .donateViaPayPal: return "通过 PayPal 赞助"
+        case .copyPayPalEmail: return "复制 PayPal 邮箱 (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "开源许可证"
+        case .licensesDone: return "完成"
+        case .licensesTabNotices: return "声明"
+        case .usbDeviceFallbackName: return "USB 设备 %04lx:%04lx"
+        case .ipModeDhcp: return "自动（DHCP）"
+        case .ipModeManual: return "静态 IP"
+        case .ipModeNone: return "不配置"
+        case .authorizationCancelled: return "已取消授权"
+        case .authorizationDenied: return "授权未通过（%ld）"
+        case .authorizationSessionFailed: return "无法创建授权会话（%ld）"
+        case .authorizationBlobMalformed: return "授权凭据格式不正确"
+        case .authorizationRestoreFailed: return "无法还原授权凭据（%ld）"
+        case .authorizationRightMissing: return "调用方没有执行该操作所需的授权（%ld）"
+        case .libraryGenericFailure: return "操作失败（错误码 %ld）"
+        case .eventLinkUp: return "链路已连接"
+        case .eventLinkDown: return "链路已断开"
+        case .eventDeviceResetReplayed: return "设备已软复位，寻址信息已重放"
+        case .eventDeviceReset: return "设备已软复位"
+        case .eventNegotiated: return "RNDIS 协商完成：MTU %1$ld，链路 %2$ld Mbps"
+        case .invalidIPAddress: return "IP 地址格式不正确"
+        case .invalidNetmask: return "子网掩码不正确（必须是连续的掩码，如 255.255.255.0）"
+        case .invalidRouter: return "网关地址格式不正确"
+        case .routerRequiredForDefaultRoute: return "要把流量默认走这张网卡，必须填写网关地址"
+        case .invalidDNSServer: return "DNS 服务器 %@ 格式不正确"
+        case .helperSessionAlreadyRunning: return "会话已经在运行了"
+        case .helperSessionStopped: return "会话已停止"
+        case .helperNetworkApplied: return "已应用网络配置：%@"
+        case .helperRequestDecodeFailed: return "请求参数无法解析：%@"
+        case .helperReplyEncodeFailed: return "应答编码失败：%@"
+        case .helperOrphansCleaned: return "已清理 %ld 张上次残留的虚拟网卡"
+        case .helperOrphanCleanupFailed: return "清理残留虚拟网卡失败：%@"
+        case .helperSigtermReceived: return "收到 SIGTERM，正在停机"
+        case .helperReady: return "tetherkitnext-helper 已就绪：%@"
+        case .helperConnectFailed: return "无法连接到特权组件：%@"
+        case .helperReplyUnparsable: return "特权组件的应答无法解析，可能是版本不一致"
+        case .updateNoReleases: return "仓库还没有发布任何版本"
+        case .updateHTTPStatus: return "GitHub 返回了 %ld"
+        case .updateBadResponse: return "响应格式不符合预期"
+        case .cliLinkNotInBundle: return "命令行工具只能在从 TetherKitNext.app 注册的后台组件中安装。"
+        case .cliLinkToolMissing: return "App 包内找不到命令行工具：%@"
+        case .cliLinkDirectoryUnsafe: return "%@ 不是普通目录，出于安全考虑不在其中创建链接。"
+        case .cliLinkOccupied: return "%@ 已被其他程序占用，请先移除它。"
+        case .cliLinkSystemError: return "%1$@ 失败：%2$@"
+        case .moveToApplicationsRequired: return "请先把 TetherKitNext 拖到“应用程序”文件夹再运行。macOS 不允许从磁盘映像或临时位置注册后台组件。"
+        case .helperRegisterFailed: return "无法注册后台组件：%@"
+        case .authPromptCommandLineTool: return "TetherKitNext 需要管理员权限来在 /usr/local/bin 中安装或移除 tetherkitnext-cli 命令。"
+        case .helperApprovalTitle: return "在系统设置中允许 TetherKitNext"
+        case .helperApprovalBody: return "后台组件已注册，但 macOS 需要你确认。请在“系统设置 › 通用 › 登录项与扩展”中打开 TetherKitNext 的开关，本页会自动继续。"
+        case .openLoginItemsSettings: return "打开登录项设置"
+        case .commandLineToolTitle: return "命令行工具"
+        case .commandLineToolInstalled: return "已安装：在终端中运行 tetherkitnext-cli"
+        case .commandLineToolNotInstalled: return "未安装。安装后可在任何终端中使用 tetherkitnext-cli。"
+        case .commandLineToolOccupied: return "%@ 已被其他程序占用"
+        case .installCommandLineTool: return "安装命令"
+        case .removeCommandLineTool: return "移除命令"
+        case .needInstallBody: return "创建虚拟网卡和打开数据链路需要管理员权限。TetherKitNext 把这部分放在一个独立的后台组件里，App 本身以普通用户身份运行。"
+        case .installHelperDetail: return "组件随 App 一起签名，直接从 App 内运行，不会复制到系统目录。macOS 会请你在“登录项”中允许它一次。"
+        case .installHelperButton: return "启用后台组件"
+        case .installingProgress: return "正在启用……"
+        case .updateHelperDetail: return "将从当前 App 重新启动后台组件，完成后本页自动恢复。"
+        case .helperVersionMismatchTooltip: return "正在运行的后台组件仍是 %1$@，而 App 已经是 %2$@。点一下即可从当前 App 重新启动它。"
+        case .helperUpdateWhileRunningWarning: return "重启后台组件会断开当前连接并销毁虚拟网卡，完成后重新连接即可。"
+        case .uninstallExplanation: return "将停用后台组件并移除 tetherkitnext-cli 命令。之后随时可以重新启用；把 App 移到废纸篓也会一并移除它。"
+        case .updateAvailable: return "发现新版本 v%@。请从发布页下载新的 DMG，并用它替换“应用程序”中的 TetherKitNext。"
+        case .uninstallHelperMenuItem: return "停用后台组件…"
+        case .confirmUninstallTitle: return "停用后台组件？"
+        case .needInstallTitle: return "启用 TetherKitNext 后台组件"
+        case .updateHelperButton: return "重启后台组件"
+        case .confirmHelperUpdateTitle: return "重启后台组件？"
+        case .paneOverview: return "概览"
+        case .paneDevice: return "设备"
+        case .paneNetwork: return "网络"
+        case .paneActivity: return "日志"
+        case .paneSettings: return "设置"
+        case .configureNetwork: return "配置…"
+        case .setupTitle: return "欢迎使用 TetherKitNext"
+        case .setupSubtitle: return "只需几步，就能把 Android 手机的 USB 网络共享变成 Mac 上的一张网卡。"
+        case .setupStepMoveTitle: return "放入“应用程序”文件夹"
+        case .showInFinder: return "在访达中显示"
+        case .waitingForApproval: return "正在等待批准……"
+        case .settingsBackgroundSection: return "后台组件"
+        case .settingsBackgroundStatus: return "状态"
+        case .backgroundRunning: return "运行中 · %@"
+        case .settingsGeneralSection: return "通用"
+        case .menuBarShowSpeed: return "在菜单栏显示实时速率"
+        case .launchAtLogin: return "登录时打开 TetherKitNext"
+        case .launchAtLoginFailed: return "无法更改登录项：%@"
+        case .settingsUpdatesSection: return "更新"
+        case .autoCheckUpdates: return "每天自动检查更新"
+        case .checkNow: return "立即检查"
+        case .currentVersion: return "当前版本 %@"
+        case .settingsAboutSection: return "关于"
+        case .aboutCredits: return "由 Issen Software Group 开发，基于 XiaoMiku01 的 TetherKit（MIT 许可证）。"
+        case .projectWebsite: return "项目主页"
+        case .vendorWebsite: return "Issen Software Group 官网"
+        case .madeByVendor: return "由 Issen Software Group 开发"
+        case .aboutApp: return "关于 TetherKitNext"
+        case .showLicenses: return "查看许可证"
+        case .autoConfigureNetwork: return "连接后自动配置网络"
+        case .autoConfigureNetworkHelp: return "连接成功后立即应用“网络”页选择的方式（默认自动 DHCP），无需再点“应用”。"
+        case .statusDisconnected: return "未连接"
+        case .statusConnecting: return "正在连接"
+        case .statusConnected: return "已连接"
+        case .statusReadyLinkDown: return "已就绪（链路未连通）"
+        case .statusDisconnecting: return "正在断开"
+        case .statusStopped: return "已断开"
+        case .statusFailed: return "连接失败"
+        case .presenceReasonSession: return "连接手机并配置网络"
+        case .presenceReasonCommandLineTool: return "安装或移除 tetherkitnext-cli 命令"
+        case .helperPresenceNotAccepted: return "此操作需要管理员授权。"
+        case .authPromptSession: return "TetherKitNext 需要管理员权限来创建虚拟网卡、打开数据链路并配置 IP 地址。"
+        case .interfaceNotReadyYet: return "虚拟网卡还没创建，请先连接设备"
+        case .menuCheckForUpdates: return "检查更新…"
+        case .alertOperationFailed: return "操作失败"
+        case .updateCheckTitle: return "检查更新"
+        case .openReleasePage: return "前往发布页"
+        case .updateUpToDate: return "当前已是最新版本（v%@）。"
+        case .updateCheckFailed: return "无法完成检查：%@"
+        case .updateDevBuild: return "这是开发构建（没有版本号），无从比较。"
+        case .uninstallWhileRunningWarning: return "当前连接会被断开、虚拟网卡销毁。"
+        case .helperComponentVersion: return "特权组件 · %@"
+        case .helperVersionMismatch: return "特权组件 %1$@ · App %2$@"
+        case .helperUpdateBadge: return "有新版 %@"
+        case .checkingHelper: return "正在检查特权组件……"
+        case .showConnectFailureDetail: return "查看连接失败的详细原因"
+        case .helperNeedsUpdateTitle: return "重启后台组件以完成更新"
+        case .helperNeedsUpdateBody: return "TetherKitNext 已更新，但后台组件仍在运行旧版本。重启一次即可，不需要重新安装。"
+        case .copiedToClipboard: return "已复制到剪贴板"
+        case .copyCommand: return "复制命令"
+        case .sysctlNeedsFixTitle: return "系统参数需要调整"
+        case .sysctlNeedsFixBody: return "下面这些开关会在虚拟网卡**创建时**被快照进去，创建后再改无效，\n因此必须先修正再连接："
+        case .usbDeviceSectionTitle: return "USB 设备"
+        case .cannotRescanWhileRunning: return "运行中无法刷新设备列表"
+        case .rescanUSBDevices: return "重新扫描 USB 设备"
+        case .noDeviceDetected: return "没有检测到设备"
+        case .deviceChecklistCable: return "① 用的是数据线，而不是只能供电的充电线"
+        case .deviceChecklistTethering: return "② 手机上已打开「USB 网络共享 / USB tethering」"
+        case .deviceChecklistUnlocked: return "③ 手机已解锁并信任本机"
+        case .mtuBytes: return "%@ 字节"
+        case .mtuHelp: return "超出设备能力时会在协商阶段自动下调。"
+        case .mtuHelpWithLimit: return "超出设备能力时会在协商阶段自动下调（本机上限 %ld）。"
+        case .mtuTooltip: return "协商阶段以设备汇报的能力为准，填大了会自动下调。上限受系统的 net.link.fake.max_mtu 约束。"
+        case .adoptDeviceMAC: return "采用设备汇报的 MAC 地址"
+        case .adoptDeviceMACHelp: return "只有排查 MAC 冲突时才需要关掉。"
+        case .adoptDeviceMACTooltip: return "RNDIS 语义下设备就是这块网卡，对端的 ARP 表与 DHCP 租约都按设备的 MAC 建立。"
+        case .compatibilityMode: return "兼容模式"
+        case .compatibilityModeTooltip: return "该设备的 CDC 描述符不规范，已按 Android 的惯例推断接口编号"
+        case .logSectionTitle: return "运行日志"
+        case .logDroppedNotice: return "有 %ld 条日志因缓冲写满被丢弃"
+        case .logLevelLabel: return "级别"
+        case .logLevelAll: return "全部"
+        case .logLevelDebug: return "调试"
+        case .logLevelInfo: return "信息"
+        case .logLevelWarning: return "警告"
+        case .logLevelError: return "错误"
+        case .logAutoScroll: return "自动滚动"
+        case .logCopyAll: return "复制全部日志"
+        case .logClear: return "清空日志"
+        case .logRepeatSuffix: return "（×%1$ld，自 %2$@ 起）"
+        case .logRepeatTooltip: return "这句话连续出现了 %1$ld 次，首次在 %2$@"
+        case .downstreamShort: return "下行"
+        case .upstreamShort: return "上行"
+        case .noIPConfigured: return "未配置 IP"
+        case .menuBarNoDevice: return "未检测到设备。用数据线连接手机并开启 USB 网络共享。"
+        case .menuBarReady: return "已就绪：%@。打开主窗口即可连接。"
+        case .openMainWindow: return "打开主窗口"
+        case .quit: return "退出"
+        case .quitTooltip: return "退出只是关闭界面，已建立的连接会继续运行。"
+        case .dnsEffectivenessTooltip: return "静态模式下 DNS 是否生效取决于系统的解析器管理，请以「当前生效」里的回读结果为准。"
+        case .ipModeLabel: return "上网方式"
+        case .connectBeforeConfiguring: return "连接设备后才能配置网络"
+        case .dhcpHelp: return "由系统向设备申请地址，DNS 与路由都自动配好"
+        case .dhcpTooltip: return "绝大多数手机的 USB 网络共享都自带 DHCP 服务器，这是推荐选项。应用后最多等待 10 秒；超时通常意味着设备侧没有开启网络共享。"
+        case .routerOptional: return "可留空"
+        case .deleteThisEntry: return "删除这一条"
+        case .addDNSServer: return "添加 DNS 服务器（最多 4 条）"
+        case .setDefaultRoute: return "让所有流量默认走这张网卡"
+        case .setDefaultRouteHelp: return "开启后手机成为主网络：上网与 DNS 都走它，优先于以太网或 Wi-Fi（本地局域网仍可访问）。"
+        case .setDefaultRouteTooltip: return "适合同时连着一个不能上网的局域网的情况。开启后 TetherKitNext 会把自己的网络服务排到服务顺序的第一位（等同于“系统设置 › 网络 › 设定服务顺序”）。只连着手机时不需要开。"
+        case .clearConfiguration: return "撤销配置"
+        case .clearConfigurationTooltip: return "等同于 ipconfig set <网卡> NONE，会移除地址与相关路由"
+        case .currentlyEffective: return "当前生效"
+        case .primaryDefaultRoute: return "主默认路由"
+        case .notEffective: return "未生效"
+        case .noAddressYet: return "%@ 目前没有 IP 地址。选择上网方式后点「应用」。"
+        case .linkUp: return "链路已连通"
+        case .linkDown: return "链路未连通"
+        case .transferPaused: return "已暂停搬运"
+        case .pendingDevice: return "待连接：%@"
+        case .noRNDISDeviceDetected: return "没有检测到 RNDIS 设备。请用数据线连接手机，并在手机上打开「USB 网络共享」。"
+        case .interfaceLabel: return "网卡"
+        case .interfaceCreating: return "创建中…"
+        case .connectDisabledHint: return "先连接一台开启了 USB 网络共享的设备"
+        case .throughputSectionTitle: return "吞吐"
+        case .throughputLive: return "实时"
+        case .throughputDownstream: return "下行（设备 → 本机）"
+        case .throughputUpstream: return "上行（本机 → 设备）"
+        case .throughputDownstreamFPS: return "下行帧率"
+        case .throughputUpstreamFPS: return "上行帧率"
+        case .chartTime: return "时间"
+        case .chartRate: return "速率"
+        case .chartDirection: return "方向"
+        case .throughputCollecting: return "正在采集…"
+        case .throughputPlaceholder: return "连接后显示实时吞吐"
+        case .totalDownstream: return "累计下行"
+        case .totalUpstream: return "累计上行"
+        case .downstreamFrames: return "下行帧数"
+        case .upstreamFrames: return "上行帧数"
+        case .downstreamDropped: return "下行丢弃"
+        case .upstreamDropped: return "上行丢弃"
+        case .kernelDrops: return "内核丢包"
+        case .transmitBackpressure: return "发送背压"
+        }
+    }
+
+    public var japanese: String {
+        switch self {
+        case .ok: return "OK"
+        case .cancel: return "キャンセル"
+        case .copy: return "コピー"
+        case .copied: return "コピー完了"
+        case .add: return "追加"
+        case .apply: return "適用"
+        case .connect: return "接続"
+        case .disconnect: return "切断"
+        case .uninstall: return "アンインストール"
+        case .ipAddress: return "IP アドレス"
+        case .netmask: return "サブネットマスク"
+        case .router: return "ルーター"
+        case .notConfigured: return "未設定"
+        case .listSeparator: return "、"
+        case .languageLabel: return "表示言語"
+        case .languageSystem: return "システムに従う"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "言語"
+        case .settingsDonationSection: return "サポートと寄付"
+        case .donationTitle: return "TetherKitNext の開発を支援"
+        case .donationExplanation: return "Issen Software Group は私一人で運営されており、現時点では開発を継続するために寄付に依存しています。Issen Software Group が一定の目標と収入を達成した後は、無料アプリでの寄付のお願いを終了します。"
+        case .donateViaPayPal: return "PayPal で寄付"
+        case .copyPayPalEmail: return "PayPal メールをコピー (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "オープンソースライセンス"
+        case .licensesDone: return "完了"
+        case .licensesTabNotices: return "通知"
+        case .usbDeviceFallbackName: return "USB デバイス %04lx:%04lx"
+        case .ipModeDhcp: return "自動 (DHCP)"
+        case .ipModeManual: return "静的 IP"
+        case .ipModeNone: return "設定なし"
+        case .authorizationCancelled: return "承認がキャンセルされました"
+        case .authorizationDenied: return "承認が拒否されました (%ld)"
+        case .authorizationSessionFailed: return "承認セッションを作成できません (%ld)"
+        case .authorizationBlobMalformed: return "承認資格情報の形式が正しくありません"
+        case .authorizationRestoreFailed: return "承認資格情報を復元できません (%ld)"
+        case .authorizationRightMissing: return "この操作に必要な承認権限がありません (%ld)"
+        case .libraryGenericFailure: return "操作に失敗しました (エラーコード %ld)"
+        case .eventLinkUp: return "リンクが確立しました"
+        case .eventLinkDown: return "リンクが切断されました"
+        case .eventDeviceResetReplayed: return "デバイスがソフトリセットされました。アドレス設定を再適用しました"
+        case .eventDeviceReset: return "デバイスがソフトリセットされました"
+        case .eventNegotiated: return "RNDIS 交渉完了: MTU %1$ld、リンク %2$ld Mbps"
+        case .invalidIPAddress: return "IP アドレスの形式が正しくありません"
+        case .invalidNetmask: return "サブネットマスクが正しくありません (連続したマスクである必要があります。例: 255.255.255.0)"
+        case .invalidRouter: return "ルーターアドレスの形式が正しくありません"
+        case .routerRequiredForDefaultRoute: return "このインターフェースをデフォルトルートにするにはルーターアドレスが必要です"
+        case .invalidDNSServer: return "DNS サーバー %@ のアドレス形式が正しくありません"
+        case .helperSessionAlreadyRunning: return "セッションは既に実行中です"
+        case .helperSessionStopped: return "セッションが停止しました"
+        case .helperNetworkApplied: return "ネットワーク設定を適用しました: %@"
+        case .helperRequestDecodeFailed: return "リクエスト引数をデコードできません: %@"
+        case .helperReplyEncodeFailed: return "応答をエンコードできません: %@"
+        case .helperOrphansCleaned: return "前回の実行から残っていた仮想インターフェースを %ld 個クリーンアップしました"
+        case .helperOrphanCleanupFailed: return "残存仮想インターフェースのクリーンアップに失敗しました: %@"
+        case .helperSigtermReceived: return "SIGTERM を受信しました。シャットダウンしています"
+        case .helperReady: return "tetherkitnext-helper 準備完了: %@"
+        case .helperConnectFailed: return "特権ヘルパーに接続できません: %@"
+        case .helperReplyUnparsable: return "ヘルパーの応答を解析できませんでした。バージョンが一致しない可能性があります"
+        case .updateNoReleases: return "リポジトリにはまだリリースがありません"
+        case .updateHTTPStatus: return "GitHub がステータス %ld を返しました"
+        case .updateBadResponse: return "応答の形式が予期されたものではありませんでした"
+        case .cliLinkNotInBundle: return "コマンドラインツールは TetherKitNext.app から登録されたバックグラウンドコンポーネントからのみインストールできます。"
+        case .cliLinkToolMissing: return "アプリバンドル内にコマンドラインツールが見つかりません: %@"
+        case .cliLinkDirectoryUnsafe: return "%@ は通常のディレクトリではないため、安全のためリンクを作成しません。"
+        case .cliLinkOccupied: return "%@ は他のプログラムによって既に使用されています。先に取り除いてください。"
+        case .cliLinkSystemError: return "%1$@ が失敗しました: %2$@"
+        case .moveToApplicationsRequired: return "TetherKitNext を「アプリケーション」フォルダに移動してから起動してください。macOS ではディスクイメージや一時的な場所からバックグラウンドコンポーネントを登録できません。"
+        case .helperRegisterFailed: return "バックグラウンドコンポーネントを登録できませんでした: %@"
+        case .authPromptCommandLineTool: return "TetherKitNext は /usr/local/bin に tetherkitnext-cli コマンドを追加または削除するために管理者権限を必要とします。"
+        case .helperApprovalTitle: return "システム設定で TetherKitNext を許可"
+        case .helperApprovalBody: return "バックグラウンドコンポーネントは登録されましたが、macOS の承認が必要です。「システム設定 › 一般 › ログイン項目と拡張機能」で TetherKitNext をオンにしてください。完了するとこの画面は自動的に進みます。"
+        case .openLoginItemsSettings: return "ログイン項目の設定を開く"
+        case .commandLineToolTitle: return "コマンドラインツール"
+        case .commandLineToolInstalled: return "インストール済み: ターミナルで tetherkitnext-cli を実行できます"
+        case .commandLineToolNotInstalled: return "未インストール。インストールすると任意のターミナルから tetherkitnext-cli を使用できます。"
+        case .commandLineToolOccupied: return "%@ は他のプログラムによって使用されています"
+        case .installCommandLineTool: return "コマンドをインストール"
+        case .removeCommandLineTool: return "コマンドを削除"
+        case .needInstallBody: return "仮想インターフェースの作成とデータリンクの確立には管理者権限が必要です。TetherKitNext はその処理を独立したバックグラウンドコンポーネントに分離しているため、アプリ本体は通常のユーザー権限で動作します。"
+        case .installHelperDetail: return "コンポーネントはアプリとともに署名され、アプリ内から直接実行されます。システムフォルダへのコピーは一切行われません。macOS は「ログイン項目」で一度だけ許可を求めます。"
+        case .installHelperButton: return "バックグラウンドコンポーネントを有効化"
+        case .installingProgress: return "有効化中…"
+        case .updateHelperDetail: return "現在のアプリからバックグラウンドコンポーネントを再起動します。完了後、この画面は自動的に復帰します。"
+        case .helperVersionMismatchTooltip: return "実行中のバックグラウンドコンポーネントは %1$@ ですが、アプリは %2$@ です。クリックするとこのアプリから再起動できます。"
+        case .helperUpdateWhileRunningWarning: return "バックグラウンドコンポーネントを再起動すると現在の接続が切断され、仮想インターフェースが破棄されます。完了後に再接続してください。"
+        case .uninstallExplanation: return "これによりバックグラウンドコンポーネントが無効化され、tetherkitnext-cli コマンドが削除されます。いつでも再有効化できます。アプリをゴミ箱に移動しても同様に削除されます。"
+        case .updateAvailable: return "バージョン v%@ が利用可能です。リリースページから新しい DMG をダウンロードし、「アプリケーション」内の TetherKitNext を置き換えてください。"
+        case .uninstallHelperMenuItem: return "バックグラウンドコンポーネントを無効化…"
+        case .confirmUninstallTitle: return "バックグラウンドコンポーネントを無効化しますか？"
+        case .needInstallTitle: return "TetherKitNext バックグラウンドコンポーネントを有効化"
+        case .updateHelperButton: return "バックグラウンドコンポーネントを再起動"
+        case .confirmHelperUpdateTitle: return "バックグラウンドコンポーネントを再起動しますか？"
+        case .paneOverview: return "概要"
+        case .paneDevice: return "デバイス"
+        case .paneNetwork: return "ネットワーク"
+        case .paneActivity: return "アクティビティ"
+        case .paneSettings: return "設定"
+        case .configureNetwork: return "設定…"
+        case .setupTitle: return "TetherKitNext へようこそ"
+        case .setupSubtitle: return "いくつかのステップで、Android スマホの USB テザリングを Mac のネットワークインターフェースに変換できます。"
+        case .setupStepMoveTitle: return "TetherKitNext を「アプリケーション」に移動"
+        case .showInFinder: return "Finder で表示"
+        case .waitingForApproval: return "承認待ち…"
+        case .settingsBackgroundSection: return "バックグラウンドコンポーネント"
+        case .settingsBackgroundStatus: return "状態"
+        case .backgroundRunning: return "実行中 · %@"
+        case .settingsGeneralSection: return "一般"
+        case .menuBarShowSpeed: return "メニューバーにリアルタイム速度を表示"
+        case .launchAtLogin: return "ログイン時に TetherKitNext を起動"
+        case .launchAtLoginFailed: return "ログイン項目を変更できませんでした: %@"
+        case .settingsUpdatesSection: return "アップデート"
+        case .autoCheckUpdates: return "毎日アップデートを確認"
+        case .checkNow: return "今すぐ確認"
+        case .currentVersion: return "現在のバージョン %@"
+        case .settingsAboutSection: return "情報"
+        case .aboutCredits: return "Issen Software Group 開発。XiaoMiku01 の TetherKit (MIT ライセンス) をベースにしています。"
+        case .projectWebsite: return "プロジェクトのウェブサイト"
+        case .vendorWebsite: return "Issen Software Group ウェブサイト"
+        case .madeByVendor: return "Issen Software Group 製"
+        case .aboutApp: return "TetherKitNext について"
+        case .showLicenses: return "ライセンスを表示"
+        case .autoConfigureNetwork: return "接続時にネットワークを自動設定"
+        case .autoConfigureNetworkHelp: return "接続後、「ネットワーク」タブで選択した方式 (デフォルトは自動 DHCP) を直ちに適用し、追加の操作なしですぐに通信できるようにします。"
+        case .statusDisconnected: return "未接続"
+        case .statusConnecting: return "接続中"
+        case .statusConnected: return "接続済み"
+        case .statusReadyLinkDown: return "準備完了 (リンクダウン)"
+        case .statusDisconnecting: return "切断中"
+        case .statusStopped: return "切断済み"
+        case .statusFailed: return "接続失敗"
+        case .presenceReasonSession: return "スマートフォンを接続してネットワークを設定する"
+        case .presenceReasonCommandLineTool: return "tetherkitnext-cli コマンドを追加または削除する"
+        case .helperPresenceNotAccepted: return "この操作には管理者承認が必要です。"
+        case .authPromptSession: return "TetherKitNext は仮想インターフェースの作成、データリンクの確立、および IP アドレスの設定に管理者権限を必要とします。"
+        case .interfaceNotReadyYet: return "仮想インターフェースがまだ作成されていません。先にデバイスを接続してください"
+        case .menuCheckForUpdates: return "アップデートを確認…"
+        case .alertOperationFailed: return "操作に失敗しました"
+        case .updateCheckTitle: return "アップデートの確認"
+        case .openReleasePage: return "リリースページを開く"
+        case .updateUpToDate: return "最新バージョン (v%@) を使用しています。"
+        case .updateCheckFailed: return "確認を完了できませんでした: %@"
+        case .updateDevBuild: return "これはバージョン番号のない開発用ビルドのため、比較対象がありません。"
+        case .uninstallWhileRunningWarning: return "現在の接続は切断され、仮想インターフェースは破棄されます。"
+        case .helperComponentVersion: return "ヘルパー · %@"
+        case .helperVersionMismatch: return "ヘルパー %1$@ · アプリ %2$@"
+        case .helperUpdateBadge: return "%@ が利用可能"
+        case .checkingHelper: return "特権ヘルパーを確認中…"
+        case .showConnectFailureDetail: return "接続失敗の詳細を表示"
+        case .helperNeedsUpdateTitle: return "アップデートを完了するためにバックグラウンドコンポーネントを再起動してください"
+        case .helperNeedsUpdateBody: return "TetherKitNext は更新されましたが、バックグラウンドコンポーネントは古いバージョンを実行しています。一度再起動するだけで完了し、再インストールは不要です。"
+        case .copiedToClipboard: return "クリップボードにコピーしました"
+        case .copyCommand: return "コマンドをコピー"
+        case .sysctlNeedsFixTitle: return "システムパラメータの調整が必要です"
+        case .sysctlNeedsFixBody: return "これらのスイッチは仮想インターフェースの**作成時にスナップショット**されるため、\n作成後に変更しても反映されません。接続前に修正してください:"
+        case .usbDeviceSectionTitle: return "USB デバイス"
+        case .cannotRescanWhileRunning: return "動作中はデバイス一覧を更新できません"
+        case .rescanUSBDevices: return "USB デバイスを再スキャン"
+        case .noDeviceDetected: return "デバイスが検出されませんでした"
+        case .deviceChecklistCable: return "1. 充電専用ではなく、データ通信に対応したケーブルを使用していること"
+        case .deviceChecklistTethering: return "2. スマホで「USB テザリング」がオンになっていること"
+        case .deviceChecklistUnlocked: return "3. スマホがロック解除され、この Mac を信頼していること"
+        case .mtuBytes: return "%@ バイト"
+        case .mtuHelp: return "デバイスの能力を超える値はネゴシエーション時に自動で引き下げられます。"
+        case .mtuHelpWithLimit: return "デバイスの能力を超える値はネゴシエーション時に自動で引き下げられます (この Mac の上限: %ld)。"
+        case .mtuTooltip: return "ネゴシエーションではデバイスが報告した能力が尊重されるため、大きすぎる値は自動的に引き下げられます。上限はシステムの net.link.fake.max_mtu に準拠します。"
+        case .adoptDeviceMAC: return "デバイスが報告した MAC アドレスを採用"
+        case .adoptDeviceMACHelp: return "MAC アドレスの競合を調査する場合にのみオフにしてください。"
+        case .adoptDeviceMACTooltip: return "RNDIS の仕様上、デバイスそのものがネットワークインターフェースとなるため、対向の ARP テーブルや DHCP リースはデバイスの MAC に基づいて管理されます。"
+        case .compatibilityMode: return "互換モード"
+        case .compatibilityModeTooltip: return "このデバイスの CDC 記述子は非標準のため、Android の一般的な配置に従ってインターフェース番号を推定しました"
+        case .logSectionTitle: return "ログ"
+        case .logDroppedNotice: return "バッファがいっぱいになったため、%ld 行のログが破棄されました"
+        case .logLevelLabel: return "レベル"
+        case .logLevelAll: return "すべて"
+        case .logLevelDebug: return "デバッグ"
+        case .logLevelInfo: return "情報"
+        case .logLevelWarning: return "警告"
+        case .logLevelError: return "エラー"
+        case .logAutoScroll: return "自動スクロール"
+        case .logCopyAll: return "すべてのログ行をコピー"
+        case .logClear: return "ログを消去"
+        case .logRepeatSuffix: return " (x%1$ld、%2$@ から)"
+        case .logRepeatTooltip: return "この行は連続して %1$ld 回発生しました (最初: %2$@)"
+        case .downstreamShort: return "下り"
+        case .upstreamShort: return "上り"
+        case .noIPConfigured: return "IP 未設定"
+        case .menuBarNoDevice: return "デバイスが検出されませんでした。データ通信対応ケーブルでスマホを接続し、USB テザリングをオンにしてください。"
+        case .menuBarReady: return "準備完了: %@。メインウィンドウを開いて接続してください。"
+        case .openMainWindow: return "メインウィンドウを開く"
+        case .quit: return "終了"
+        case .quitTooltip: return "終了してもインターフェースが閉じるだけで、確立された接続は継続します。"
+        case .dnsEffectivenessTooltip: return "静的モードでは DNS が有効になるかどうかはシステムのリゾルバーに依存するため、「現在有効」に表示される値を参照してください。"
+        case .ipModeLabel: return "IPv4 の設定"
+        case .connectBeforeConfiguring: return "ネットワークを設定する前にデバイスを接続してください"
+        case .dhcpHelp: return "システムがデバイスにアドレスを要求し、DNS とルートが自動的に設定されます"
+        case .dhcpTooltip: return "ほぼすべてのスマホの USB テザリングは独自の DHCP サーバーを備えているため、これが推奨設定です。適用には最大 10 秒待機します。タイムアウトは通常、端末側でテザリングが無効であることを意味します。"
+        case .routerOptional: return "任意"
+        case .deleteThisEntry: return "この項目を削除"
+        case .addDNSServer: return "DNS サーバーを追加 (最大 4 つ)"
+        case .setDefaultRoute: return "すべての通信をこのインターフェース経由にする"
+        case .setDefaultRouteHelp: return "スマホをメインの接続にします。インターネット通信と DNS は Ethernet や Wi-Fi より優先されます (ローカルネットワークには引き続きアクセス可能です)。"
+        case .setDefaultRouteTooltip: return "Mac がインターネットに接続できないネットワークにも同時に繋がっている場合に役立ちます。TetherKitNext は自身のネットワークサービスを優先順位の先頭に移動します (「システム設定 › ネットワーク › サービスの順序を設定」と同等)。スマホのみ接続している場合は不要です。"
+        case .clearConfiguration: return "設定を消去"
+        case .clearConfigurationTooltip: return "ipconfig set <インターフェース> NONE と同等で、アドレスとルートを削除します"
+        case .currentlyEffective: return "現在有効"
+        case .primaryDefaultRoute: return "プライマリデフォルトルート"
+        case .notEffective: return "無効"
+        case .noAddressYet: return "%@ にはまだ IP アドレスがありません。設定を選択して「適用」をクリックしてください。"
+        case .linkUp: return "リンクアップ"
+        case .linkDown: return "リンクダウン"
+        case .transferPaused: return "転送一時停止中"
+        case .pendingDevice: return "接続待機中: %@"
+        case .noRNDISDeviceDetected: return "RNDIS デバイスが検出されませんでした。データ通信対応ケーブルでスマホを接続し、スマホで「USB テザリング」をオンにしてください。"
+        case .interfaceLabel: return "インターフェース"
+        case .interfaceCreating: return "作成中…"
+        case .connectDisabledHint: return "先に USB テザリングをオンにしたデバイスを接続してください"
+        case .throughputSectionTitle: return "スループット"
+        case .throughputLive: return "リアルタイム"
+        case .throughputDownstream: return "下り (デバイス -> Mac)"
+        case .throughputUpstream: return "上り (Mac -> デバイス)"
+        case .throughputDownstreamFPS: return "下りフレームレート"
+        case .throughputUpstreamFPS: return "上りフレームレート"
+        case .chartTime: return "時間"
+        case .chartRate: return "レート"
+        case .chartDirection: return "方向"
+        case .throughputCollecting: return "収集中…"
+        case .throughputPlaceholder: return "接続後にリアルタイムスループットが表示されます"
+        case .totalDownstream: return "合計下り"
+        case .totalUpstream: return "合計上り"
+        case .downstreamFrames: return "下りフレーム数"
+        case .upstreamFrames: return "上りフレーム数"
+        case .downstreamDropped: return "下りドロップ"
+        case .upstreamDropped: return "上りドロップ"
+        case .kernelDrops: return "カーネルドロップ"
+        case .transmitBackpressure: return "送信バックプレッシャー"
+        }
+    }
+
+    public var german: String {
+        switch self {
+        case .ok: return "OK"
+        case .cancel: return "Abbrechen"
+        case .copy: return "Kopieren"
+        case .copied: return "Kopiert"
+        case .add: return "Hinzufügen"
+        case .apply: return "Anwenden"
+        case .connect: return "Verbinden"
+        case .disconnect: return "Trennen"
+        case .uninstall: return "Deinstallieren"
+        case .ipAddress: return "IP-Adresse"
+        case .netmask: return "Subnetzmaske"
+        case .router: return "Router"
+        case .notConfigured: return "Nicht konfiguriert"
+        case .listSeparator: return ", "
+        case .languageLabel: return "Sprache"
+        case .languageSystem: return "Systemstandard"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "Sprache"
+        case .settingsDonationSection: return "Unterstützung & Spenden"
+        case .donationTitle: return "TetherKitNext-Entwicklung unterstützen"
+        case .donationExplanation: return "Issen Software Group wird allein von mir betrieben, und derzeit ist die Software auf Spenden angewiesen, um die Entwicklung am Leben zu erhalten. Sobald Issen Software Group bestimmte Ziele und Einnahmen erreicht hat, werden die kostenlosen Apps nicht mehr um Spenden bitten."
+        case .donateViaPayPal: return "Mit PayPal spenden"
+        case .copyPayPalEmail: return "PayPal-E-Mail kopieren (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "Open-Source-Lizenzen"
+        case .licensesDone: return "Fertig"
+        case .licensesTabNotices: return "Hinweise"
+        case .usbDeviceFallbackName: return "USB-Gerät %04lx:%04lx"
+        case .ipModeDhcp: return "Automatisch (DHCP)"
+        case .ipModeManual: return "Statische IP"
+        case .ipModeNone: return "Keine"
+        case .authorizationCancelled: return "Autorisierung abgebrochen"
+        case .authorizationDenied: return "Autorisierung verweigert (%ld)"
+        case .authorizationSessionFailed: return "Autorisierungssitzung konnte nicht erstellt werden (%ld)"
+        case .authorizationBlobMalformed: return "Die Autorisierungsdaten sind fehlerhaft formatiert"
+        case .authorizationRestoreFailed: return "Autorisierungsdaten konnten nicht wiederhergestellt werden (%ld)"
+        case .authorizationRightMissing: return "Dem Aufrufer fehlt die für diesen Vorgang erforderliche Autorisierung (%ld)"
+        case .libraryGenericFailure: return "Vorgang fehlgeschlagen (Fehlercode %ld)"
+        case .eventLinkUp: return "Verbindung hergestellt"
+        case .eventLinkDown: return "Verbindung unterbrochen"
+        case .eventDeviceResetReplayed: return "Soft-Reset des Geräts; Adressierungsinformationen wurden erneut angewendet"
+        case .eventDeviceReset: return "Soft-Reset des Geräts"
+        case .eventNegotiated: return "RNDIS-Aushandlung abgeschlossen: MTU %1$ld, Verbindung %2$ld Mbit/s"
+        case .invalidIPAddress: return "Ungültige IP-Adresse"
+        case .invalidNetmask: return "Ungültige Subnetzmaske (muss zusammenhängend sein, z. B. 255.255.255.0)"
+        case .invalidRouter: return "Ungültige Router-Adresse"
+        case .routerRequiredForDefaultRoute: return "Standard-Routing über diese Schnittstelle erfordert eine Router-Adresse"
+        case .invalidDNSServer: return "DNS-Server %@ ist keine gültige Adresse"
+        case .helperSessionAlreadyRunning: return "Eine Sitzung wird bereits ausgeführt"
+        case .helperSessionStopped: return "Sitzung gestoppt"
+        case .helperNetworkApplied: return "Netzwerkkonfiguration angewendet: %@"
+        case .helperRequestDecodeFailed: return "Anforderungsargumente konnten nicht dekodiert werden: %@"
+        case .helperReplyEncodeFailed: return "Antwort konnte nicht kodiert werden: %@"
+        case .helperOrphansCleaned: return "%ld verbliebene virtuelle Schnittstelle(n) bereinigt"
+        case .helperOrphanCleanupFailed: return "Fehler beim Bereinigen verbliebener virtueller Schnittstellen: %@"
+        case .helperSigtermReceived: return "SIGTERM empfangen; wird beendet"
+        case .helperReady: return "tetherkitnext-helper bereit: %@"
+        case .helperConnectFailed: return "Verbindung zum privilegierten Helfer nicht möglich: %@"
+        case .helperReplyUnparsable: return "Antwort des Helfers konnte nicht verarbeitet werden; Versionen stimmen möglicherweise nicht überein"
+        case .updateNoReleases: return "Das Repository enthält noch keine Veröffentlichungen"
+        case .updateHTTPStatus: return "GitHub antwortete mit %ld"
+        case .updateBadResponse: return "Die Antwort entsprach nicht dem erwarteten Format"
+        case .cliLinkNotInBundle: return "Das Befehlszeilenwerkzeug kann nur von der über TetherKitNext.app registrierten Hintergrundkomponente installiert werden."
+        case .cliLinkToolMissing: return "Befehlszeilenwerkzeug fehlt im App-Bundle: %@"
+        case .cliLinkDirectoryUnsafe: return "%@ ist kein reguläres Verzeichnis; aus Sicherheitsgründen wird dort keine Verknüpfung erstellt."
+        case .cliLinkOccupied: return "%@ wird bereits anderweitig verwendet. Bitte vorher entfernen."
+        case .cliLinkSystemError: return "%1$@ fehlgeschlagen: %2$@"
+        case .moveToApplicationsRequired: return "Verschieben Sie TetherKitNext zuerst in den Programme-Ordner und öffnen Sie es von dort. macOS erlaubt keine Registrierung von Hintergrundkomponenten aus einem Disk-Image oder einem temporären Pfad."
+        case .helperRegisterFailed: return "Hintergrundkomponente konnte nicht registriert werden: %@"
+        case .authPromptCommandLineTool: return "TetherKitNext benötigt Administratorrechte, um den Befehl tetherkitnext-cli in /usr/local/bin hinzuzufügen oder zu entfernen."
+        case .helperApprovalTitle: return "TetherKitNext in den Systemeinstellungen erlauben"
+        case .helperApprovalBody: return "Die Hintergrundkomponente ist registriert, benötigt jedoch Ihre Genehmigung. Aktivieren Sie TetherKitNext in Systemeinstellungen › Allgemein › Anmeldeobjekte & Erweiterungen; diese Seite wird danach automatisch fortgesetzt."
+        case .openLoginItemsSettings: return "Einstellungen für Anmeldeobjekte öffnen"
+        case .commandLineToolTitle: return "Befehlszeilenwerkzeug"
+        case .commandLineToolInstalled: return "Installiert: führen Sie tetherkitnext-cli im Terminal aus"
+        case .commandLineToolNotInstalled: return "Nicht installiert. Installieren, um tetherkitnext-cli in jedem Terminal zu nutzen."
+        case .commandLineToolOccupied: return "%@ wird von einem anderen Programm belegt"
+        case .installCommandLineTool: return "Befehl installieren"
+        case .removeCommandLineTool: return "Befehl entfernen"
+        case .needInstallBody: return "Das Erstellen der virtuellen Schnittstelle und das Öffnen der Datenverbindung erfordern Administratorrechte. TetherKitNext führt diese Aufgaben in einer separaten Hintergrundkomponente aus, sodass die App selbst als normaler Benutzer läuft."
+        case .installHelperDetail: return "Die Komponente ist mit der App signiert und wird direkt daraus ausgeführt; es wird nichts in Systemordner kopiert. macOS fordert Sie einmalig in den Anmeldeobjekten zur Freigabe auf."
+        case .installHelperButton: return "Hintergrundkomponente aktivieren"
+        case .installingProgress: return "Wird aktiviert…"
+        case .updateHelperDetail: return "Die Hintergrundkomponente wird aus dieser Kopie der App neu gestartet. Diese Seite aktualisiert sich danach automatisch."
+        case .helperVersionMismatchTooltip: return "Die aktive Hintergrundkomponente ist noch Version %1$@, während die App Version %2$@ ist. Ein Klick startet sie aus dieser App neu."
+        case .helperUpdateWhileRunningWarning: return "Der Neustart der Hintergrundkomponente trennt die aktuelle Verbindung und zerstört die virtuelle Schnittstelle. Verbinden Sie sich danach einfach erneut."
+        case .uninstallExplanation: return "Dies deaktiviert die Hintergrundkomponente und entfernt den Befehl tetherkitnext-cli. Sie können sie jederzeit wieder aktivieren; das Verschieben der App in den Papierkorb entfernt sie ebenfalls."
+        case .updateAvailable: return "Version v%@ ist verfügbar. Laden Sie das neue DMG von der Release-Seite herunter und ersetzen Sie TetherKitNext im Programme-Ordner."
+        case .uninstallHelperMenuItem: return "Hintergrundkomponente deaktivieren…"
+        case .confirmUninstallTitle: return "Hintergrundkomponente deaktivieren?"
+        case .needInstallTitle: return "TetherKitNext-Hintergrundkomponente aktivieren"
+        case .updateHelperButton: return "Hintergrundkomponente neu starten"
+        case .confirmHelperUpdateTitle: return "Hintergrundkomponente neu starten?"
+        case .paneOverview: return "Übersicht"
+        case .paneDevice: return "Gerät"
+        case .paneNetwork: return "Netzwerk"
+        case .paneActivity: return "Aktivität"
+        case .paneSettings: return "Einstellungen"
+        case .configureNetwork: return "Konfigurieren…"
+        case .setupTitle: return "Willkommen bei TetherKitNext"
+        case .setupSubtitle: return "Mit wenigen Schritten wird das USB-Tethering Ihres Android-Telefons zu einer Netzwerkschnittstelle auf Ihrem Mac."
+        case .setupStepMoveTitle: return "TetherKitNext in Programme ablegen"
+        case .showInFinder: return "Im Finder anzeigen"
+        case .waitingForApproval: return "Warten auf Genehmigung…"
+        case .settingsBackgroundSection: return "Hintergrundkomponente"
+        case .settingsBackgroundStatus: return "Status"
+        case .backgroundRunning: return "Aktiv · %@"
+        case .settingsGeneralSection: return "Allgemein"
+        case .menuBarShowSpeed: return "Echtzeit-Geschwindigkeit in der Menüleiste anzeigen"
+        case .launchAtLogin: return "TetherKitNext bei der Anmeldung öffnen"
+        case .launchAtLoginFailed: return "Anmeldeobjekt konnte nicht geändert werden: %@"
+        case .settingsUpdatesSection: return "Updates"
+        case .autoCheckUpdates: return "Täglich nach Updates suchen"
+        case .checkNow: return "Jetzt prüfen"
+        case .currentVersion: return "Aktuelle Version %@"
+        case .settingsAboutSection: return "Über"
+        case .aboutCredits: return "Entwickelt von Issen Software Group. Basiert auf TetherKit von XiaoMiku01 (MIT-Lizenz)."
+        case .projectWebsite: return "Projekt-Website"
+        case .vendorWebsite: return "Issen Software Group Website"
+        case .madeByVendor: return "Entwickelt von Issen Software Group"
+        case .aboutApp: return "Über TetherKitNext"
+        case .showLicenses: return "Lizenzen anzeigen"
+        case .autoConfigureNetwork: return "Netzwerk beim Verbinden automatisch konfigurieren"
+        case .autoConfigureNetworkHelp: return "Wendet den auf der Netzwerk-Seite gewählten Modus (standardmäßig DHCP) direkt nach dem Verbinden an, sodass das Internet ohne weiteren Klick funktioniert."
+        case .statusDisconnected: return "Nicht verbunden"
+        case .statusConnecting: return "Verbinden…"
+        case .statusConnected: return "Verbunden"
+        case .statusReadyLinkDown: return "Bereit (Verbindung inaktiv)"
+        case .statusDisconnecting: return "Trennen…"
+        case .statusStopped: return "Getrennt"
+        case .statusFailed: return "Verbindung fehlgeschlagen"
+        case .presenceReasonSession: return "Ihr Telefon verbinden und das Netzwerk einrichten"
+        case .presenceReasonCommandLineTool: return "den Befehl tetherkitnext-cli hinzufügen oder entfernen"
+        case .helperPresenceNotAccepted: return "Dieser Vorgang erfordert Administratorberechtigung."
+        case .authPromptSession: return "TetherKitNext benötigt Administratorrechte, um die virtuelle Schnittstelle zu erstellen, die Datenverbindung zu öffnen und IP-Adressen zu konfigurieren."
+        case .interfaceNotReadyYet: return "Die virtuelle Schnittstelle existiert noch nicht – bitte zuerst ein Gerät verbinden"
+        case .menuCheckForUpdates: return "Nach Updates suchen…"
+        case .alertOperationFailed: return "Vorgang fehlgeschlagen"
+        case .updateCheckTitle: return "Nach Updates suchen"
+        case .openReleasePage: return "Release-Seite öffnen"
+        case .updateUpToDate: return "Sie verwenden die neueste Version (v%@)."
+        case .updateCheckFailed: return "Prüfung konnte nicht abgeschlossen werden: %@"
+        case .updateDevBuild: return "Dies ist ein Entwicklungs-Build ohne Versionsnummer; es gibt nichts zum Vergleichen."
+        case .uninstallWhileRunningWarning: return "Die aktuelle Verbindung wird getrennt und die virtuelle Schnittstelle zerstört."
+        case .helperComponentVersion: return "Helfer · %@"
+        case .helperVersionMismatch: return "Helfer %1$@ · App %2$@"
+        case .helperUpdateBadge: return "%@ verfügbar"
+        case .checkingHelper: return "Privilegierter Helfer wird überprüft…"
+        case .showConnectFailureDetail: return "Details zum Verbindungsfehler anzeigen"
+        case .helperNeedsUpdateTitle: return "Starten Sie die Hintergrundkomponente neu, um die Aktualisierung abzuschließen"
+        case .helperNeedsUpdateBody: return "TetherKitNext wurde aktualisiert, aber die Hintergrundkomponente läuft noch in der vorherigen Version. Einmal neu starten; eine Neuinstallation ist nicht erforderlich."
+        case .copiedToClipboard: return "In die Zwischenablage kopiert"
+        case .copyCommand: return "Befehl kopieren"
+        case .sysctlNeedsFixTitle: return "Systemparameter müssen angepasst werden"
+        case .sysctlNeedsFixBody: return "Diese Schalter werden beim **Erstellen** in die virtuelle Schnittstelle\nübernommen; spätere Änderungen sind wirkungslos. Vor dem Verbinden\nkorrigieren:"
+        case .usbDeviceSectionTitle: return "USB-Gerät"
+        case .cannotRescanWhileRunning: return "Geräteliste kann während des Betriebs nicht aktualisiert werden"
+        case .rescanUSBDevices: return "USB-Geräte erneut scannen"
+        case .noDeviceDetected: return "Kein Gerät erkannt"
+        case .deviceChecklistCable: return "1. Das Kabel überträgt Daten und dient nicht nur zum Laden"
+        case .deviceChecklistTethering: return "2. „USB-Tethering“ auf dem Telefon aktiviert ist"
+        case .deviceChecklistUnlocked: return "3. Das Telefon entsperrt ist und diesem Mac vertraut"
+        case .mtuBytes: return "%@ Bytes"
+        case .mtuHelp: return "Werte über der Gerätekapazität werden bei der Aushandlung automatisch verringert."
+        case .mtuHelpWithLimit: return "Werte über der Gerätekapazität werden bei der Aushandlung automatisch verringert (dieser Mac erlaubt bis zu %ld)."
+        case .mtuTooltip: return "Die Aushandlung richtet sich nach den Angaben des Geräts; zu große Werte werden automatisch verringert. Die Obergrenze bestimmt net.link.fake.max_mtu des Systems."
+        case .adoptDeviceMAC: return "Vom Gerät gemeldete MAC-Adresse übernehmen"
+        case .adoptDeviceMACHelp: return "Nur deaktivieren, wenn ein MAC-Adressen-Konflikt untersucht wird."
+        case .adoptDeviceMACTooltip: return "Unter RNDIS ist das Gerät die Netzwerkschnittstelle; ARP-Tabelle und DHCP-Leases der Gegenseite basieren auf der Geräte-MAC."
+        case .compatibilityMode: return "Kompatibilitätsmodus"
+        case .compatibilityModeTooltip: return "Die CDC-Deskriptoren dieses Geräts sind nicht standardkonform; Schnittstellennummern wurden anhand des Android-Layouts ermittelt"
+        case .logSectionTitle: return "Protokoll"
+        case .logDroppedNotice: return "%ld Protokollzeilen verworfen, da der Puffer voll war"
+        case .logLevelLabel: return "Stufe"
+        case .logLevelAll: return "Alle"
+        case .logLevelDebug: return "Debug"
+        case .logLevelInfo: return "Info"
+        case .logLevelWarning: return "Warnung"
+        case .logLevelError: return "Fehler"
+        case .logAutoScroll: return "Automatisch scrollen"
+        case .logCopyAll: return "Alle Zeilen kopieren"
+        case .logClear: return "Protokoll löschen"
+        case .logRepeatSuffix: return " (x%1$ld, seit %2$@)"
+        case .logRepeatTooltip: return "Diese Zeile wiederholte sich %1$ld Mal in Folge, erstmals um %2$@"
+        case .downstreamShort: return "Down"
+        case .upstreamShort: return "Up"
+        case .noIPConfigured: return "Keine IP-Adresse"
+        case .menuBarNoDevice: return "Kein Gerät erkannt. Telefon mit Datenkabel verbinden und USB-Tethering aktivieren."
+        case .menuBarReady: return "Bereit: %@. Hauptfenster zum Verbinden öffnen."
+        case .openMainWindow: return "Hauptfenster öffnen"
+        case .quit: return "Beenden"
+        case .quitTooltip: return "Beenden schließt nur die Oberfläche; eine bestehende Verbindung bleibt aktiv."
+        case .dnsEffectivenessTooltip: return "Im manuellen Modus hängt die DNS-Wirksamkeit vom System-Resolver ab; maßgeblich ist die Rückmeldung unter „Zurzeit aktiv“."
+        case .ipModeLabel: return "IPv4 konfigurieren"
+        case .connectBeforeConfiguring: return "Vor der Netzwerkkonfiguration ein Gerät verbinden"
+        case .dhcpHelp: return "Das System fordert eine Adresse vom Gerät an; DNS und Routen werden automatisch eingerichtet"
+        case .dhcpTooltip: return "Nahezu jedes Telefon-USB-Tethering betreibt einen eigenen DHCP-Server; dies ist die empfohlene Wahl. Die Anwendung wartet bis zu 10 Sekunden; ein Timeout bedeutet meist, dass Tethering am Gerät nicht aktiv ist."
+        case .routerOptional: return "Optional"
+        case .deleteThisEntry: return "Eintrag entfernen"
+        case .addDNSServer: return "DNS-Server hinzufügen (max. 4)"
+        case .setDefaultRoute: return "Gesamten Datenverkehr über diese Schnittstelle leiten"
+        case .setDefaultRouteHelp: return "Macht das Telefon zur primären Verbindung: Internet und DNS nutzen es vor Ethernet oder WLAN (lokale Geräte bleiben erreichbar)."
+        case .setDefaultRouteTooltip: return "Nützlich, wenn der Mac gleichzeitig in einem Netzwerk ohne Internetzugang ist. TetherKitNext verschiebt seinen Dienst an die Spitze der Reihenfolge (wie in Systemeinstellungen › Netzwerk › Reihenfolge der Dienste festlegen). Nicht nötig, wenn das Telefon die einzige Verbindung ist."
+        case .clearConfiguration: return "Konfiguration löschen"
+        case .clearConfigurationTooltip: return "Entspricht ipconfig set <Schnittstelle> NONE; entfernt die Adresse und ihre Routen"
+        case .currentlyEffective: return "Zurzeit aktiv"
+        case .primaryDefaultRoute: return "Primäre Standardroute"
+        case .notEffective: return "Nicht aktiv"
+        case .noAddressYet: return "%@ hat noch keine IP-Adresse. Konfiguration wählen und auf Anwenden klicken."
+        case .linkUp: return "Verbindung aktiv"
+        case .linkDown: return "Verbindung getrennt"
+        case .transferPaused: return "Übertragung pausiert"
+        case .pendingDevice: return "Bereit zum Verbinden: %@"
+        case .noRNDISDeviceDetected: return "Kein RNDIS-Gerät erkannt. Telefon mit Datenkabel verbinden und „USB-Tethering“ am Telefon aktivieren."
+        case .interfaceLabel: return "Schnittstelle"
+        case .interfaceCreating: return "Wird erstellt…"
+        case .connectDisabledHint: return "Verbinden Sie zuerst ein Gerät mit aktivem USB-Tethering"
+        case .throughputSectionTitle: return "Durchsatz"
+        case .throughputLive: return "Echtzeit"
+        case .throughputDownstream: return "Down (Gerät -> Mac)"
+        case .throughputUpstream: return "Up (Mac -> Gerät)"
+        case .throughputDownstreamFPS: return "Down-Framerate"
+        case .throughputUpstreamFPS: return "Up-Framerate"
+        case .chartTime: return "Zeit"
+        case .chartRate: return "Rate"
+        case .chartDirection: return "Richtung"
+        case .throughputCollecting: return "Erfassung…"
+        case .throughputPlaceholder: return "Live-Durchsatz wird nach dem Verbinden angezeigt"
+        case .totalDownstream: return "Gesamt Down"
+        case .totalUpstream: return "Gesamt Up"
+        case .downstreamFrames: return "Down-Frames"
+        case .upstreamFrames: return "Up-Frames"
+        case .downstreamDropped: return "Down verworfen"
+        case .upstreamDropped: return "Up verworfen"
+        case .kernelDrops: return "Kernel-Verwürfe"
+        case .transmitBackpressure: return "TX-Gegendruck"
+        }
+    }
+
+    public var korean: String {
+        switch self {
+        case .ok: return "확인"
+        case .cancel: return "취소"
+        case .copy: return "복사"
+        case .copied: return "복사됨"
+        case .add: return "추가"
+        case .apply: return "적용"
+        case .connect: return "연결"
+        case .disconnect: return "연결 해제"
+        case .uninstall: return "제거"
+        case .ipAddress: return "IP 주소"
+        case .netmask: return "서브넷 마스크"
+        case .router: return "라우터"
+        case .notConfigured: return "구성되지 않음"
+        case .listSeparator: return ", "
+        case .languageLabel: return "언어"
+        case .languageSystem: return "시스템 설정 따름"
+        case .languageChinese: return "中文"
+        case .languageEnglish: return "English"
+        case .languageSpanish: return "Español"
+        case .languageJapanese: return "日本語"
+        case .languageGerman: return "Deutsch"
+        case .languageKorean: return "한국어"
+        case .languageMenuTitle: return "언어"
+        case .settingsDonationSection: return "지원 및 후원"
+        case .donationTitle: return "TetherKitNext 개발 지원"
+        case .donationExplanation: return "Issen Software Group은 저 혼자 운영하고 있으며, 현재는 개발을 지속하기 위해 후원에 의존하고 있습니다. Issen Software Group이 특정 목표와 수익을 달성한 후에는 무료 앱에서 더 이상 후원을 요청하지 않을 것입니다."
+        case .donateViaPayPal: return "PayPal로 후원하기"
+        case .copyPayPalEmail: return "PayPal 이메일 복사 (juanesgtgt2@gmail.com)"
+        case .licensesTitle: return "오픈 소스 라이선스"
+        case .licensesDone: return "완료"
+        case .licensesTabNotices: return "고지 사항"
+        case .usbDeviceFallbackName: return "USB 장치 %04lx:%04lx"
+        case .ipModeDhcp: return "자동 (DHCP)"
+        case .ipModeManual: return "수동 IP"
+        case .ipModeNone: return "구성 안 함"
+        case .authorizationCancelled: return "인증이 취소되었습니다"
+        case .authorizationDenied: return "인증이 거부되었습니다 (%ld)"
+        case .authorizationSessionFailed: return "인증 세션을 생성할 수 없습니다 (%ld)"
+        case .authorizationBlobMalformed: return "인증 자격 증명 형식이 잘못되었습니다"
+        case .authorizationRestoreFailed: return "인증 자격 증명을 복원할 수 없습니다 (%ld)"
+        case .authorizationRightMissing: return "호출자에게 이 작업을 수행하는 데 필요한 인증 권한이 없습니다 (%ld)"
+        case .libraryGenericFailure: return "작업에 실패했습니다 (오류 코드 %ld)"
+        case .eventLinkUp: return "링크가 연결되었습니다"
+        case .eventLinkDown: return "링크가 끊어졌습니다"
+        case .eventDeviceResetReplayed: return "장치가 소프트 리셋되었습니다. 주소 지정 정보가 재생되었습니다"
+        case .eventDeviceReset: return "장치가 소프트 리셋되었습니다"
+        case .eventNegotiated: return "RNDIS 협상 완료: MTU %1$ld, 링크 %2$ld Mbps"
+        case .invalidIPAddress: return "IP 주소 형식이 올바르지 않습니다"
+        case .invalidNetmask: return "서브넷 마스크가 올바르지 않습니다 (연속된 마스크여야 합니다. 예: 255.255.255.0)"
+        case .invalidRouter: return "라우터 주소 형식이 올바르지 않습니다"
+        case .routerRequiredForDefaultRoute: return "이 인터페이스를 기본 경로로 설정하려면 라우터 주소가 필요합니다"
+        case .invalidDNSServer: return "DNS 서버 %@ 주소 형식이 올바르지 않습니다"
+        case .helperSessionAlreadyRunning: return "세션이 이미 실행 중입니다"
+        case .helperSessionStopped: return "세션이 중지되었습니다"
+        case .helperNetworkApplied: return "네트워크 구성이 적용되었습니다: %@"
+        case .helperRequestDecodeFailed: return "요청 인수를 디코딩할 수 없습니다: %@"
+        case .helperReplyEncodeFailed: return "응답을 인코딩할 수 없습니다: %@"
+        case .helperOrphansCleaned: return "이전 실행에서 남겨진 가상 인터페이스 %ld개를 정리했습니다"
+        case .helperOrphanCleanupFailed: return "남겨진 가상 인터페이스를 정리하지 못했습니다: %@"
+        case .helperSigtermReceived: return "SIGTERM 수신됨, 종료 중"
+        case .helperReady: return "tetherkitnext-helper 준비됨: %@"
+        case .helperConnectFailed: return "권한 있는 헬퍼에 연결할 수 없습니다: %@"
+        case .helperReplyUnparsable: return "헬퍼의 응답을 구문 분석할 수 없습니다. 버전이 일치하지 않을 수 있습니다"
+        case .updateNoReleases: return "저장소에 아직 릴리스가 없습니다"
+        case .updateHTTPStatus: return "GitHub에서 %ld을(를) 반환했습니다"
+        case .updateBadResponse: return "응답이 예상된 형식이 아닙니다"
+        case .cliLinkNotInBundle: return "명령줄 도구는 TetherKitNext.app에서 등록된 백그라운드 구성 요소에서만 설치할 수 있습니다."
+        case .cliLinkToolMissing: return "앱 번들에서 명령줄 도구를 찾을 수 없습니다: %@"
+        case .cliLinkDirectoryUnsafe: return "%@은(는) 일반 디렉터리가 아니므로 안전을 위해 링크를 만들지 않습니다."
+        case .cliLinkOccupied: return "%@이(가) 이미 다른 프로그램에서 사용 중입니다. 먼저 제거하십시오."
+        case .cliLinkSystemError: return "%1$@ 실패: %2$@"
+        case .moveToApplicationsRequired: return "TetherKitNext를 먼저 응용 프로그램 폴더로 이동한 후 실행하십시오. macOS는 디스크 이미지나 임시 위치에서 백그라운드 구성 요소를 등록하는 것을 허용하지 않습니다."
+        case .helperRegisterFailed: return "백그라운드 구성 요소를 등록할 수 없습니다: %@"
+        case .authPromptCommandLineTool: return "TetherKitNext가 /usr/local/bin에 tetherkitnext-cli 명령을 추가하거나 제거하려면 관리자 권한이 필요합니다."
+        case .helperApprovalTitle: return "시스템 설정에서 TetherKitNext 허용"
+        case .helperApprovalBody: return "백그라운드 구성 요소가 등록되었지만 macOS의 승인이 필요합니다. 시스템 설정 › 일반 › 로그인 항목 및 확장 프로그램에서 TetherKitNext를 활성화하십시오. 이 페이지는 자동으로 계속됩니다."
+        case .openLoginItemsSettings: return "로그인 항목 설정 열기"
+        case .commandLineToolTitle: return "명령줄 도구"
+        case .commandLineToolInstalled: return "설치됨: 터미널에서 tetherkitnext-cli를 실행하십시오"
+        case .commandLineToolNotInstalled: return "설치되지 않음. 설치하면 모든 터미널에서 tetherkitnext-cli를 사용할 수 있습니다."
+        case .commandLineToolOccupied: return "%@이(가) 다른 프로그램에 의해 사용 중입니다"
+        case .installCommandLineTool: return "명령 설치"
+        case .removeCommandLineTool: return "명령 제거"
+        case .needInstallBody: return "가상 인터페이스를 생성하고 데이터 링크를 여는 작업에는 관리자 권한이 필요합니다. TetherKitNext는 이 작업을 별도의 백그라운드 구성 요소에 유지하므로 앱 자체는 일반 사용자 권한으로 실행됩니다."
+        case .installHelperDetail: return "구성 요소는 앱과 함께 서명되어 앱 내부에서 직접 실행되며 시스템 폴더에는 아무것도 복사되지 않습니다. macOS가 로그인 항목에서 한 번 승인을 요청합니다."
+        case .installHelperButton: return "백그라운드 구성 요소 활성화"
+        case .installingProgress: return "활성화 중…"
+        case .updateHelperDetail: return "현재 앱에서 백그라운드 구성 요소를 다시 시작합니다. 완료되면 이 페이지가 자동으로 복구됩니다."
+        case .helperVersionMismatchTooltip: return "실행 중인 백그라운드 구성 요소는 여전히 %1$@이지만 앱은 %2$@입니다. 클릭 한 번으로 이 앱에서 다시 시작할 수 있습니다."
+        case .helperUpdateWhileRunningWarning: return "백그라운드 구성 요소를 다시 시작하면 현재 연결이 끊어지고 가상 인터페이스가 파기됩니다. 완료 후 다시 연결하십시오."
+        case .uninstallExplanation: return "백그라운드 구성 요소가 비활성화되고 tetherkitnext-cli 명령이 제거됩니다. 언제든지 다시 활성화할 수 있으며 앱을 휴지통으로 이동해도 함께 제거됩니다."
+        case .updateAvailable: return "v%@ 버전을 사용할 수 있습니다. 릴리스 페이지에서 새 DMG를 다운로드하고 응용 프로그램 폴더의 TetherKitNext를 교체하십시오."
+        case .uninstallHelperMenuItem: return "백그라운드 구성 요소 비활성화…"
+        case .confirmUninstallTitle: return "백그라운드 구성 요소를 비활성화하시겠습니까?"
+        case .needInstallTitle: return "TetherKitNext 백그라운드 구성 요소 활성화"
+        case .updateHelperButton: return "백그라운드 구성 요소 다시 시작"
+        case .confirmHelperUpdateTitle: return "백그라운드 구성 요소를 다시 시작하시겠습니까?"
+        case .paneOverview: return "개요"
+        case .paneDevice: return "장치"
+        case .paneNetwork: return "네트워크"
+        case .paneActivity: return "활동"
+        case .paneSettings: return "설정"
+        case .configureNetwork: return "구성…"
+        case .setupTitle: return "TetherKitNext에 오신 것을 환영합니다"
+        case .setupSubtitle: return "몇 가지 단계만으로 Android 스마트폰의 USB 테더링을 Mac의 네트워크 인터페이스로 변환할 수 있습니다."
+        case .setupStepMoveTitle: return "TetherKitNext를 응용 프로그램 폴더로 이동"
+        case .showInFinder: return "Finder에서 보기"
+        case .waitingForApproval: return "승인 대기 중…"
+        case .settingsBackgroundSection: return "백그라운드 구성 요소"
+        case .settingsBackgroundStatus: return "상태"
+        case .backgroundRunning: return "실행 중 · %@"
+        case .settingsGeneralSection: return "일반"
+        case .menuBarShowSpeed: return "메뉴 막대에 실시간 속도 표시"
+        case .launchAtLogin: return "로그인 시 TetherKitNext 열기"
+        case .launchAtLoginFailed: return "로그인 항목을 변경할 수 없습니다: %@"
+        case .settingsUpdatesSection: return "업데이트"
+        case .autoCheckUpdates: return "매일 업데이트 확인"
+        case .checkNow: return "지금 확인"
+        case .currentVersion: return "현재 버전 %@"
+        case .settingsAboutSection: return "정보"
+        case .aboutCredits: return "Issen Software Group에서 제작. XiaoMiku01의 TetherKit 기반 (MIT 라이선스)."
+        case .projectWebsite: return "프로젝트 웹사이트"
+        case .vendorWebsite: return "Issen Software Group 웹사이트"
+        case .madeByVendor: return "Issen Software Group 제작"
+        case .aboutApp: return "TetherKitNext 정보"
+        case .showLicenses: return "라이선스 보기"
+        case .autoConfigureNetwork: return "연결 시 자동으로 네트워크 구성"
+        case .autoConfigureNetworkHelp: return "연결 직후 네트워크 페이지에서 선택한 모드(기본값: 자동 DHCP)를 즉시 적용하여 추가 클릭 없이 인터넷이 작동하도록 합니다."
+        case .statusDisconnected: return "연결되지 않음"
+        case .statusConnecting: return "연결 중"
+        case .statusConnected: return "연결됨"
+        case .statusReadyLinkDown: return "준비됨 (링크 끊김)"
+        case .statusDisconnecting: return "연결 해제 중"
+        case .statusStopped: return "연결 끊김"
+        case .statusFailed: return "연결 실패"
+        case .presenceReasonSession: return "휴대폰을 연결하고 네트워크 설정"
+        case .presenceReasonCommandLineTool: return "tetherkitnext-cli 명령 추가 또는 제거"
+        case .helperPresenceNotAccepted: return "이 작업에는 관리자 권한이 필요합니다."
+        case .authPromptSession: return "TetherKitNext가 가상 인터페이스를 생성하고 데이터 링크를 열고 IP 주소를 구성하려면 관리자 권한이 필요합니다."
+        case .interfaceNotReadyYet: return "가상 인터페이스가 아직 생성되지 않았습니다. 먼저 장치를 연결하십시오"
+        case .menuCheckForUpdates: return "업데이트 확인…"
+        case .alertOperationFailed: return "작업 실패"
+        case .updateCheckTitle: return "업데이트 확인"
+        case .openReleasePage: return "릴리스 페이지 열기"
+        case .updateUpToDate: return "최신 버전(v%@)을 사용 중입니다."
+        case .updateCheckFailed: return "확인을 완료할 수 없습니다: %@"
+        case .updateDevBuild: return "버전 번호가 없는 개발 빌드이므로 비교할 대상이 없습니다."
+        case .uninstallWhileRunningWarning: return "현재 연결이 끊어지고 가상 인터페이스가 파기됩니다."
+        case .helperComponentVersion: return "헬퍼 · %@"
+        case .helperVersionMismatch: return "헬퍼 %1$@ · 앱 %2$@"
+        case .helperUpdateBadge: return "%@ 사용 가능"
+        case .checkingHelper: return "권한 있는 헬퍼 확인 중…"
+        case .showConnectFailureDetail: return "연결 실패 상세 이유 표시"
+        case .helperNeedsUpdateTitle: return "업데이트를 완료하려면 백그라운드 구성 요소를 다시 시작하십시오"
+        case .helperNeedsUpdateBody: return "TetherKitNext가 업데이트되었지만 백그라운드 구성 요소는 여전히 이전 버전을 실행하고 있습니다. 한 번 다시 시작하면 되며 재설치할 필요는 없습니다."
+        case .copiedToClipboard: return "클립보드에 복사됨"
+        case .copyCommand: return "명령 복사"
+        case .sysctlNeedsFixTitle: return "시스템 매개변수 조정 필요"
+        case .sysctlNeedsFixBody: return "이 스위치들은 가상 인터페이스가 **생성될 때** 스냅샷되므로 생성 후 변경해도\n적용되지 않습니다. 연결하기 전에 먼저 수정하십시오:"
+        case .usbDeviceSectionTitle: return "USB 장치"
+        case .cannotRescanWhileRunning: return "실행 중에는 장치 목록을 새로 고칠 수 없습니다"
+        case .rescanUSBDevices: return "USB 장치 다시 검색"
+        case .noDeviceDetected: return "감지된 장치 없음"
+        case .deviceChecklistCable: return "1. 케이블이 충전 전용이 아닌 데이터 전송을 지원하는지 확인"
+        case .deviceChecklistTethering: return "2. 스마트폰에서 \"USB 테더링\"이 켜져 있는지 확인"
+        case .deviceChecklistUnlocked: return "3. 스마트폰의 잠금이 해제되어 있고 이 Mac을 신뢰하는지 확인"
+        case .mtuBytes: return "%@ 바이트"
+        case .mtuHelp: return "장치 용량을 초과하는 값은 협상 중에 자동으로 낮아집니다."
+        case .mtuHelpWithLimit: return "장치 용량을 초과하는 값은 협상 중에 자동으로 낮아집니다 (이 Mac 최대 허용치: %ld)."
+        case .mtuTooltip: return "협상에서는 장치가 보고하는 기능을 따르므로 너무 큰 값은 자동으로 낮아집니다. 상한선은 시스템의 net.link.fake.max_mtu에 의해 결정됩니다."
+        case .adoptDeviceMAC: return "장치가 보고한 MAC 주소 채택"
+        case .adoptDeviceMACHelp: return "MAC 주소 충돌을 조사할 때만 이 설정을 끄십시오."
+        case .adoptDeviceMACTooltip: return "RNDIS 환경에서는 장치 자체가 네트워크 인터페이스이므로 상대방의 ARP 테이블과 DHCP 임대는 모두 장치의 MAC을 기준으로 합니다."
+        case .compatibilityMode: return "호환 모드"
+        case .compatibilityModeTooltip: return "이 장치의 CDC 디스크립터가 비표준이므로 일반적인 Android 레이아웃을 사용하여 인터페이스 번호를 추론했습니다"
+        case .logSectionTitle: return "로그"
+        case .logDroppedNotice: return "버퍼가 가득 차서 로그 %ld줄이 삭제되었습니다"
+        case .logLevelLabel: return "레벨"
+        case .logLevelAll: return "전체"
+        case .logLevelDebug: return "디버그"
+        case .logLevelInfo: return "정보"
+        case .logLevelWarning: return "경고"
+        case .logLevelError: return "오류"
+        case .logAutoScroll: return "자동 스크롤"
+        case .logCopyAll: return "모든 로그 복사"
+        case .logClear: return "로그 지우기"
+        case .logRepeatSuffix: return " (x%1$ld, %2$@ 이후)"
+        case .logRepeatTooltip: return "이 줄은 연속으로 %1$ld회 반복되었습니다 (최초: %2$@)"
+        case .downstreamShort: return "다운로드"
+        case .upstreamShort: return "업로드"
+        case .noIPConfigured: return "IP 주소 없음"
+        case .menuBarNoDevice: return "장치가 감지되지 않았습니다. 데이터 케이블로 휴대폰을 연결하고 USB 테더링을 켜십시오."
+        case .menuBarReady: return "준비됨: %@. 연결하려면 메인 창을 여십시오."
+        case .openMainWindow: return "메인 창 열기"
+        case .quit: return "종료"
+        case .quitTooltip: return "종료해도 인터페이스만 닫히며 이미 설정된 연결은 계속 유지됩니다."
+        case .dnsEffectivenessTooltip: return "수동 모드에서 DNS 적용 여부는 시스템 확인자에 따라 결정되므로 \"현재 유효\"에 표시된 값을 신뢰하십시오."
+        case .ipModeLabel: return "IPv4 구성"
+        case .connectBeforeConfiguring: return "네트워크를 구성하기 전에 먼저 장치를 연결하십시오"
+        case .dhcpHelp: return "시스템이 장치에 주소를 요청하고 DNS와 경로가 자동으로 설정됩니다"
+        case .dhcpTooltip: return "거의 모든 휴대폰의 USB 테더링은 자체 DHCP 서버를 실행하므로 이 설정이 권장됩니다. 적용 시 최대 10초 동안 대기하며, 시간 초과는 대개 장치에서 테더링이 켜져 있지 않음을 의미합니다."
+        case .routerOptional: return "선택 사항"
+        case .deleteThisEntry: return "이 항목 삭제"
+        case .addDNSServer: return "DNS 서버 추가 (최대 4개)"
+        case .setDefaultRoute: return "모든 트래픽을 이 인터페이스로 라우팅"
+        case .setDefaultRouteHelp: return "휴대폰을 기본 연결로 설정합니다. 인터넷 트래픽과 DNS가 이더넷이나 Wi-Fi보다 우선하여 이를 사용합니다 (로컬 네트워크 장치에는 계속 연결 가능)."
+        case .setDefaultRouteTooltip: return "Mac이 인터넷에 연결되지 않은 네트워크에도 연결되어 있을 때 유용합니다. TetherKitNext는 네트워크 서비스를 서비스 순서의 맨 위로 이동합니다 (시스템 설정 › 네트워크 › 서비스 순서 설정과 동일). 휴대폰만 연결되어 있는 경우에는 필요하지 않습니다."
+        case .clearConfiguration: return "구성 지우기"
+        case .clearConfigurationTooltip: return "ipconfig set <인터페이스> NONE과 동일하며 주소 및 해당 경로를 제거합니다"
+        case .currentlyEffective: return "현재 유효"
+        case .primaryDefaultRoute: return "기본 기본 경로"
+        case .notEffective: return "적용되지 않음"
+        case .noAddressYet: return "%@에 아직 IP 주소가 없습니다. 구성을 선택하고 적용을 누르십시오."
+        case .linkUp: return "링크 연결됨"
+        case .linkDown: return "링크 끊김"
+        case .transferPaused: return "전송 일시 중지됨"
+        case .pendingDevice: return "연결 준비됨: %@"
+        case .noRNDISDeviceDetected: return "RNDIS 장치가 감지되지 않았습니다. 데이터 케이블로 휴대폰을 연결하고 휴대폰에서 \"USB 테더링\"을 켜십시오."
+        case .interfaceLabel: return "인터페이스"
+        case .interfaceCreating: return "생성 중…"
+        case .connectDisabledHint: return "먼저 USB 테더링이 켜진 장치를 연결하십시오"
+        case .throughputSectionTitle: return "처리량"
+        case .throughputLive: return "실시간"
+        case .throughputDownstream: return "다운로드 (장치 -> Mac)"
+        case .throughputUpstream: return "업로드 (Mac -> 장치)"
+        case .throughputDownstreamFPS: return "다운로드 프레임 레이트"
+        case .throughputUpstreamFPS: return "업로드 프레임 레이트"
+        case .chartTime: return "시간"
+        case .chartRate: return "속도"
+        case .chartDirection: return "방향"
+        case .throughputCollecting: return "수집 중…"
+        case .throughputPlaceholder: return "연결하면 실시간 처리량이 표시됩니다"
+        case .totalDownstream: return "총 다운로드"
+        case .totalUpstream: return "총 업로드"
+        case .downstreamFrames: return "다운로드 프레임"
+        case .upstreamFrames: return "업로드 프레임"
+        case .downstreamDropped: return "다운로드 드롭"
+        case .upstreamDropped: return "업로드 드롭"
+        case .kernelDrops: return "커널 드롭"
+        case .transmitBackpressure: return "TX 역압력"
+        }
+    }
+
 }

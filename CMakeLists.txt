@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
   TetherKitNext
-  VERSION 1.1.1
+  VERSION 1.2.0
   DESCRIPTION "macOS 用户态 RNDIS 驱动：libusb + feth + BPF"
   LANGUAGES CXX)
 

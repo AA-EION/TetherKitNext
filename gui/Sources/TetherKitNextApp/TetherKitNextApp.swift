@@ -145,8 +145,12 @@ struct LanguagePicker: View {
     var body: some View {
         Picker(L(.languageLabel), selection: Bindable(model).languagePreference) {
             Text(L(.languageSystem)).tag(LanguagePreference.system)
-            Text(verbatim: "中文").tag(LanguagePreference.chinese)
-            Text(verbatim: "English").tag(LanguagePreference.english)
+            Text(L(.languageEnglish)).tag(LanguagePreference.english)
+            Text(L(.languageSpanish)).tag(LanguagePreference.spanish)
+            Text(L(.languageChinese)).tag(LanguagePreference.chinese)
+            Text(L(.languageJapanese)).tag(LanguagePreference.japanese)
+            Text(L(.languageGerman)).tag(LanguagePreference.german)
+            Text(L(.languageKorean)).tag(LanguagePreference.korean)
         }
     }
 }

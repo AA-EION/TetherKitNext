@@ -356,6 +356,7 @@ final class AppModel {
             environment = try? await client.environment()
         }
 
+        let wasActive = (status.runState == .running || status.runState == .starting)
         if let fresh = try? await client.sessionStatus() {
             apply(status: fresh)
         }
@@ -369,7 +370,11 @@ final class AppModel {
         // libusb_open to really open the device once -- doing this at the 500 ms state-polling pace
         // amounts to opening and closing the user's device twice a second, both wasteful and possibly disruptive to it. A 2-second slower plug/unplug response
         // does not affect the perceived experience at all.
-        if status.runState != .running, shouldRefreshDevices() {
+        //
+        // The exception: when an active session just ended (e.g. device unplugged), refresh immediately so the list is not stale.
+        let sessionJustEnded = wasActive && (status.runState != .running && status.runState != .starting)
+
+        if status.runState != .running, (sessionJustEnded || shouldRefreshDevices()) {
             if let fresh = try? await client.listDevices() {
                 devices = fresh
                 // After the device the user selected is unplugged, the selection must be invalidated with it, otherwise "Start" would look for a device by a
