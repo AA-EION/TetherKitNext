@@ -56,7 +56,14 @@ Status Bridge::Start() {
   // Let the data channel start receiving first -- it pushes frames into rx_ring_.
   // Whether this comes **before** or after starting the injection thread does not matter for ordering (the queue is bounded, and drops
   // and counts when full), but opening receiving first lets the link start receiving as soon as it is ready, dropping a few fewer frames.
-  TETHERKITNEXT_RETURN_IF_ERROR(data_channel_->StartReceiving(*rx_ring_, counters_.rx));
+  if (auto started = data_channel_->StartReceiving(*rx_ring_, counters_.rx); !started) {
+    // Some bulk IN transfers may already be in flight (e.g. the device was unplugged halfway
+    // through submitting). running_ stays false, so Stop() would not shut the channel down,
+    // and their callbacks would later write into rx_ring_/counters_ after this bridge is
+    // destroyed. Reclaim them here, while both still exist.
+    data_channel_->Shutdown();
+    return started;
+  }
 
   running_.store(true, std::memory_order_release);
   receive_injector_ = std::thread([this] { RunReceiveInjector(); });
@@ -198,20 +205,20 @@ void Bridge::RunReceiveInjector() noexcept {
 
       const auto result = link_->WriteFrames(rx_batch_);
       if (!result) {
-        counters_.rx.AddIoError();
+        rx_inject_counters_.AddIoError();
         TETHERKITNEXT_WARN_TR(Msg::kCoreLinkWriteFailed, rx_batch_.size(),
                           result.error().ToString());
         // A write failure does not exit the thread -- it may just be that the interface is temporarily down. The batch session releases the slots as usual
         // (the frames can no longer be delivered, and keeping them would only clog the queue).
       } else {
         if (result->frames_skipped != 0) {
-          counters_.rx.AddDroppedOversize(result->frames_skipped);
+          rx_inject_counters_.AddDroppedOversize(result->frames_skipped);
         }
         const auto written = result->frames_written;
         if (written < rx_batch_.size()) {
           // The link did not take the whole batch (the kernel send queue is full). The remaining frames have already been taken out of the queue,
           // so they can only be dropped and counted -- this is real packet loss and must be made visible to operators.
-          counters_.rx.AddDroppedFull(rx_batch_.size() - written);
+          rx_inject_counters_.AddDroppedFull(rx_batch_.size() - written);
         }
         // Note: the kernel-side bs_drop is a statistic for the **read** direction, updated by the TX extractor thread
         // from the ReadFrames result, and is not touched here.
@@ -321,13 +328,20 @@ void Bridge::RunTransmitExtractor() noexcept {
 // =============================================================================
 
 BridgeStats Bridge::Snapshot() const {
+  // RX has two writers, each with its own counters (DirectionCounters allows one writer):
+  // the libusb event thread (counters_.rx) and the RX injection thread (rx_inject_counters_).
+  DirectionSnapshot rx = tetherkitnext::Snapshot(counters_.rx);
+  const DirectionSnapshot injected = tetherkitnext::Snapshot(rx_inject_counters_);
+  rx.dropped_full += injected.dropped_full;
+  rx.dropped_oversize += injected.dropped_oversize;
+  rx.io_errors += injected.io_errors;
   DirectionSnapshot tx = tetherkitnext::Snapshot(counters_.tx);
   // Merge the errors accumulated by the data channel in its asynchronous completion callbacks -- that part is incremented by the libusb event thread,
   // deliberately kept separate from the bridge layer's counters to maintain the invariant "each counter has only one writer".
   tx.io_errors += data_channel_->AsyncSendErrors();
 
   return BridgeStats{
-      .rx = tetherkitnext::Snapshot(counters_.rx),
+      .rx = rx,
       .tx = tx,
       .rx_queue_depth = rx_ring_->SizeSnapshot(),
       .link_kernel_drops = link_kernel_drops_.load(std::memory_order_relaxed),

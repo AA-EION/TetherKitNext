@@ -121,7 +121,7 @@ TEST_CASE("mixed frame sizes wrapping repeatedly never mix up data") {
 }
 
 TEST_CASE("every frame's data starts on a cache-line boundary") {
-  // Performance correctness assertion: frame data must land on cache line boundaries so that memcpy and write() take the optimal path.
+  // Performance invariant: frame data must land on cache line boundaries so that memcpy and write() take the optimal path.
   FrameRing ring(8, 1514);
   for (int i = 0; i < 8; ++i) {
     const std::span<std::byte> dst = ring.BeginWrite();

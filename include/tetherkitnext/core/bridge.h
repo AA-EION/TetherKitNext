@@ -141,9 +141,6 @@ class Bridge {
 
   [[nodiscard]] BridgeStats Snapshot() const;
 
-  /// Counters for the RX direction. The data channel's receive callback writes it directly.
-  [[nodiscard]] DirectionCounters& RxCounters() noexcept { return counters_.rx; }
-
   /// Pauses / resumes data movement.
   ///
   /// Used during an RNDIS soft reset: the device discards all outstanding packets, and continuing to send frames to it during that time
@@ -181,6 +178,10 @@ class Bridge {
   std::unique_ptr<FrameRing> rx_ring_;
 
   PathCounters counters_;
+  /// RX drops/errors seen by the RX injection thread (link writes). Kept apart from
+  /// counters_.rx, which the libusb event thread writes: DirectionCounters is
+  /// single-writer (relaxed load+store), so sharing it would lose increments.
+  DirectionCounters rx_inject_counters_;
   std::atomic<std::uint64_t> tx_backpressure_events_{0};
   std::atomic<std::uint64_t> link_kernel_drops_{0};
 

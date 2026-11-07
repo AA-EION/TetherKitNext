@@ -104,11 +104,6 @@ template <typename E>
   return static_cast<std::uint32_t>(value);
 }
 
-/// Whether it is a completion-type message.
-[[nodiscard]] constexpr bool IsCompletion(std::uint32_t message_type) noexcept {
-  return (message_type & kMessageCompletionFlag) != 0;
-}
-
 /// Whether it belongs to the CONDIS (connection-oriented) message family.
 [[nodiscard]] constexpr bool IsCondis(std::uint32_t message_type) noexcept {
   return (message_type & ~kMessageCompletionFlag) >= 0x0000'8000U &&
@@ -320,11 +315,6 @@ enum class StatusCode : std::uint32_t {
   kNoCable = 0xC001'001FU,
   kTokenRingOpenError = 0xC001'1000U,
 };
-
-/// Whether it is a failure status (0xC0000000 and above are errors by NDIS convention).
-[[nodiscard]] constexpr bool IsFailure(std::uint32_t status) noexcept {
-  return (status & 0xC000'0000U) == 0xC000'0000U;
-}
 
 /// Readable name of a status code; an unknown value returns empty.
 [[nodiscard]] std::string_view StatusName(std::uint32_t status) noexcept;

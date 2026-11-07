@@ -122,6 +122,18 @@ Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
 
   // ---- Is it the one we are waiting for? ----
   if (expected_reply.has_value() && header.message_type == ToRaw(*expected_reply)) {
+    // Same type is not enough: a QUERY that timed out may answer late, and two OIDs with
+    // 4-byte values (link speed, media state) would parse cleanly into the wrong field.
+    // Every completion except RESET_CMPLT echoes the RequestId at offset 8.
+    if (awaited_request_id_.has_value() && message.size() >= 12) {
+      const std::uint32_t reply_id = LoadLe32(message.data() + 8);
+      if (reply_id != *awaited_request_id_) {
+        TETHERKITNEXT_WARN_TR(Msg::kRndisDiscardStaleReply,
+                              name.empty() ? Text(Msg::kRndisUnknown) : name, reply_id,
+                              *awaited_request_id_);
+        return false;
+      }
+    }
     out_response = message;
     return true;
   }
@@ -135,6 +147,15 @@ Result<bool> StateMachine::PumpOnce(std::optional<MessageType> expected_reply,
 
 Result<StateMachine::Exchange> StateMachine::Transact(std::span<const std::byte> request,
                                                       MessageType expected_reply) {
+  // Remember which RequestId the reply must echo (see PumpOnce). RESET has none.
+  struct AwaitGuard {
+    std::optional<std::uint32_t>& slot;
+    ~AwaitGuard() { slot.reset(); }
+  } const await_guard{awaited_request_id_};
+  if (expected_reply != MessageType::kResetComplete && request.size() >= 12) {
+    awaited_request_id_ = LoadLe32(request.data() + 8);
+  }
+
   TETHERKITNEXT_RETURN_IF_ERROR(channel_->SendMessage(request));
 
   // Wait first for the RESPONSE_AVAILABLE notification on the interrupt endpoint, then fetch the response.

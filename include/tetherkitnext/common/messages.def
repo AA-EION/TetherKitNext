@@ -304,6 +304,8 @@ TETHERKITNEXT_MESSAGE(kRndisCondisMessageReceived,
                   "supports connectionless 802.3 devices")
 TETHERKITNEXT_MESSAGE(kRndisDiscardUnexpectedMessage, "丢弃一条非预期的控制消息 {}（{:#010x}）",
                   "discarding an unexpected control message {} ({:#010x})")
+TETHERKITNEXT_MESSAGE(kRndisDiscardStaleReply, "丢弃迟到的 {}（RequestId {}，正在等待 {}）",
+                  "discarding a late {} (RequestId {}, waiting for {})")
 TETHERKITNEXT_MESSAGE(kRndisNotificationReceived, "收到 RESPONSE_AVAILABLE 通知",
                   "received a RESPONSE_AVAILABLE notification")
 TETHERKITNEXT_MESSAGE(kRndisWaitReplyTimeout, "等待 {} 超时（轮询 {} 次 × {} ms）",
@@ -679,8 +681,6 @@ TETHERKITNEXT_MESSAGE(kCapiDnsPublishFailed, "写入 DNS 键失败（服务 {}�
                   "failed to write the DNS key (service {}); DNS may not take effect in manual "
                   "mode")
 TETHERKITNEXT_MESSAGE(kCapiWhatAddScopedRoute, "添加 scoped 默认路由", "adding a scoped default route")
-TETHERKITNEXT_MESSAGE(kCapiWhatUpdateScopedRoute, "更新 scoped 默认路由",
-                  "updating the scoped default route")
 TETHERKITNEXT_MESSAGE(kCapiWhatSwitchGlobalRoute, "切换全局默认路由",
                   "switching the global default route")
 TETHERKITNEXT_MESSAGE(kCapiWhatAddGlobalRoute, "添加全局默认路由", "adding a global default route")

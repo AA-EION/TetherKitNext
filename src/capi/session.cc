@@ -106,6 +106,13 @@ class EventRing final : public tetherkitnext::core::RuntimeEventSink {
   std::size_t count_ = 0;
 };
 
+/// KiB from the C ABI to bytes, saturating instead of wrapping: 4 GiB / 1024 KiB or more
+/// would wrap to a tiny buffer (or 0, which then reads as "use the default").
+[[nodiscard]] constexpr std::uint32_t KibToBytes(std::uint32_t kib) noexcept {
+  constexpr std::uint32_t kMaxKib = 0xFFFF'FFFFU / 1024;
+  return (kib > kMaxKib ? kMaxKib : kib) * 1024;
+}
+
 /// Takes a value; 0 is treated as "use the library default".
 ///
 /// Be lenient with tuning knobs rather than reporting an error: the GUI may care only about the MTU and leave the other fields empty, and insisting they
@@ -132,11 +139,11 @@ class EventRing final : public tetherkitnext::core::RuntimeEventSink {
   result.data_channel.tx_transfer_count =
       OrDefault(config.tx_transfer_count, defaults.data_channel.tx_transfer_count);
   result.data_channel.rx_transfer_bytes =
-      OrDefault(config.rx_transfer_kib * 1024, defaults.data_channel.rx_transfer_bytes);
+      OrDefault(KibToBytes(config.rx_transfer_kib), defaults.data_channel.rx_transfer_bytes);
   result.rndis.host_max_transfer_size =
-      OrDefault(config.max_transfer_kib * 1024, defaults.rndis.host_max_transfer_size);
+      OrDefault(KibToBytes(config.max_transfer_kib), defaults.rndis.host_max_transfer_size);
   result.bpf.kernel_buffer_bytes =
-      OrDefault(config.bpf_buffer_kib * 1024, defaults.bpf.kernel_buffer_bytes);
+      OrDefault(KibToBytes(config.bpf_buffer_kib), defaults.bpf.kernel_buffer_bytes);
 
   result.event_sink = &sink;
   return result;

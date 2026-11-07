@@ -281,7 +281,8 @@ void UsbDataChannel::OnReceiveComplete(Slot& slot) noexcept {
 // =============================================================================
 
 bool UsbDataChannel::CanSend() const noexcept {
-  return tx_free_slots_ != nullptr && tx_free_slots_->SizeSnapshot() > 0;
+  return tx_free_slots_ != nullptr &&
+         (held_tx_slot_ != kNoHeldSlot || tx_free_slots_->SizeSnapshot() > 0);
 }
 
 Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames) {
@@ -295,8 +296,9 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
   SendOutcome outcome;
 
   while (outcome.consumed < frames.size()) {
-    std::uint32_t slot_index = 0;
-    if (!tx_free_slots_->TryPop(slot_index)) {
+    std::uint32_t slot_index = held_tx_slot_;
+    held_tx_slot_ = kNoHeldSlot;
+    if (slot_index == kNoHeldSlot && !tx_free_slots_->TryPop(slot_index)) {
       // No free transfer slot -- this is backpressure. Faithfully return the number consumed; the caller should
       // retry the remaining frames after WaitForSendCapacity(), rather than drop them.
       break;
@@ -340,9 +342,10 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
         ++outcome.consumed;
         ++outcome.skipped;
       }
-      if (!tx_free_slots_->TryPush(slot_index)) {
-        TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
-      }
+      // Keep the slot for the next round. Pushing it back would make this thread a second
+      // producer on tx_free_slots_ next to the completion callback, and SPSC pushes from two
+      // threads can lose a slot (the 4-slot pool then drains and TX stalls for good).
+      held_tx_slot_ = slot_index;
       continue;
     }
 
@@ -361,9 +364,7 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
     const int rc = ::libusb_submit_transfer(slot.transfer);
     if (rc != LIBUSB_SUCCESS) {
       outstanding_.fetch_sub(1, std::memory_order_acq_rel);
-      if (!tx_free_slots_->TryPush(slot_index)) {
-        TETHERKITNEXT_ERROR_TR(Msg::kUsbReturnTxSlotFailed, slot_index);
-      }
+      held_tx_slot_ = slot_index;  // see above: never push from this thread
       async_send_errors_.fetch_add(1, std::memory_order_relaxed);
       return std::unexpected(Error::FromLibUsb(rc, Tr(Msg::kUsbSubmitBulkOutFailed)));
     }
@@ -382,7 +383,7 @@ Result<SendOutcome> UsbDataChannel::SendFrames(std::span<const FrameView> frames
 bool UsbDataChannel::WaitForSendCapacity(std::uint32_t timeout_millis) {
   std::unique_lock<std::mutex> lock(send_capacity_mutex_);
   return send_capacity_cv_.wait_for(lock, std::chrono::milliseconds(timeout_millis), [this] {
-    return shutting_down_.load(std::memory_order_acquire) ||
+    return shutting_down_.load(std::memory_order_acquire) || held_tx_slot_ != kNoHeldSlot ||
            tx_free_slots_->SizeSnapshot() > 0;
   });
 }

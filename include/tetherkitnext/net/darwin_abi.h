@@ -170,7 +170,7 @@ inline constexpr std::uint32_t kBpfMinBufferBytes = 32;
 
 /// Minimum length of a BPF record header.
 ///
-/// Key pitfall: `sizeof(struct bpf_hdr)` is **20** on LP64 (the 18 bytes of content are padded by the compiler
+/// Gotcha: `sizeof(struct bpf_hdr)` is **20** on LP64 (the 18 bytes of content are padded by the compiler
 /// to 20), while the `bh_hdrlen` the kernel actually writes for DLT_EN10MB is **18**
 /// (SIZEOF_BPF_HDR=18, bif_hdrlen = BPF_WORDALIGN(14+18) - 14 = 18).
 /// **When reading, the bh_hdrlen in the record must be used; using sizeof misaligns immediately.**

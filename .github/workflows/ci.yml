@@ -103,7 +103,10 @@ jobs:
       # that is understood; the xcode-27 jobs cover building on macOS 27.
       - name: Select the newest Xcode 26
         run: |
-          latest="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          # Release bundles only (Xcode_26.x.app), never betas/RCs; `|| true` so a missing
+          # Xcode 26 reaches the explicit error below instead of aborting silently.
+          latest="$(ls -d /Applications/Xcode_26*.app 2>/dev/null \
+            | grep -E '/Xcode_26(\.[0-9]+)*\.app$' | sort -V | tail -1 || true)"
           [ -n "${latest}" ] || { echo "::error::no Xcode 26 on this runner"; ls -d /Applications/Xcode_*.app; exit 1; }
           sudo xcode-select -s "${latest}"
           xcodebuild -version; swift --version
@@ -337,6 +340,9 @@ jobs:
       - name: Disable feth hardware checksum offload
         run: sudo sysctl -w net.link.fake.hwcsum=0
       - name: Run feth/BPF cases as root
+        # bash (not the default `bash -e`) adds -o pipefail, so a failing ctest is not
+        # masked by `| tee`; without it the gate below could pass with red root tests.
+        shell: bash
         run: |
           # Pin the log language: the gate greps for a message text.
           sudo env TETHERKITNEXT_ROOT_TESTS=1 TETHERKITNEXT_LANG=en \
