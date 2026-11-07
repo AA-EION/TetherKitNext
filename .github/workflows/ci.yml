@@ -259,8 +259,8 @@ jobs:
       - name: Toolchain
         run: |
           sw_vers; uname -m
-          latest="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
-          [ -n "${latest}" ] || { echo "::error::no Xcode 26 on this runner"; ls -d /Applications/Xcode_*.app; exit 1; }
+          # This job is the macOS 27 / Xcode 27 check: newest Xcode on purpose.
+          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
           sudo xcode-select -s "${latest}"
           xcodebuild -version; swift --version
       - name: Build C++ (native arch)
