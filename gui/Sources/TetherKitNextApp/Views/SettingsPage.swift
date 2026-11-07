@@ -152,6 +152,10 @@ struct SettingsPage: View {
 
     private func setLaunchAtLogin(_ enabled: Bool) {
         let service = SMAppService.mainApp
+        // Writing `launchAtLogin` back below re-fires onChange; when it already matches the
+        // service, stop here, or a failed register() would be followed by a pointless
+        // unregister() whose error overwrites the first, useful one.
+        guard enabled != (service.status == .enabled) else { return }
         do {
             if enabled {
                 try service.register()

@@ -169,7 +169,16 @@ final class AppModel {
     /// Waiting for some privileged operation to complete -- the UI uses it to disable buttons and show progress.
     private(set) var isBusy: Bool = false
     /// An error that needs to be popped up to the user.
-    var alertMessage: String?
+    var alertMessage: String? {
+        didSet {
+            // The alert is attached to the main window. In menu-bar-only mode (window ordered
+            // out) a failure from the menu bar panel's Connect would otherwise stay invisible
+            // until the window is next opened, so bring the window up to show it.
+            if alertMessage != nil, MainWindowController.shared?.isVisible == false {
+                MainWindowController.shared?.present()
+            }
+        }
+    }
 
     /// The known new version. Drives the "new version available" hint in the management row; nil = none or never checked.
     private(set) var availableUpdate: UpdateChecker.Release?
@@ -273,16 +282,15 @@ final class AppModel {
         Task { await checkForUpdatesQuietly() }
     }
 
-    func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
-    }
-
     /// The main window appears (including reopening from the menu bar).
     ///
     /// Refresh once immediately rather than waiting for the next period: background polling may be sleeping in a 2-second long interval,
     /// and the first glance the user gets when opening the window should not be stale data.
     func windowDidAppear() {
+        // Called on every key-window change (sheets, alerts, app switches). Refresh only when
+        // the window was really hidden: an extra refresh() interleaves with the polling loop's
+        // own at every await and can apply replies out of order.
+        guard !isWindowVisible else { return }
         isWindowVisible = true
         Task { await refresh() }
     }
@@ -319,12 +327,21 @@ final class AppModel {
             }
             helperAvailability = .available(version: version)
             helperVersionMismatch = Self.versionMismatch(installed: version, build: build)
+            // A daemon that just appeared (installed, approved, restarted or updated) starts
+            // in its default language; the push in applyLanguage only happens on a change.
+            let daemonIdentity = "\(version)|\(String(describing: build))"
+            if languageSyncedDaemon != daemonIdentity {
+                languageSyncedDaemon = daemonIdentity
+                let language = L10n.language
+                Task { await client.setLanguage(language) }
+            }
             helperNeedsApproval = false
             commandLineToolState = .current
         } catch {
             // While the daemon restarts it is briefly unreachable. Keep what we
             // had instead of flashing the setup steps as if it were not installed.
             if isRestartingHelper { return }
+            languageSyncedDaemon = nil
             helperAvailability = .missing(reason: error.localizedDescription)
             helperVersionMismatch = nil
             helperNeedsApproval = HelperInstaller.needsApproval
@@ -391,9 +408,13 @@ final class AppModel {
             autoConfigureNote = nil
         }
 
+        // Both snapshots must come from the same running session: after a failed session
+        // a new one starts with counters back near zero, and the wrapping deltas below
+        // would plot a rate of ~10^19 bit/s.
         guard let previous = previousStatus,
-              fresh.runState == .running,
-              fresh.monotonicNanos > previous.monotonicNanos else {
+              fresh.runState == .running, previous.runState == .running,
+              fresh.monotonicNanos > previous.monotonicNanos,
+              fresh.rxBytes >= previous.rxBytes, fresh.txBytes >= previous.txBytes else {
             if fresh.runState != .running {
                 throughput = .zero
             }
@@ -463,6 +484,9 @@ final class AppModel {
     /// inherit a fixed address meant for a drone. Cleared when the session ends.
     private(set) var sessionOnlyAddress: String?
 
+    /// The daemon (version + build) the UI language was last pushed to; nil when unreachable.
+    @ObservationIgnored private var languageSyncedDaemon: String?
+
     /// Why automatic configuration after Connect did not finish (no lease, no
     /// router). Shown as a quiet detail next to the link assessment instead of
     /// an alert: for a local device this is expected. Cleared per session.
@@ -498,9 +522,9 @@ final class AppModel {
 
     /// Drops a session-only address and re-applies the saved settings
     /// (normally DHCP), e.g. when a slow device finally starts its DHCP server.
+    /// The session-only address and the auto-configure note are cleared by the apply
+    /// itself, and only if it succeeds.
     func retrySavedNetworkConfiguration() async {
-        sessionOnlyAddress = nil
-        autoConfigureNote = nil
         await applyNetworkConfiguration()
     }
 
@@ -634,11 +658,16 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
-        await authorized { [self] authorization in
+        let applied = await authorized { [self] authorization in
             try await client.applyNetwork(authorization: authorization, interface: interface,
                                           configuration: networkConfiguration)
             // Immediately read back once, so the UI reflects the address actually in effect right away, without waiting for the next polling period.
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if applied {
+            // The saved settings replaced whatever was applied for this session only.
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
     }
 
@@ -654,10 +683,14 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
-        await authorized { [self] authorization in
+        let cleared = await authorized { [self] authorization in
             try await client.applyNetwork(authorization: authorization, interface: interface,
                                           configuration: NetworkConfiguration(mode: .none))
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if cleared {
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
     }
 
@@ -734,6 +767,8 @@ final class AppModel {
             || HelperInstaller.status == .enabled
         isRestartingHelper = restarting
         defer { isRestartingHelper = false }
+        // The (re)started daemon begins in its default language; resend on next contact.
+        languageSyncedDaemon = nil
         do {
             if restarting {
                 try await HelperInstaller.reregister()

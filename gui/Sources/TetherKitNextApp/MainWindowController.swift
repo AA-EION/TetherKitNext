@@ -8,10 +8,8 @@ import TetherKitNextIPC
 ///
 ///   * With a `MenuBarExtra` alongside, SwiftUI recreates a closed `Window`
 ///     scene whenever the windowless app is activated, which clicking the menu
-///     bar item does. The old workaround (`AppModel.isWindowPresentationExpected`,
-///     a 3-second "did we ask for this?" window) dismissed the resurrected
-///     window after the fact, so it could still flash. With no window scene,
-///     SwiftUI has nothing to resurrect.
+///     bar item does. Dismissing the resurrected window after the fact still let
+///     it flash. With no window scene, SwiftUI has nothing to resurrect.
 ///   * Presentation becomes deterministic: the window exists from
 ///     `applicationDidFinishLaunching`, also for bare `swift run` binaries, and
 ///     `applicationShouldHandleReopen` (Dock / Finder double-click while in

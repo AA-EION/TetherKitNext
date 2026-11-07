@@ -56,9 +56,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private var observers: [NSObjectProtocol] = []
 
+    /// Whether macOS started the app as a login item ("Open at login" in Settings).
+    /// Read in applicationWillFinishLaunching, while the launch Apple event is current.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The 'oapp' event of a login-item launch carries keyAEPropData = keyAELaunchedAsLogInItem.
+        // Four-char codes spelled out to avoid importing Carbon for three constants.
+        let openApplication: AEEventID = 0x6F61_7070  // 'oapp' kAEOpenApplication
+        let propertyData: AEKeyword = 0x7072_6474     // 'prdt' keyAEPropData
+        let loginItem: OSType = 0x6C67_6974           // 'lgit' keyAELaunchedAsLogInItem
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.eventID == openApplication,
+           event.paramDescriptor(forKeyword: propertyData)?.enumCodeValue == loginItem {
+            launchedAsLoginItem = true
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.start()
-        MainWindowController.install(model: model).present()
+        let windowController = MainWindowController.install(model: model)
+        if launchedAsLoginItem {
+            // Start quietly in the menu bar; the window is one click away.
+            NSApp.setActivationPolicy(.accessory)
+            model.windowDidDisappear()
+        } else {
+            windowController.present()
+        }
 
         let center = NotificationCenter.default
         for name in [NSWindow.willCloseNotification, NSWindow.didBecomeKeyNotification,

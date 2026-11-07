@@ -17,6 +17,16 @@ struct LinkKindCard: View {
     @State private var addressInput = ""
 
     var body: some View {
+        content
+            // The card view outlives sessions; an address typed for one device must not be
+            // applied to the next one with a stray Return.
+            .onChange(of: model.status.runState) { _, state in
+                if state != .running { addressInput = "" }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch model.linkAssessment {
         case .notConnected, .notConfigured, .internet:
             EmptyView()

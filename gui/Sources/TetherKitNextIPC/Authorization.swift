@@ -26,13 +26,13 @@ import Security
 ///   reporting `errAuthorizationDenied (-60005)`.
 ///
 ///   So the AuthorizationRef must **live until after the XPC round trip ends**. Holding it in a class
-///   and letting ARC manage it is far more reliable than hand-writing "remember to free it at the end" at every call site.
+///   and letting ARC free it is more reliable than freeing it by hand at every call site.
 ///
 /// * Why it is safe to mark @unchecked Sendable *
-///   HelperInstaller has to hand the token to a background queue (AEWP blocks on the authorization dialog and cannot occupy the main
-///   thread). There is no mutable state here -- both stored properties are let; the AuthorizationRef itself
-///   is thread-safe per the Authorization Services documentation (the real state is in the securityd
-///   process, and cross-process calls are naturally serialized); and deinit is guaranteed by ARC to run only once.
+///   The token crosses actors (AppModel awaits XPC calls that complete on XPC queues). There is no
+///   mutable state here -- both stored properties are `let`; the AuthorizationRef itself is
+///   thread-safe per the Authorization Services documentation (the state lives in securityd and
+///   cross-process calls are serialized); and ARC runs deinit exactly once.
 public final class AuthorizationToken: @unchecked Sendable {
     /// The 32-byte external form that can be passed across processes to the helper.
     public let externalForm: Data
@@ -42,15 +42,6 @@ public final class AuthorizationToken: @unchecked Sendable {
     init(authorization: AuthorizationRef, externalForm: Data) {
         self.authorization = authorization
         self.externalForm = externalForm
-    }
-
-    /// Briefly lends the underlying AuthorizationRef to an API that needs the thing itself (currently only
-    /// `AuthorizationExecuteWithPrivileges` -- it wants the ref, not the external form).
-    ///
-    /// Made a scoped borrow rather than exposing a property directly: the ref's lifetime belongs to this class, and if anyone stores it
-    /// outside the closure, it becomes a dangling reference once the token is released -- an error the compiler cannot catch.
-    public func withReference<T>(_ body: (AuthorizationRef) throws -> T) rethrows -> T {
-        try body(authorization)
     }
 
     deinit {

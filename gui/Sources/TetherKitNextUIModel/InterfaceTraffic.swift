@@ -174,13 +174,23 @@ public enum InterfaceSampler {
     static func counters64() -> [String: (received: UInt64, sent: UInt64)] {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var length = 0
-        guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else {
-            return [:]
+        var buffer: [UInt8] = []
+        // Interfaces can appear between sizing and reading (ENOMEM): leave headroom, and
+        // retry a few times instead of losing the whole sample.
+        var read = false
+        for _ in 0..<3 {
+            guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else {
+                return [:]
+            }
+            length += length / 8
+            buffer = [UInt8](repeating: 0, count: length)
+            if sysctl(&mib, UInt32(mib.count), &buffer, &length, nil, 0) == 0 {
+                read = true
+                break
+            }
+            guard errno == ENOMEM else { return [:] }
         }
-        // Interfaces can appear between the two calls; leave some headroom.
-        length += length / 8
-        var buffer = [UInt8](repeating: 0, count: length)
-        guard sysctl(&mib, UInt32(mib.count), &buffer, &length, nil, 0) == 0 else { return [:] }
+        guard read else { return [:] }
 
         var result: [String: (received: UInt64, sent: UInt64)] = [:]
         buffer.withUnsafeBytes { raw in
@@ -212,8 +222,32 @@ public enum InterfaceSampler {
 
     private static func numericHost(_ address: UnsafeMutablePointer<sockaddr>) -> String? {
         var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-        let status = getnameinfo(address, socklen_t(address.pointee.sa_len),
+        let status: Int32
+        if Int32(address.pointee.sa_family) == AF_INET6 {
+            // The kernel embeds a link-local address's interface index in bytes 2-3 of the
+            // address (the KAME convention), so getifaddrs returns e.g. fe80:4::1. Move it
+            // to sin6_scope_id, as ifconfig does, so it prints as fe80::1%en0.
+            var copy = address.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee }
+            var embedded: UInt32 = 0
+            withUnsafeMutableBytes(of: &copy.sin6_addr) { bytes in
+                guard bytes[0] == 0xFE, bytes[1] & 0xC0 == 0x80 else { return }
+                embedded = UInt32(bytes[2]) << 8 | UInt32(bytes[3])
+                bytes[2] = 0
+                bytes[3] = 0
+            }
+            if embedded != 0 && copy.sin6_scope_id == 0 {
+                copy.sin6_scope_id = embedded
+            }
+            status = withUnsafePointer(to: &copy) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in6>.size),
+                                &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST)
+                }
+            }
+        } else {
+            status = getnameinfo(address, socklen_t(address.pointee.sa_len),
                                  &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST)
+        }
         guard status == 0 else { return nil }
         return String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
                       as: UTF8.self)

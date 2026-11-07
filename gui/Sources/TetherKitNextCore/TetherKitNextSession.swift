@@ -14,7 +14,7 @@ import TetherKitNextIPC
 public final class TetherKitNextSession: @unchecked Sendable {
     private let handle: OpaquePointer
 
-    /// The maximum number of events taken away at once, consistent with the C-side ring buffer capacity (128).
+    /// The maximum number of events drained at once, consistent with the C-side ring buffer capacity (128).
     private static let eventCapacity = 128
 
     public init(configuration: SessionConfiguration) throws {
@@ -87,7 +87,7 @@ public final class TetherKitNextSession: @unchecked Sendable {
             }())
     }
 
-    /// Takes away the queued events, rendering them into one sentence for the user to read.
+    /// Drains the queued events, rendering them into one sentence for the user to read.
     ///
     /// Keeps only the categories that "users care about": link changes, device resets, fatal errors. The RNDIS internal
     /// state transitions and lifecycle transitions are already shown by the UI via status, and flooding them again as notifications would be just noise.

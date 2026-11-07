@@ -153,6 +153,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case linkAddressPlaceholder
     case linkNoAddressPhoneHint
     case linkRouteAllSkipped
+    case helperRequestTimedOut
     case configureNetwork
     case setupTitle
     case setupSubtitle
@@ -199,7 +200,6 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case updateCheckFailed
     case updateDevBuild
     case uninstallWhileRunningWarning
-    case helperComponentVersion
     case helperVersionMismatch
     case helperUpdateBadge
     case checkingHelper
@@ -440,6 +440,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "e.g. 192.168.1.10"
         case .linkNoAddressPhoneHint: return "Connecting a phone? Check that USB tethering is on. This updates by itself if an address arrives later."
         case .linkRouteAllSkipped: return "“Route all traffic through this interface” is not applied: this device has no router."
+        case .helperRequestTimedOut: return "it did not answer in time"
         case .configureNetwork: return "Configure…"
         case .setupTitle: return "Welcome to TetherKitNext"
         case .setupSubtitle: return "A few steps turn your Android phone's USB tethering into a network interface on your Mac."
@@ -486,7 +487,6 @@ extension L10nKey {
         case .updateCheckFailed: return "The check could not be completed: %@"
         case .updateDevBuild: return "This is a development build with no version number, so there is nothing to compare against."
         case .uninstallWhileRunningWarning: return "The current connection will be dropped and the virtual interface destroyed."
-        case .helperComponentVersion: return "Helper · %@"
         case .helperVersionMismatch: return "Helper %1$@ · app %2$@"
         case .helperUpdateBadge: return "%@ available"
         case .checkingHelper: return "Checking the privileged helper…"
@@ -714,6 +714,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "p. ej. 192.168.1.10"
         case .linkNoAddressPhoneHint: return "¿Conectas un teléfono? Comprueba que el anclaje USB esté activado. Esto se actualiza solo si la dirección llega más tarde."
         case .linkRouteAllSkipped: return "«Enrutar todo el tráfico a través de esta interfaz» no se aplica: este dispositivo no tiene router."
+        case .helperRequestTimedOut: return "no respondió a tiempo"
         case .configureNetwork: return "Configurar…"
         case .setupTitle: return "Bienvenido a TetherKitNext"
         case .setupSubtitle: return "Unos sencillos pasos transforman la conexión compartida por USB de tu Android en una interfaz de red en tu Mac."
@@ -760,7 +761,6 @@ extension L10nKey {
         case .updateCheckFailed: return "No se pudo completar la comprobación: %@"
         case .updateDevBuild: return "Esta es una compilación de desarrollo sin número de versión, por lo que no hay nada con qué comparar."
         case .uninstallWhileRunningWarning: return "La conexión actual se interrumpirá y la interfaz virtual será destruida."
-        case .helperComponentVersion: return "Asistente · %@"
         case .helperVersionMismatch: return "Asistente %1$@ · app %2$@"
         case .helperUpdateBadge: return "%@ disponible"
         case .checkingHelper: return "Comprobando el componente privilegiado…"
@@ -988,6 +988,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "例如 192.168.1.10"
         case .linkNoAddressPhoneHint: return "连接的是手机？请确认已开启 USB 网络共享。如果稍后获得地址，此处会自动更新。"
         case .linkRouteAllSkipped: return "“让所有流量默认走这张网卡”未生效：该设备没有网关。"
+        case .helperRequestTimedOut: return "它没有及时响应"
         case .configureNetwork: return "配置…"
         case .setupTitle: return "欢迎使用 TetherKitNext"
         case .setupSubtitle: return "只需几步，就能把 Android 手机的 USB 网络共享变成 Mac 上的一张网卡。"
@@ -1034,7 +1035,6 @@ extension L10nKey {
         case .updateCheckFailed: return "无法完成检查：%@"
         case .updateDevBuild: return "这是开发构建（没有版本号），无从比较。"
         case .uninstallWhileRunningWarning: return "当前连接会被断开、虚拟网卡销毁。"
-        case .helperComponentVersion: return "特权组件 · %@"
         case .helperVersionMismatch: return "特权组件 %1$@ · App %2$@"
         case .helperUpdateBadge: return "有新版 %@"
         case .checkingHelper: return "正在检查特权组件……"
@@ -1262,6 +1262,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "例: 192.168.1.10"
         case .linkNoAddressPhoneHint: return "電話を接続していますか？USB テザリングがオンになっているか確認してください。後からアドレスが届けば自動で更新されます。"
         case .linkRouteAllSkipped: return "「すべての通信をこのインターフェース経由にする」は適用されません：このデバイスにはルータがありません。"
+        case .helperRequestTimedOut: return "時間内に応答がありませんでした"
         case .configureNetwork: return "設定…"
         case .setupTitle: return "TetherKitNext へようこそ"
         case .setupSubtitle: return "いくつかのステップで、Android スマホの USB テザリングを Mac のネットワークインターフェースに変換できます。"
@@ -1308,7 +1309,6 @@ extension L10nKey {
         case .updateCheckFailed: return "確認を完了できませんでした: %@"
         case .updateDevBuild: return "これはバージョン番号のない開発用ビルドのため、比較対象がありません。"
         case .uninstallWhileRunningWarning: return "現在の接続は切断され、仮想インターフェースは破棄されます。"
-        case .helperComponentVersion: return "ヘルパー · %@"
         case .helperVersionMismatch: return "ヘルパー %1$@ · アプリ %2$@"
         case .helperUpdateBadge: return "%@ が利用可能"
         case .checkingHelper: return "特権ヘルパーを確認中…"
@@ -1536,6 +1536,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "z. B. 192.168.1.10"
         case .linkNoAddressPhoneHint: return "Verbindest du ein Telefon? Prüfe, ob USB-Tethering eingeschaltet ist. Kommt die Adresse später, aktualisiert sich die Anzeige von selbst."
         case .linkRouteAllSkipped: return "„Gesamten Datenverkehr über diese Schnittstelle leiten“ wird nicht angewendet: Dieses Gerät hat keinen Router."
+        case .helperRequestTimedOut: return "er hat nicht rechtzeitig geantwortet"
         case .configureNetwork: return "Konfigurieren…"
         case .setupTitle: return "Willkommen bei TetherKitNext"
         case .setupSubtitle: return "Mit wenigen Schritten wird das USB-Tethering Ihres Android-Telefons zu einer Netzwerkschnittstelle auf Ihrem Mac."
@@ -1582,7 +1583,6 @@ extension L10nKey {
         case .updateCheckFailed: return "Prüfung konnte nicht abgeschlossen werden: %@"
         case .updateDevBuild: return "Dies ist ein Entwicklungs-Build ohne Versionsnummer; es gibt nichts zum Vergleichen."
         case .uninstallWhileRunningWarning: return "Die aktuelle Verbindung wird getrennt und die virtuelle Schnittstelle zerstört."
-        case .helperComponentVersion: return "Helfer · %@"
         case .helperVersionMismatch: return "Helfer %1$@ · App %2$@"
         case .helperUpdateBadge: return "%@ verfügbar"
         case .checkingHelper: return "Privilegierter Helfer wird überprüft…"
@@ -1810,6 +1810,7 @@ extension L10nKey {
         case .linkAddressPlaceholder: return "예: 192.168.1.10"
         case .linkNoAddressPhoneHint: return "휴대폰을 연결했나요? USB 테더링이 켜져 있는지 확인하세요. 나중에 주소를 받으면 자동으로 업데이트됩니다."
         case .linkRouteAllSkipped: return "‘모든 트래픽을 이 인터페이스로 라우팅’이 적용되지 않습니다. 이 기기에는 라우터가 없습니다."
+        case .helperRequestTimedOut: return "제시간에 응답하지 않았습니다"
         case .configureNetwork: return "구성…"
         case .setupTitle: return "TetherKitNext에 오신 것을 환영합니다"
         case .setupSubtitle: return "몇 가지 단계만으로 Android 스마트폰의 USB 테더링을 Mac의 네트워크 인터페이스로 변환할 수 있습니다."
@@ -1856,7 +1857,6 @@ extension L10nKey {
         case .updateCheckFailed: return "확인을 완료할 수 없습니다: %@"
         case .updateDevBuild: return "버전 번호가 없는 개발 빌드이므로 비교할 대상이 없습니다."
         case .uninstallWhileRunningWarning: return "현재 연결이 끊어지고 가상 인터페이스가 파기됩니다."
-        case .helperComponentVersion: return "헬퍼 · %@"
         case .helperVersionMismatch: return "헬퍼 %1$@ · 앱 %2$@"
         case .helperUpdateBadge: return "%@ 사용 가능"
         case .checkingHelper: return "권한 있는 헬퍼 확인 중…"

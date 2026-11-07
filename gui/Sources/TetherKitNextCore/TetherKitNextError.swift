@@ -21,9 +21,6 @@ public struct TetherKitNextError: LocalizedError, Sendable {
 
     public var errorDescription: String? { message }
 
-    /// Whether it is "missing permission" -- the UI uses it to decide whether to pop up authorization or report an error.
-    public var isPermissionDenied: Bool { result == TK_ERR_PERMISSION.rawValue }
-
     init(result: Int32, error: tk_error_t) {
         self.result = result
         self.domain = Domain(rawValue: error.domain) ?? .generic

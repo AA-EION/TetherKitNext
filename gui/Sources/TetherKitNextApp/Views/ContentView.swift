@@ -29,6 +29,13 @@ struct ContentView: View {
             }
         }
         .animation(.smooth(duration: 0.25), value: model.helperAvailability)
+        .onChange(of: advancedToolsEnabled) { _, enabled in
+            // Forget an advanced page once the section is hidden, so turning it back on later
+            // does not jump straight to it.
+            if !enabled, Pane(rawValue: storedPane)?.isAdvanced == true {
+                storedPane = Pane.overview.rawValue
+            }
+        }
         .alert(L(.alertOperationFailed),
                isPresented: Binding(get: { model.alertMessage != nil },
                                     set: { if !$0 { model.alertMessage = nil } })) {

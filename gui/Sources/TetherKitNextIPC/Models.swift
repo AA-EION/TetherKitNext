@@ -321,7 +321,7 @@ public struct LogEntry: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// The reply to one helper "take away pending content".
+/// The reply to one `drainFeed` call: pending logs and notices.
 ///
 /// Events and logs are merged into one call to press the number of XPC round trips down to one per refresh period --
 /// the UI refreshes once every 500 ms, and fetching them separately would double the inter-process round trips.

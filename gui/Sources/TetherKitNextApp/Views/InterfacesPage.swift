@@ -40,7 +40,7 @@ struct InterfacesPage: View {
                 }
             }
         }
-        // Samples only while the page is on screen; .task cancels on leave.
+        // Samples while the page is shown and the window is visible; .task cancels on leave.
         .task { await monitor.run() }
     }
 }
@@ -107,7 +107,14 @@ final class InterfaceMonitor {
 
     func run() async {
         while !Task.isCancelled {
-            sample()
+            // Closing the window only orders it out (MainWindowController keeps the view tree,
+            // so .task is not cancelled); do not sample for a window nobody can see. After
+            // reopening, the first sample shows 0 instead of an average over the gap.
+            if MainWindowController.shared?.isVisible == false {
+                tracker = InterfaceRateTracker()
+            } else {
+                sample()
+            }
             try? await Task.sleep(for: .seconds(1))
         }
     }

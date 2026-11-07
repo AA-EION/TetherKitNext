@@ -32,11 +32,6 @@ final class HelperClient: @unchecked Sendable {
             }
         }
 
-        var isUnreachable: Bool {
-            if case .unreachable = self { return true }
-            return false
-        }
-
         /// Whether it is worth "fetching the authorization again and retrying".
         var isAuthorizationProblem: Bool {
             if case .authorizationRejected = self { return true }
@@ -47,7 +42,7 @@ final class HelperClient: @unchecked Sendable {
     /// Guarantees a continuation is fulfilled only once.
     ///
     /// It is possible for XPC's error block and reply block to both be called, and resuming twice crashes --
-    /// this pitfall appears only in timing like "the connection drops after the request is sent", and is hard to hit through tests.
+    /// it only happens when the connection drops after a request was sent, which tests rarely hit.
     private final class ContinuationGuard<T: Sendable>: @unchecked Sendable {
         private let lock = NSLock()
         private var continuation: CheckedContinuation<T, Error>?
@@ -96,11 +91,23 @@ final class HelperClient: @unchecked Sendable {
 
             // After the connection drops the cache must be discarded, otherwise later calls would keep hitting a dead connection,
             // showing up as "the helper is clearly installed but can never be connected to".
-            let invalidate: @Sendable () -> Void = { [weak self] in
-                self?.connectionLock.withLock { self?.cachedConnection = nil }
+            //
+            // Only drop the cache if it still holds *this* connection: a late handler from an
+            // older connection must not discard the newer one that replaced it. On interruption
+            // the discarded connection is invalidated too, so it is not left resumed.
+            let discard: @Sendable (Bool) -> Void = { [weak self, weak created] invalidateIt in
+                guard let self, let created else { return }
+                let wasCached = self.connectionLock.withLock { () -> Bool in
+                    guard self.cachedConnection === created else { return false }
+                    self.cachedConnection = nil
+                    return true
+                }
+                if wasCached && invalidateIt {
+                    created.invalidate()
+                }
             }
-            created.invalidationHandler = invalidate
-            created.interruptionHandler = invalidate
+            created.invalidationHandler = { discard(false) }
+            created.interruptionHandler = { discard(true) }
 
             created.resume()
             cachedConnection = created
@@ -114,6 +121,13 @@ final class HelperClient: @unchecked Sendable {
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             let guarded = ContinuationGuard(continuation)
+            // A daemon that accepts a call but never replies (e.g. stuck behind a blocked
+            // SystemConfiguration lock) would otherwise leave the continuation pending
+            // forever, and with it AppModel.isBusy and the polling loop. The guard makes
+            // a late reply after the timeout harmless.
+            DispatchQueue.global().asyncAfter(deadline: .now() + HelperConstants.requestTimeout) {
+                guarded.resume(throwing: Failure.unreachable(L(.helperRequestTimedOut)))
+            }
             let proxy = connection().remoteObjectProxyWithErrorHandler { error in
                 guarded.resume(throwing: Failure.unreachable(error.localizedDescription))
             }

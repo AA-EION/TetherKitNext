@@ -207,20 +207,6 @@ extension View {
         #endif
     }
 
-    /// Groups adjacent glass shapes so they blend and morph together.
-    @ViewBuilder
-    func glassGroup(spacing: CGFloat = Design.Spacing.small) -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { self }
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
-    }
-
     private func materialGlassFallback(cornerRadius: CGFloat, tint: Color?) -> some View {
         background(.thinMaterial,
                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
