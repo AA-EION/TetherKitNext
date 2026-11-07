@@ -80,13 +80,54 @@ swift_build() {
     ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} "${@:2}"
 }
 
+# ------------------------------------------------------------------------------
+# SDK stamp (LC_BUILD_VERSION).
+#
+# macOS 26+ picks a window's chrome (traffic lights, title bar metrics, glass)
+# from the `sdk` field of the executable's LC_BUILD_VERSION, independently of
+# what was actually compiled against: an app stamped with an older SDK gets the
+# compatibility ("legacy") appearance. Xcode stamps the SDK in use; a SwiftPM
+# link can end up stamping the deployment target instead. The deployment
+# target (`minos`) is what decides where the app runs and is left untouched.
+#
+# Read both fields, and if the stamp is older than the SDK we just built with,
+# rewrite only `sdk` (vtool, Xcode command line tools). The bundle is signed
+# afterwards, so invalidating the linker's ad-hoc signature here is harmless.
+# ------------------------------------------------------------------------------
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+SDK_MAJOR="${SDK_VERSION%%.*}"
+
+build_version_field() {  # <binary> <minos|sdk>
+  otool -l "$1" | awk -v field="$2" '
+    $1 == "cmd" && $2 == "LC_BUILD_VERSION" { inside = 1; next }
+    $1 == "cmd" { inside = 0 }
+    inside && $1 == field { print $2; exit }'
+}
+
+stamp_sdk() {  # <thin binary in> <thin binary out>
+  local minos sdk
+  minos="$(build_version_field "$1" minos)"
+  sdk="$(build_version_field "$1" sdk)"
+  [[ -n "${minos}" && -n "${sdk}" ]] || die "no LC_BUILD_VERSION in $1"
+  if [[ "${sdk%%.*}" -lt "${SDK_MAJOR}" ]]; then
+    echo "  sdk stamp ${sdk} -> ${SDK_VERSION} (minos ${minos} unchanged): $(basename "$1")"
+    vtool -set-build-version macos "${minos}" "${SDK_VERSION}" -replace -output "$2" "$1"
+  else
+    cp "$1" "$2"
+  fi
+}
+
+STAMP_DIR="$(mktemp -d)"
+trap 'rm -rf "${STAMP_DIR}"' EXIT
+
 APP_SLICES=()
 HELPER_SLICES=()
 for arch in "${ARCHS[@]}"; do
   log "Compiling Swift targets for ${arch}"
   swift_build "${arch}"
   bin_path="$(swift_build "${arch}" --show-bin-path)"
-  APP_SLICES+=("${bin_path}/TetherKitNextApp")
+  stamp_sdk "${bin_path}/TetherKitNextApp" "${STAMP_DIR}/TetherKitNextApp-${arch}"
+  APP_SLICES+=("${STAMP_DIR}/TetherKitNextApp-${arch}")
   HELPER_SLICES+=("${bin_path}/tetherkitnext-helper")
 done
 
@@ -233,6 +274,18 @@ ln -s "${CONTENTS}/MacOS/tetherkitnext-cli" "${probe_dir}/tetherkitnext-cli"
 "${probe_dir}/tetherkitnext-cli" --version >/dev/null || die "CLI does not run through a symlink"
 rm -rf "${probe_dir}"
 echo "  ✓ CLI runs through a symlink"
+
+# The SDK stamp decides the window chrome on macOS 26+ (see "SDK stamp" above).
+# Checked on the final, signed binary so a later step cannot silently undo it.
+for arch in "${ARCHS[@]}"; do
+  thin="${STAMP_DIR}/verify-${arch}"
+  lipo -thin "${arch}" "${CONTENTS}/MacOS/TetherKitNext" -output "${thin}" 2>/dev/null \
+    || cp "${CONTENTS}/MacOS/TetherKitNext" "${thin}"
+  stamped="$(build_version_field "${thin}" sdk)"
+  [[ "${stamped%%.*}" -ge 26 ]] \
+    || die "TetherKitNext (${arch}) is stamped sdk ${stamped:-none}; macOS 26+ would draw legacy window chrome"
+done
+echo "  ✓ app is stamped with the macOS ${SDK_VERSION} SDK (modern window chrome on macOS 26+)"
 
 cat <<EOF
 
