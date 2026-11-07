@@ -92,10 +92,15 @@ jobs:
             exit 1
           fi
 
-      - name: Select the newest Xcode
+      # Newest Xcode *26*, deliberately not 27: a libusb built with the macOS
+      # 27 SDK segfaults during device enumeration on macOS 15 and 26 (seen in
+      # CI, see AGENTS.md pitfall 33). Shipping builds stay on the 26 SDK until
+      # that is understood; the xcode-27 jobs cover building on macOS 27.
+      - name: Select the newest Xcode 26
         if: steps.existing.outputs.exists != 'true'
         run: |
-          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          latest="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          [ -n "${latest}" ] || { echo "::error::no Xcode 26 on this runner"; ls -d /Applications/Xcode_*.app; exit 1; }
           sudo xcode-select -s "${latest}"
           xcodebuild -version
 

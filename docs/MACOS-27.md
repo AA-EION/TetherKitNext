@@ -24,6 +24,23 @@ machine before release, because the notes don't say whether it covers
 Say "runs on macOS 27 Golden Gate" once all CI jobs above are green **and**
 the two manual items are ticked.
 
+## Known issue: building with the macOS 27 SDK
+
+A libusb built on the macOS 27 runner (Xcode 27, macOS 27 SDK,
+`MIN_MACOS=13.3`) **segfaults during USB device enumeration on macOS 15 and
+26**; the same library built with Xcode 26 works on all of them, and the
+Xcode 27 build works on macOS 27. CI hit this when the jobs shared a libusb
+cache. Until the cause is found:
+
+* Release and packaging builds select **Xcode 26** explicitly
+  (`ci.yml` `package`, `release.yml`).
+* The libusb cache key includes the SDK and OS version.
+* The DMG smoke test on `macos-15` runs `tetherkitnext-cli --list`, which
+  enumerates USB devices, so a release built with the wrong toolchain fails CI.
+
+This affects only how we *build*; running the Xcode 26 build on macOS 27 is
+what the `xcode-27` CI jobs test.
+
 ## Release-note items reviewed
 
 | Area (release note) | What changed | Impact on TetherKitNext |

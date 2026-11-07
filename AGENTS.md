@@ -374,6 +374,7 @@ RNDIS negotiation complete: version 1.0, MTU 1500, device aggregation limit 1580
 30. **`getifaddrs` byte counters (`struct if_data`) are 32-bit and wrap at 4 GiB.** Read 64-bit counters from the `NET_RT_IFLIST2` sysctl (`if_msghdr2.ifm_data`, `if_data64`); a decrease then always means the interface was recreated (`feth` pairs are, every session).
 31. **Root child processes must be spawned with `POSIX_SPAWN_CLOEXEC_DEFAULT`** (`process_runner.cc`), or they inherit the daemon's BPF / socket / libusb descriptors.
 32. **Pin GitHub Actions to full commit SHAs** (the signing jobs hold the Developer ID certificate and notary key) and keep `persist-credentials: false` on checkouts. Bump them via Dependabot, not by retagging.
+33. **⚠️ A libusb built on macOS 27 / with the macOS 27 SDK segfaults in device enumeration on macOS 15 and 26** (`capi.basics` → `tk_list_devices`), even with `MIN_MACOS=13.3`. Found when CI's xcode-27 job shared the libusb cache with macos-15/26; root cause not yet known. Shipping builds therefore select **Xcode 26** explicitly (`Xcode_26*`, not "newest"), and the libusb cache key includes the SDK + OS version. The `macos-15` DMG smoke job (`tetherkitnext-cli --list`) catches a regression.
 
 ---
 
