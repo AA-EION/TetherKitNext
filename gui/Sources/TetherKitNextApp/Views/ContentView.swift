@@ -1,45 +1,24 @@
 import AppKit
 import SwiftUI
 import TetherKitNextIPC
-
-/// Sidebar destinations.
-///
-/// The old single dashboard crammed five cards into one screen under a hard
-/// "fits in 700 pt" budget. Splitting by task — look at the connection, pick a
-/// device, set up addressing, read logs, manage the app — gives each page room
-/// and makes the window resizable without layout gymnastics.
-enum Pane: String, CaseIterable, Identifiable, Hashable {
-    case overview, device, network, activity, settings
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .overview: return L(.paneOverview)
-        case .device: return L(.paneDevice)
-        case .network: return L(.paneNetwork)
-        case .activity: return L(.paneActivity)
-        case .settings: return L(.paneSettings)
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .overview: return "gauge.with.dots.needle.67percent"
-        case .device: return "cable.connector"
-        case .network: return "network"
-        case .activity: return "list.bullet.rectangle"
-        case .settings: return "gearshape"
-        }
-    }
-}
+import TetherKitNextUIModel
 
 struct ContentView: View {
     @Bindable var model: AppModel
 
-    @SceneStorage("selectedPane") private var pane: Pane = .overview
+    // @AppStorage rather than @SceneStorage: the window is an AppKit-owned
+    // NSWindow (MainWindowController), which has no SwiftUI scene to store in.
+    @AppStorage(PreferenceKey.selectedPane) private var storedPane = Pane.overview.rawValue
+    @AppStorage(PreferenceKey.advancedToolsEnabled) private var advancedToolsEnabled = false
     @State private var confirmingHelperUninstall = false
     @State private var confirmingHelperUpdate = false
+
+    /// The selected page. Resolution drops stale values (renamed pages, an
+    /// advanced page after advanced tools were turned off) to the overview.
+    private var pane: Pane {
+        get { Pane.resolveStored(storedPane, advancedToolsEnabled: advancedToolsEnabled) }
+        nonmutating set { storedPane = newValue.rawValue }
+    }
 
     var body: some View {
         Group {
@@ -92,13 +71,17 @@ struct ContentView: View {
     private var mainSplit: some View {
         NavigationSplitView {
             List(selection: Binding<Pane?>(get: { pane }, set: { pane = $0 ?? .overview })) {
-                Section {
-                    ForEach([Pane.overview, .device, .network, .activity]) { item in
-                        sidebarRow(item)
+                ForEach(Pane.sidebarSections(advancedToolsEnabled: advancedToolsEnabled),
+                        id: \.self) { section in
+                    if section.contains(where: \.isAdvanced) {
+                        Section(L(.sidebarAdvancedSection)) {
+                            ForEach(section) { item in sidebarRow(item) }
+                        }
+                    } else {
+                        Section {
+                            ForEach(section) { item in sidebarRow(item) }
+                        }
                     }
-                }
-                Section {
-                    sidebarRow(.settings)
                 }
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
@@ -156,6 +139,8 @@ struct ContentView: View {
             LogCard(model: model)
                 .padding(Design.Spacing.medium)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        case .interfaces:
+            InterfacesPage()
         case .settings:
             SettingsPage(model: model,
                          requestHelperUpdate: requestHelperUpdate,

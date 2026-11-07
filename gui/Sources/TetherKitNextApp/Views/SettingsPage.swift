@@ -10,6 +10,13 @@ enum PreferenceKey {
     static let menuBarShowsSpeed = "menuBarShowsSpeed"
     /// Existing key: `defaults write com.tetherkitnext.app updateCheckDisabled -bool YES`.
     static let updateCheckDisabled = "updateCheckDisabled"
+    /// Opt-in "Advanced" sidebar section (network diagnostics). Off by default
+    /// so everyday users only ever see the tethering flow.
+    static let advancedToolsEnabled = "advancedToolsEnabled"
+    /// Interfaces page: also list interfaces that are down or have no address.
+    static let interfacesShowInactive = "interfacesShowInactive"
+    /// Last selected sidebar page (`Pane.rawValue`).
+    static let selectedPane = "selectedPane"
 }
 
 /// Everything about the app itself, gathered in one place instead of
@@ -22,6 +29,7 @@ struct SettingsPage: View {
     @AppStorage(PreferenceKey.menuBarShowsSpeed) private var menuBarShowsSpeed = true
     @AppStorage(PreferenceKey.updateCheckDisabled) private var updateCheckDisabled = false
     @AppStorage(AppModel.autoConfigureNetworkKey) private var autoConfigureNetwork = true
+    @AppStorage(PreferenceKey.advancedToolsEnabled) private var advancedToolsEnabled = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showingLicenses = false
     @State private var copiedPayPal = false
@@ -135,6 +143,10 @@ struct SettingsPage: View {
                 .onChange(of: launchAtLogin) { _, enabled in
                     setLaunchAtLogin(enabled)
                 }
+            Toggle(isOn: $advancedToolsEnabled) {
+                Text(L(.settingsAdvancedTools))
+                Text(L(.settingsAdvancedToolsHelp))
+            }
         }
     }
 

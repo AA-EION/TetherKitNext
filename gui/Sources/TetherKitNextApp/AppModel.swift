@@ -187,12 +187,9 @@ final class AppModel {
     /// The moment of the last device enumeration. A monotonic clock is used, avoiding negative intervals when the system time is adjusted.
     private var lastDeviceRefresh: ContinuousClock.Instant?
 
-    /// Whether the main window is currently visible. It only affects the polling pace; the Dock icon policy is handled at the view layer.
+    /// Whether the main window is currently visible. It only affects the polling pace; the Dock icon
+    /// policy is derived from AppKit window notifications in AppDelegate.
     private var isWindowVisible = true
-
-    /// The moment of the most recent "explicitly asked to show the main window". The initial value = now, because the App's launch itself
-    /// is a legitimate window presentation.
-    private var windowPresentationRequestedAt = ContinuousClock.now
 
     /// The cached authorization token. nil means the next privileged operation needs to pop up a dialog.
     ///
@@ -292,23 +289,6 @@ final class AppModel {
     /// The main window closes. The App moves into background mode; polling continues (the menu bar relies on it for data) but slows down.
     func windowDidDisappear() {
         isWindowVisible = false
-    }
-
-    /// Registers that "this upcoming main window presentation is one we asked for ourselves".
-    ///
-    /// Registered once at App launch (initializing defaults) and once by the "open main window" button.
-    func expectWindowPresentation() {
-        windowPresentationRequestedAt = ContinuousClock.now
-    }
-
-    /// Whether this window appearance was requested by ourselves.
-    ///
-    /// SwiftUI will on its own recreate the Window scene when "an App without windows is activated" (clicking the menu bar icon triggers it),
-    /// and such a revival must be closed on the spot. A time window rather than a one-shot flag is used to decide:
-    /// "registered within the last 3 seconds" counts -- a one-shot flag would linger on paths like
-    /// "click open again while the window is already open", while a time window heals itself naturally.
-    func isWindowPresentationExpected() -> Bool {
-        ContinuousClock.now - windowPresentationRequestedAt < .seconds(3)
     }
 
     /// The polling interval that should be used right now.
