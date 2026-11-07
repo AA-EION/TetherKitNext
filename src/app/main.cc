@@ -126,6 +126,24 @@ void ApplyLanguageOption(int argc, char** argv) {
   return value;
 }
 
+/// A number no larger than `maximum`. Silently truncating would act on the wrong value
+/// (e.g. `--vid 10002` as 0x0002, or a KiB size that wraps to a tiny buffer).
+[[nodiscard]] Result<std::uint32_t> ParseBoundedUint(std::string_view text, std::uint32_t maximum,
+                                                     int base = 10) {
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, base));
+  if (value > maximum) {
+    return std::unexpected(Error::Generic(Tr(Msg::kCliParseNumberFailed, text)));
+  }
+  return value;
+}
+
+/// A size in KiB, returned in bytes.
+[[nodiscard]] Result<std::uint32_t> ParseKilobytes(std::string_view text) {
+  constexpr std::uint32_t kMaxKilobytes = 0xFFFF'FFFFU / 1024;
+  TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseBoundedUint(text, kMaxKilobytes));
+  return kilobytes * 1024;
+}
+
 [[nodiscard]] Result<LogLevel> ParseLogLevel(std::string_view text) {
   if (text == "trace") {
     return LogLevel::kTrace;
@@ -195,13 +213,13 @@ struct ParsedArguments {
 
     if (argument == "--vid") {
       TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseBoundedUint(text, 0xFFFF, 16));
       parsed.config.device_filter.vendor_id = static_cast<std::uint16_t>(value);
       continue;
     }
     if (argument == "--pid") {
       TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseUint(text, 16));
+      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto value, ParseBoundedUint(text, 0xFFFF, 16));
       parsed.config.device_filter.product_id = static_cast<std::uint16_t>(value);
       continue;
     }
@@ -222,14 +240,14 @@ struct ParsedArguments {
     }
     if (argument == "--rx-transfer-kb") {
       TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
-      parsed.config.data_channel.rx_transfer_bytes = kilobytes * 1024;
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.data_channel.rx_transfer_bytes,
+                                     ParseKilobytes(text));
       continue;
     }
     if (argument == "--max-transfer-kb") {
       TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
-      parsed.config.rndis.host_max_transfer_size = kilobytes * 1024;
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.rndis.host_max_transfer_size,
+                                     ParseKilobytes(text));
       continue;
     }
     if (argument == "--max-tx-packets") {
@@ -239,8 +257,7 @@ struct ParsedArguments {
     }
     if (argument == "--bpf-buffer-kb") {
       TETHERKITNEXT_ASSIGN_OR_RETURN(const auto text, take_value(i, argument));
-      TETHERKITNEXT_ASSIGN_OR_RETURN(const auto kilobytes, ParseUint(text));
-      parsed.config.bpf.kernel_buffer_bytes = kilobytes * 1024;
+      TETHERKITNEXT_ASSIGN_OR_RETURN(parsed.config.bpf.kernel_buffer_bytes, ParseKilobytes(text));
       continue;
     }
     if (argument == "--stats") {

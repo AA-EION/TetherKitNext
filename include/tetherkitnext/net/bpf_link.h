@@ -79,7 +79,8 @@ struct BpfConfig {
   ///
   /// This is the capacity of the FrameView array. A 4 MiB buffer can hold at most about 4Mi/32 ≈ 131k minimum-size
   /// frames (64-byte frame + 18-byte header + alignment), but in practice they will not all be minimum-size; 8192 covers
-  /// the vast majority of batches, and the excess is left to be parsed after the next read.
+  /// the vast majority of batches. Records beyond the limit are **dropped** (the read has already
+  /// copied them out of the kernel; ReadFrames logs kNetBpfBatchFrameLimit), so keep this large.
   std::size_t max_frames_per_batch = 8192;
 
   /// Whether to try enabling batch writes (BIOCSBATCHWRITE, macOS 14+).

@@ -78,8 +78,8 @@ std::string Why(const T& result) {
 /// MessageBuilder stringifies a `const char*` as a pointer, and streaming it in directly would print an address.
 void ReportSkip(std::string_view what) {
   const std::string message =
-      std::format("跳过 {}：需要 root 且需设置 TETHERKITNEXT_ROOT_TESTS=1（当前 euid={}）", what,
-                  IsRunningAsRoot() ? "0" : "非 0");
+      std::format("skipping {}: needs root and TETHERKITNEXT_ROOT_TESTS=1 (current euid={})", what,
+                  IsRunningAsRoot() ? "0" : "non-zero");
   MESSAGE(message);
 }
 
@@ -124,7 +124,7 @@ constexpr const char* kArpProbeIp = "10.99.99.2";   ///< The asker we impersonat
 
   if (!fill(request.ifra_addr, address) || !fill(request.ifra_mask, netmask)) {
     ::close(fd);
-    return "inet_pton 失败";
+    return "inet_pton failed";
   }
 
   const int result = ::ioctl(fd, SIOCAIFADDR, &request);
@@ -197,7 +197,7 @@ std::vector<std::byte> MakeArpRequest(const MacAddress& sender_mac, const char* 
 
 TEST_SUITE("net.abi") {
 
-TEST_CASE("私有 ABI 的结构体大小与 ioctl 编号与实测值一致") {
+TEST_CASE("private ABI struct sizes and ioctl numbers match the measured values") {
   // These are all static_asserts, and compiling means they hold; here they are confirmed once more at runtime,
   // making the ABI assumptions **visible** in the test report.
   CHECK(sizeof(IfDrv) == 40);
@@ -211,7 +211,7 @@ TEST_CASE("私有 ABI 的结构体大小与 ioctl 编号与实测值一致") {
   CHECK(static_cast<unsigned long>(FethGetCommand::kGetPeer) == 1);
 }
 
-TEST_CASE("BPF 记录头的大小陷阱：sizeof 是 20 但 bh_hdrlen 是 18") {
+TEST_CASE("BPF record header size trap: sizeof is 20 but bh_hdrlen is 18") {
   // This is where BPF parsing most easily goes wrong; pin it down with a test.
   CHECK(sizeof(struct bpf_hdr) == 20);
   CHECK(sizeof(struct BPF_TIMEVAL) == 8);
@@ -221,7 +221,7 @@ TEST_CASE("BPF 记录头的大小陷阱：sizeof 是 20 但 bh_hdrlen 是 18") {
   CHECK(BPF_WORDALIGN(14 + kBpfHeaderMinBytes) - 14 == kBpfHeaderMinBytes);
 }
 
-TEST_CASE("feth 创建期 sysctl 清单非空且都有说明") {
+TEST_CASE("the feth creation-time sysctl list is non-empty and documented") {
   CHECK(std::size(kRequiredFethSysctls) > 0);
   for (const RequiredFethSysctl& entry : kRequiredFethSysctls) {
     CHECK(entry.name != nullptr);
@@ -239,14 +239,14 @@ TEST_CASE("feth 创建期 sysctl 清单非空且都有说明") {
 
 TEST_SUITE("net.loopback") {
 
-TEST_CASE("空队列读取返回空批次") {
+TEST_CASE("reading an empty queue returns an empty batch") {
   LoopbackLink link;
   const auto batch = link.ReadFrames();
   REQUIRE(batch.has_value());
   CHECK(batch->frames.empty());
 }
 
-TEST_CASE("注入的帧能按 FIFO 顺序读出") {
+TEST_CASE("injected frames are read in FIFO order") {
   LoopbackLink link;
   for (std::uint8_t i = 0; i < 5; ++i) {
     REQUIRE(link.PushInbound(MakeEthernetFrame(100, i)));
@@ -261,7 +261,7 @@ TEST_CASE("注入的帧能按 FIFO 顺序读出") {
   }
 }
 
-TEST_CASE("单批读取受 max_frames_per_batch 限制，剩余留到下一批") {
+TEST_CASE("a batch read is capped at max_frames_per_batch; the rest waits for the next batch") {
   LoopbackLink link(LoopbackConfig{.max_frames_per_batch = 3});
   for (std::uint8_t i = 0; i < 7; ++i) {
     REQUIRE(link.PushInbound(MakeEthernetFrame(64, i)));
@@ -279,7 +279,7 @@ TEST_CASE("单批读取受 max_frames_per_batch 限制，剩余留到下一批")
   CHECK(third->frames.size() == 1);
 }
 
-TEST_CASE("注入队列满时丢弃并计数") {
+TEST_CASE("a full injection queue drops and counts") {
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 2});
   CHECK(link.PushInbound(MakeEthernetFrame(64, 1)));
   CHECK(link.PushInbound(MakeEthernetFrame(64, 2)));
@@ -287,13 +287,13 @@ TEST_CASE("注入队列满时丢弃并计数") {
   CHECK(link.InboundDrops() == 1);
 }
 
-TEST_CASE("超长帧被拒绝注入") {
+TEST_CASE("oversized frames cannot be injected") {
   LoopbackLink link(LoopbackConfig{.max_frame_bytes = 128});
   CHECK_FALSE(link.PushInbound(MakeEthernetFrame(129, 1)));
   CHECK(link.InboundDrops() == 1);
 }
 
-TEST_CASE("写出的帧可被取回，内容完整") {
+TEST_CASE("written frames can be read back intact") {
   LoopbackLink link;
   const auto frame_a = MakeEthernetFrame(1514, 0xA1);
   const auto frame_b = MakeEthernetFrame(64, 0xB2);
@@ -319,7 +319,7 @@ TEST_CASE("写出的帧可被取回，内容完整") {
   CHECK(link.DrainSent().empty());
 }
 
-TEST_CASE("写出时跳过过短与过长的帧") {
+TEST_CASE("writes skip frames that are too short or too long") {
   LoopbackLink link(LoopbackConfig{.max_frame_bytes = 200});
   const auto too_short = MakeEthernetFrame(14, 1);
   std::vector<std::byte> shorter(13);
@@ -342,7 +342,7 @@ TEST_CASE("写出时跳过过短与过长的帧") {
   CHECK(minimal_result->frames_written == 1);
 }
 
-TEST_CASE("写出队列满时停止写入，如实反映已写数") {
+TEST_CASE("writing stops when the output queue is full and reports the true count") {
   LoopbackLink link(LoopbackConfig{.sent_capacity = 2});
   const auto frame = MakeEthernetFrame(64, 1);
   std::vector<FrameView> batch(5, FrameView{.data = frame.data(), .length = 64});
@@ -351,7 +351,7 @@ TEST_CASE("写出队列满时停止写入，如实反映已写数") {
   CHECK(result->frames_written == 2);
 }
 
-TEST_CASE("Interrupt 后读取立即返回空批次") {
+TEST_CASE("after Interrupt, reads return an empty batch immediately") {
   LoopbackLink link;
   REQUIRE(link.PushInbound(MakeEthernetFrame(64, 1)));
   link.Interrupt();
@@ -361,7 +361,7 @@ TEST_CASE("Interrupt 后读取立即返回空批次") {
   CHECK(batch->frames.empty());
 }
 
-TEST_CASE("可以注入写失败以测试错误传播") {
+TEST_CASE("write failures can be injected to test error propagation") {
   LoopbackLink link;
   link.FailWritesAfter(1);  // 1st succeeds, fails from the 2nd on
   const auto frame = MakeEthernetFrame(64, 1);
@@ -371,7 +371,7 @@ TEST_CASE("可以注入写失败以测试错误传播") {
   CHECK_FALSE(link.WriteFrames(batch).has_value());
 }
 
-TEST_CASE("空批次写入是合法的空操作") {
+TEST_CASE("writing an empty batch is a valid no-op") {
   LoopbackLink link;
   const auto result = link.WriteFrames({});
   REQUIRE(result.has_value());
@@ -382,7 +382,7 @@ TEST_CASE("空批次写入是合法的空操作") {
 
 TEST_SUITE("net.feth" * doctest::skip(false)) {
 
-TEST_CASE("查询 feth MTU 上限（只读 sysctl，无需 root）") {
+TEST_CASE("query the feth MTU limit (read-only sysctl, no root)") {
   const auto max_mtu = QueryFethMaxMtu();
   REQUIRE(max_mtu.has_value());
   // The kernel guarantees >= ETHERMTU(1500).
@@ -390,19 +390,19 @@ TEST_CASE("查询 feth MTU 上限（只读 sysctl，无需 root）") {
   MESSAGE(std::format("net.link.fake.max_mtu = {}", *max_mtu));
 }
 
-TEST_CASE("校验 feth 创建期 sysctl（只读，无需 root）") {
+TEST_CASE("check the feth creation-time sysctls (read-only, no root)") {
   const auto status = VerifyFethSysctls();
   if (!status) {
     // Not a test failure -- this machine's sysctl has been modified. Report it so that people know.
-    MESSAGE(std::format("本机 feth sysctl 不满足要求：{}", status.error().ToString()));
+    MESSAGE(std::format("this Mac's feth sysctls do not meet the requirements: {}", status.error().ToString()));
   }
   // Passing as long as it can be read; the specific value depends on the machine configuration.
   CHECK(true);
 }
 
-TEST_CASE("非 root 环境下创建 feth 必须给出明确的权限错误") {
+TEST_CASE("creating feth without root gives a clear permission error") {
   if (IsRunningAsRoot()) {
-    MESSAGE("当前以 root 运行，跳过权限错误检查");
+    MESSAGE("running as root; skipping the permission-error check");
     return;
   }
   const auto pair = FethPair::Create(1500);
@@ -412,15 +412,15 @@ TEST_CASE("非 root 环境下创建 feth 必须给出明确的权限错误") {
   CHECK((message.find("root") != std::string::npos || message.find("sudo") != std::string::npos));
 }
 
-TEST_CASE("MAC 格式化") {
+TEST_CASE("MAC formatting") {
   const MacAddress mac{0x66, 0x65, 0x74, 0x68, 0x00, 0x00};
   // The kernel assigned exactly this address to feth0 ('f','e','t','h', unit>>8, unit&0xff).
   CHECK(std::string{FormatMac(mac).data()} == "66:65:74:68:00:00");
 }
 
-TEST_CASE("完整生命周期：创建、配对、设 MTU/MAC、UP、销毁") {
+TEST_CASE("full lifecycle: create, pair, set MTU/MAC, up, destroy") {
   if (!RootTestsEnabled()) {
-    ReportSkip("feth 完整生命周期测试");
+    ReportSkip("feth full-lifecycle test");
     return;
   }
 
@@ -430,7 +430,7 @@ TEST_CASE("完整生命周期：创建、配对、设 MTU/MAC、UP、销毁") {
 
   const std::string system_name{pair->SystemSide().Name()};
   const std::string driver_name{pair->DriverSide().Name()};
-  MESSAGE(std::format("创建了 {} ←→ {}", system_name, driver_name));
+  MESSAGE(std::format("created {} <-> {}", system_name, driver_name));
 
   // The pairing relationship holds in both directions.
   const auto driver_peer = pair->DriverSide().QueryPeer();
@@ -457,9 +457,9 @@ TEST_CASE("完整生命周期：创建、配对、设 MTU/MAC、UP、销毁") {
   CHECK(pair->DriverSide().IsUp().value_or(false));
 }
 
-TEST_CASE("BPF 打开配置全流程，并验证方向语义与回环抑制") {
+TEST_CASE("full BPF open/configure flow, checking direction semantics and loop suppression") {
   if (!RootTestsEnabled()) {
-    ReportSkip("BPF 收发测试");
+    ReportSkip("BPF send/receive test");
     return;
   }
 
@@ -470,9 +470,9 @@ TEST_CASE("BPF 打开配置全流程，并验证方向语义与回环抑制") {
   auto link = BpfLink::Open(pair->DriverSide().Name(), BpfConfig{});
   REQUIRE_MESSAGE(link.has_value(), Why(link));
 
-  MESSAGE(std::format("BPF 设备 {}，内核缓冲 {} 字节，批量写 {}", (*link)->DevicePath(),
+  MESSAGE(std::format("BPF device {}, kernel buffer {} bytes, batch write {}", (*link)->DevicePath(),
                       (*link)->KernelBufferBytes(),
-                      (*link)->SupportsBatchWrite() ? "可用" : "不可用"));
+                      (*link)->SupportsBatchWrite() ? "available" : "unavailable"));
 
   // The buffer actually in effect in the kernel should not be 0, and should not exceed the 32 MiB upper limit.
   CHECK((*link)->KernelBufferBytes() > 0);
@@ -499,9 +499,9 @@ TEST_CASE("BPF 打开配置全流程，并验证方向语义与回环抑制") {
   }
 }
 
-TEST_CASE("ARP 往返闭环：BPF 写入的帧确实进了对侧 feth 的 IP 栈") {
+TEST_CASE("ARP round trip: frames written via BPF really reach the peer feth's IP stack") {
   if (!RootTestsEnabled()) {
-    ReportSkip("ARP 往返闭环测试");
+    ReportSkip("ARP round-trip test");
     return;
   }
 
@@ -548,11 +548,11 @@ TEST_CASE("ARP 往返闭环：BPF 写入的帧确实进了对侧 feth 的 IP 栈
   }
 
   // This one assertion is the core premise of the whole scheme: the peer IP stack **received and processed** the frame we wrote in.
-  CHECK_MESSAGE(saw_reply, "没有收到系统侧 feth 的 ARP reply —— BPF write 没能送达对侧 IP 栈");
+  CHECK_MESSAGE(saw_reply, "no ARP reply from the system-side feth: the BPF write did not reach the peer IP stack");
   if (saw_reply) {
     // The responder must be exactly the system-side feth, and not a frame from some other interface leaking in.
     CHECK(reply_mac == *system_mac);
-    MESSAGE(std::format("{} 宣称拥有 {}，MAC {}", pair->SystemSide().Name(), kArpSystemIp,
+    MESSAGE(std::format("{} claims {}, MAC {}", pair->SystemSide().Name(), kArpSystemIp,
                         FormatMac(reply_mac).data()));
   }
 }

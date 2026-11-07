@@ -1,0 +1,110 @@
+# macOS 27 Golden Gate compatibility review
+
+Date: 2026-11-07 · Sources: Apple's [macOS 27](https://developer.apple.com/documentation/macos-release-notes/macos-27-release-notes),
+[27.2](https://developer.apple.com/documentation/macos-release-notes/macos-27_2-release-notes) and
+[27.3 beta](https://developer.apple.com/documentation/macos-release-notes/macos-27_3-release-notes) release notes.
+
+Every release-note item that touches something TetherKitNext uses was checked
+against the code. **None of the documented changes breaks TetherKitNext.**
+One item (launchd and quarantined property lists) needs a check on a real
+machine before release, because the notes don't say whether it covers
+`SMAppService` daemons inside a notarized app.
+
+## How support is verified
+
+| Layer | How | Status |
+|---|---|---|
+| C++ driver builds with `-Werror`, all CTest suites pass | CI `native` job on the `xcode-27` runner (macOS 27, Apple silicon) | Automated |
+| Private kernel ABI (`if_fake` peer pairing, BPF private ioctls) | CI `abi-check` job on `xcode-27`: creates, pairs and destroys a real `feth` pair as root | Automated |
+| GUI builds against the macOS 27 SDK (Swift 6, Xcode 27's `@State` macro) and its unit tests pass | CI `gui-macos-27` job | Automated |
+| The bundled app launches and stays up | CI `gui-macos-27` launch smoke test | Automated |
+| Real RNDIS session (Android phone) on macOS 27 | Manual, on hardware | **Open** |
+| Downloaded, notarized DMG installs and the background component registers | Manual, on hardware | **Open** (see launchd item) |
+
+Say "runs on macOS 27 Golden Gate" once all CI jobs above are green **and**
+the two manual items are ticked.
+
+## Known issue: building with the macOS 27 SDK
+
+A libusb built on the macOS 27 runner (Xcode 27, macOS 27 SDK,
+`MIN_MACOS=13.3`) **segfaults during USB device enumeration on macOS 15 and
+26**; the same library built with Xcode 26 works on all of them, and the
+Xcode 27 build works on macOS 27. CI hit this when the jobs shared a libusb
+cache. Until the cause is found:
+
+* Release and packaging builds select **Xcode 26** explicitly
+  (`ci.yml` `package`, `release.yml`).
+* The libusb cache key includes the SDK and OS version.
+* The DMG smoke test on `macos-15` runs `tetherkitnext-cli --list`, which
+  enumerates USB devices, so a release built with the wrong toolchain fails CI.
+
+This affects only how we *build*; running the Xcode 26 build on macOS 27 is
+what the `xcode-27` CI jobs test.
+
+## Release-note items reviewed
+
+| Area (release note) | What changed | Impact on TetherKitNext |
+|---|---|---|
+| **Launch Daemons and Agents** (166415497) | `launchd` no longer loads property lists that carry the quarantine extended attribute. | **Verify on hardware.** Our daemon plist ships inside the app (`Contents/Library/LaunchDaemons/`) and is registered with `SMAppService`; a DMG download marks the bundle's files quarantined. The notes don't say whether `SMAppService` bundle plists of notarized apps are exempt. Test: download the notarized DMG in Safari, install, open, enable the background component, connect. If it fails, `xattr -dr com.apple.quarantine /Applications/TetherKitNext.app` confirms the cause; the fix would be in the installer flow, not the driver. |
+| **Accessory Access** (new framework) | Consent-based USB accessory access for `IOUSBHost` clients, mainly sandboxed apps and virtualization. | None documented. It is opt-in for apps that adopt it; nothing in the notes restricts IOKit user-client access for unsandboxed processes, which is what libusb uses. Covered by the hardware session test. |
+| **Rosetta / Deprecation Information** | macOS 27 is the last release that runs Intel apps (Intel apps show a notice in Get Info); Rosetta is not restored after upgrading. | None. The app is universal, so Apple silicon runs the arm64 slice natively and no notice is shown. The x86_64 slice stays for Intel Macs on earlier macOS. |
+| **AppKit / SwiftUI menus** (170477566, 170480710, 179374305) | Apps linked against the macOS 26 SDK or later hide symbol images in menu items by default. | None. Our app and context menus are text-only; the menu bar extra uses a window-style panel, not a menu. This now applies to us because the app is stamped with the macOS 26+ SDK (see below). |
+| **SwiftUI `@State` macro** (105893279, Xcode 27) | `@State` becomes a macro. A value set both at the declaration and in an initializer no longer compiles, and neither does the synthesized private memberwise init. | None found: every `@State` has an initial value and no initializer assigns it. The `gui-macos-27` CI job compiles the GUI with Xcode 27. |
+| **System Integrity Protection / TCC** | Other teams' app containers are denied by default; the TCC database can't be read directly. | None. We touch neither. |
+| **Network Security** (176055825) | Stricter TLS requirements for system MDM / install / update processes. | None. Only system processes are affected. Our one outbound call (the optional GitHub release check) is TLS 1.3. |
+| **DriverKit / SCSIControllerDriverKit** (27.3) | API additions and deprecations. | None. We ship no driver extension. |
+| **NEURLFilter** (27.3) | Info.plist requirements for URL filter providers. | None. We ship no network extension. |
+
+## Related change: SDK stamp and window chrome
+
+macOS 26 and later choose the window chrome (traffic-light size and spacing,
+title bar metrics, Liquid Glass) from the `sdk` field of the executable's
+`LC_BUILD_VERSION`, not from what the code was compiled against. A SwiftPM
+link can stamp the deployment target (14.0) there, which gives the whole app
+the compatibility look. `gui/Scripts/build-gui.sh` now reads the stamp after
+linking. If it is older than the SDK in use, the script rewrites only `sdk`
+with `vtool`, using the SDK version actually in use (nothing hard-coded);
+`minos` stays 14.0. The script then fails the build if the shipped binary
+isn't stamped with SDK 26 or later. Check it on any build:
+
+```bash
+otool -l dist/TetherKitNext.app/Contents/MacOS/TetherKitNext | grep -A4 LC_BUILD_VERSION
+```
+
+## Backward compatibility of this change
+
+Deployment targets are unchanged: the app needs macOS 14.0
+(`LSMinimumSystemVersion`, `platforms: [.macOS(.v14)]`); the CLI and
+`libtetherkitnext` need 13.3. Every API this change adds was checked against
+Apple's availability data:
+
+| API | Introduced | Used in |
+|---|---|---|
+| `NSHostingController.sceneBridgingOptions` | macOS 14.0 | `MainWindowController` |
+| `NSHostingController.sizingOptions`, `.minSize` | macOS 13.0 | `MainWindowController` |
+| `NSWindow.toolbarStyle` | macOS 11.0 | `MainWindowController` |
+| `NSApplication.activate()` | macOS 14.0 | `MainWindowController.present` (already used before) |
+| `Scene.commands` on `MenuBarExtra` | macOS 13.0 (`MenuBarExtra`) | `TetherKitNextApplication` |
+| `ContinuousClock`, `Duration.components` | macOS 13.0 | `InterfaceMonitor` |
+| `UnsafeRawPointer.loadUnaligned` | inlinable, back-deploys to all | `InterfaceSampler.counters64` |
+| `getifaddrs`, `NET_RT_IFLIST2` / `if_msghdr2`, `if_indextoname` | Mac OS X era | `InterfaceSampler` |
+| `POSIX_SPAWN_CLOEXEC_DEFAULT`, `posix_spawn_file_actions_addopen` | Mac OS X 10.7 | `process_runner.cc` |
+
+Behavior notes for older systems:
+
+* **SDK stamp.** Rewriting `sdk` to 26.x matches what an Xcode-built app
+  carries. On macOS 14/15 it only turns on behaviors those releases gate on
+  "linked on 14/15 or later", which the code (compiled with the 26 SDK)
+  already expects. `minos` stays 14.0, so the launch floor is unchanged.
+* **Persisted state.** The sidebar selection moved from `@SceneStorage` to a
+  new `@AppStorage` key and the window frame to a new autosave name. On the
+  first launch after upgrading, the app opens on Overview at the default size.
+* **CLI.** The only C++ change is the spawn flag and stdin. It is covered by
+  `capi.process` tests (no inherited descriptor; stdin is EOF), which run in
+  CI on macOS 15 (arm64 and Intel), 26 and 27.
+
+Runtime coverage in CI: the shipped universal DMG is installed and its GUI
+launched on `macos-15` (arm64) and `macos-15-intel`, and built and launched
+on macOS 27. GitHub has no macOS 13 or 14 runners, so **macOS 14 needs a
+manual launch check** (window opens, sidebar and toolbar render, ⌘W, reopen
+from the menu bar), and so does the CLI on macOS 13.3.

@@ -84,7 +84,7 @@ bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = std::chron
 
 TEST_SUITE("core.bridge") {
 
-TEST_CASE("启动与停止：线程正常起停，停机时通道被关闭") {
+TEST_CASE("start and stop: threads start and stop, and channels close on shutdown") {
   MockDataChannel channel;
   LoopbackLink link;
   Bridge bridge(channel, link, TestConfig());
@@ -105,7 +105,7 @@ TEST_CASE("启动与停止：线程正常起停，停机时通道被关闭") {
   bridge.Stop();
 }
 
-TEST_CASE("RX 方向：设备发来的帧被搬到链路上，内容完整") {
+TEST_CASE("RX: frames from the device reach the link intact") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   Bridge bridge(channel, link, TestConfig());
@@ -131,7 +131,7 @@ TEST_CASE("RX 方向：设备发来的帧被搬到链路上，内容完整") {
   bridge.Stop();
 }
 
-TEST_CASE("TX 方向：链路收到的帧被提交给设备，内容完整") {
+TEST_CASE("TX: frames from the link reach the device intact") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -157,7 +157,7 @@ TEST_CASE("TX 方向：链路收到的帧被提交给设备，内容完整") {
   bridge.Stop();
 }
 
-TEST_CASE("双向同时跑，互不干扰") {
+TEST_CASE("both directions at once do not interfere") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 8192, .sent_capacity = 8192,
                                    .max_frames_per_batch = 64});
@@ -198,7 +198,7 @@ TEST_CASE("双向同时跑，互不干扰") {
   bridge.Stop();
 }
 
-TEST_CASE("RX 队列满时丢弃并计数，不阻塞生产者") {
+TEST_CASE("a full RX queue drops and counts without blocking the producer") {
   MockDataChannel channel;
   // The link's write capacity is set very small, so the RX injection thread cannot write out and the queue fills up quickly.
   LoopbackLink link(LoopbackConfig{.sent_capacity = 8});
@@ -221,7 +221,7 @@ TEST_CASE("RX 队列满时丢弃并计数，不阻塞生产者") {
   bridge.Stop();
 }
 
-TEST_CASE("TX 背压：传输池占满时等待而不丢弃，容量恢复后全部送达") {
+TEST_CASE("TX backpressure: waits instead of dropping when the pool is full, then delivers everything") {
   // This is a regression test for the root cause of dropped frames on real hardware: the old implementation immediately dropped the batch's remaining frames when SendFrames returned 0
   // (bridge.cc once had a wrong argument that "waiting turns into invisible kernel drops"),
   // dropping 30%+ of TX traffic at the door of the transfer pool under high load. The correct behavior is to wait for a slot to free up and then retry
@@ -272,7 +272,7 @@ TEST_CASE("TX 背压：传输池占满时等待而不丢弃，容量恢复后全
   bridge.Stop();
 }
 
-TEST_CASE("TX 背压：部分接纳时剩余帧重试送达，不丢不乱序") {
+TEST_CASE("TX backpressure: after a partial accept the rest is retried, with no loss or reordering") {
   // The pool is not full but cannot fit a whole slice at once (SendFrames partially accepts): the remaining frames must be retried in place.
   // At most 7 frames each time and a slice of 32 frames, forcing out the path of "multiple partial accepts completing one slice".
   MockDataChannel channel;
@@ -300,7 +300,7 @@ TEST_CASE("TX 背压：部分接纳时剩余帧重试送达，不丢不乱序") 
   bridge.Stop();
 }
 
-TEST_CASE("TX 背压：等待期间 Stop() 能及时返回") {
+TEST_CASE("TX backpressure: Stop() returns promptly while waiting") {
   // The backpressure wait introduces a new blocking point, and shutdown must not be stuck by it: the TX thread must re-check the shutdown flag on every wakeup (at most about
   // 50 ms).
   MockDataChannel channel;
@@ -327,7 +327,7 @@ TEST_CASE("TX 背压：等待期间 Stop() 能及时返回") {
   CHECK(bridge.Snapshot().tx.TotalDropped() > 0);
 }
 
-TEST_CASE("TX 背压：等待期间落下暂停，剩余帧被丢弃且线程存活") {
+TEST_CASE("TX backpressure: pausing while waiting drops the remaining frames and the thread survives") {
   // Pausing (RNDIS soft reset) takes priority over waiting: the device will discard outstanding packets anyway, and hoarding them is meaningless.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});
@@ -357,7 +357,7 @@ TEST_CASE("TX 背压：等待期间落下暂停，剩余帧被丢弃且线程存
   bridge.Stop();
 }
 
-TEST_CASE("暂停期间不搬运，恢复后 RX 队列里的帧继续送出") {
+TEST_CASE("nothing moves while paused; queued RX frames go out after resuming") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   Bridge bridge(channel, link, TestConfig());
@@ -383,7 +383,7 @@ TEST_CASE("暂停期间不搬运，恢复后 RX 队列里的帧继续送出") {
   bridge.Stop();
 }
 
-TEST_CASE("SetPaused 在任何生命周期阶段都不会挂死") {
+TEST_CASE("SetPaused never hangs at any lifecycle stage") {
   // SetPaused(true) waits for the RX injection thread to confirm it has stopped. This wait has two hang risks,
   // both far more severe than the frame-leak problem it is meant to fix (what hangs is the control path: link state changes, device soft reset):
   //   * when the thread is not running at all, nobody comes to set the acknowledgement bit;
@@ -421,7 +421,7 @@ TEST_CASE("SetPaused 在任何生命周期阶段都不会挂死") {
   CHECK(bridge.Paused());
 }
 
-TEST_CASE("暂停期间 TX 方向的帧被丢弃并计数") {
+TEST_CASE("TX frames are dropped and counted while paused") {
   // Unlike RX: the TX side must drop while paused, because during an RNDIS reset the device discards all outstanding
   // data packets, and hoarding them only wastes memory.
   MockDataChannel channel;
@@ -440,7 +440,7 @@ TEST_CASE("暂停期间 TX 方向的帧被丢弃并计数") {
   bridge.Stop();
 }
 
-TEST_CASE("链路写失败不会让线程退出，恢复后继续工作") {
+TEST_CASE("a failed link write does not stop the thread; it continues after recovery") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   link.FailWritesAfter(1);  // fail starting from the 2nd write
@@ -460,7 +460,7 @@ TEST_CASE("链路写失败不会让线程退出，恢复后继续工作") {
   bridge.Stop();
 }
 
-TEST_CASE("USB 提交失败被记为 I/O 错误，桥接层继续运行") {
+TEST_CASE("a failed USB submit counts as an I/O error and the bridge keeps running") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 512, .max_frames_per_batch = 64});
   Bridge bridge(channel, link, TestConfig());
@@ -477,9 +477,9 @@ TEST_CASE("USB 提交失败被记为 I/O 错误，桥接层继续运行") {
   bridge.Stop();
 }
 
-TEST_CASE("统计行渲染出速率与丢包") {
-  // The statistics line is user-facing text; the assertions below are in Chinese, so pin the language first.
-  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
+TEST_CASE("the stats line shows rates and drops") {
+  // The statistics line is user-facing text; pin the language the assertions below expect.
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kEnglish};
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.sent_capacity = 4096});
   Bridge bridge(channel, link, TestConfig());
@@ -496,12 +496,12 @@ TEST_CASE("统计行渲染出速率与丢包") {
   CHECK(line.find("TX") != std::string::npos);
   CHECK(line.find("pps") != std::string::npos);
   CHECK(line.find("Mbps") != std::string::npos);
-  CHECK(line.find("队列深度") != std::string::npos);
+  CHECK(line.find("queue depth") != std::string::npos);
 
   bridge.Stop();
 }
 
-TEST_CASE("停机时不丢已在队列里的统计，且能在有流量时安全停下") {
+TEST_CASE("shutdown keeps queued statistics and stops safely under traffic") {
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 8192, .sent_capacity = 8192,
                                    .max_frames_per_batch = 64});

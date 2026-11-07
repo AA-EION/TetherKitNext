@@ -1,4 +1,4 @@
-// Log capture: buffers the library's internal log lines for the GUI to poll and take away.
+// Log capture: buffers the library's internal log lines for the GUI to poll and drain.
 //
 // Why not pass through to Swift via a callback: logs come up from the libusb event thread, the control thread and the two data-path
 // threads, and are produced **inside** the log mutex. Running a Swift closure in that context

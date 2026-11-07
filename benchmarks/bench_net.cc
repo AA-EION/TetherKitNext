@@ -130,7 +130,7 @@ std::vector<std::byte> MakeArpRequest() {
   };
   if (!fill(request.ifra_addr, address) || !fill(request.ifra_mask, "255.255.255.0")) {
     ::close(fd);
-    return "inet_pton 失败";
+    return "inet_pton failed";
   }
   const int result = ::ioctl(fd, SIOCAIFADDR, &request);
   const int saved_errno = errno;
@@ -245,7 +245,7 @@ std::uint64_t BenchArpRoundTrip(std::uint64_t iterations) {
 
 bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
   if (!net::IsRunningAsRoot()) {
-    skip_reason = "需要 root（要建 feth 网卡对并打开 /dev/bpf*）";
+    skip_reason = "needs root (creates a feth pair and opens /dev/bpf*)";
     return false;
   }
 
@@ -253,14 +253,14 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
 
   auto pair = net::FethPair::Create(1500);
   if (!pair) {
-    skip_reason = std::format("创建 feth 网卡对失败：{}", pair.error().ToString());
+    skip_reason = std::format("creating the feth pair failed: {}", pair.error().ToString());
     return false;
   }
   fixture.pair = std::make_unique<net::FethPair>(std::move(*pair));
 
   const std::string assign_error = AssignIpv4(fixture.pair->SystemSide().Name(), kSystemIp);
   if (!assign_error.empty()) {
-    skip_reason = std::format("给系统侧配地址失败：{}", assign_error);
+    skip_reason = std::format("assigning the system-side address failed: {}", assign_error);
     return false;
   }
 
@@ -277,7 +277,7 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
   fixture.system_link = open(fixture.pair->SystemSide().Name(), true);
   if (fixture.driver_perframe == nullptr || fixture.driver_batched == nullptr ||
       fixture.system_link == nullptr) {
-    skip_reason = "打开 BPF 描述符失败";
+    skip_reason = "opening a BPF descriptor failed";
     return false;
   }
   fixture.batch_write_available = fixture.driver_batched->SupportsBatchWrite();
@@ -288,12 +288,12 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
   constexpr std::uint64_t kWriteOps = 20000;
   constexpr std::uint64_t kReadOps = 20000;
 
-  runner.Add("BPF 写入（逐帧 write）", "1514 字节",
+  runner.Add("BPF write (per-frame write)", "1514 bytes",
              Config{.ops_per_round = kWriteOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) {
                return BenchWrite(*g_fixture->driver_perframe, n, kFullFrameBytes, 1);
              });
-  runner.Add("BPF 写入（逐帧 write）", "64 字节",
+  runner.Add("BPF write (per-frame write)", "64 bytes",
              Config{.ops_per_round = kWriteOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) {
                return BenchWrite(*g_fixture->driver_perframe, n, kSmallFrameBytes, 1);
@@ -301,26 +301,26 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
 
   if (fixture.batch_write_available) {
     for (const std::uint32_t per_write : {8U, 32U, 64U, 128U}) {
-      runner.Add("BPF 写入（BIOCSBATCHWRITE）", std::format("1514 字节 × 每次 {} 帧", per_write),
+      runner.Add("BPF write (BIOCSBATCHWRITE)", std::format("1514 bytes × {} frames per write", per_write),
                  Config{.ops_per_round = kWriteOps, .bytes_per_op = kFullFrameBytes},
                  [per_write](std::uint64_t n) {
                    return BenchWrite(*g_fixture->driver_batched, n, kFullFrameBytes, per_write);
                  });
     }
-    runner.Add("BPF 写入（BIOCSBATCHWRITE）", "64 字节 × 每次 64 帧",
+    runner.Add("BPF write (BIOCSBATCHWRITE)", "64 bytes × 64 frames per write",
                Config{.ops_per_round = kWriteOps, .bytes_per_op = kSmallFrameBytes},
                [](std::uint64_t n) {
                  return BenchWrite(*g_fixture->driver_batched, n, kSmallFrameBytes, 64);
                });
   }
 
-  runner.Add("feth 往返（写+读合计）", "1514 字节 × 每批 64 帧",
+  runner.Add("feth round trip (write + read)", "1514 bytes × 64 frames per batch",
              Config{.ops_per_round = kReadOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchWriteThenRead(n, kFullFrameBytes, 64); });
 
   // The round-trip latency is only run a few hundred times: each one has to wait for the peer IP stack to really answer, and is an operation under a millisecond yet far slower than
   // the previous items; running too many gives no extra information.
-  runner.Add("feth 往返延迟", "ARP 请求 → 系统侧 IP 栈应答", Config{.ops_per_round = 200},
+  runner.Add("feth round-trip latency", "ARP request → system-side IP stack reply", Config{.ops_per_round = 200},
              [](std::uint64_t n) { return BenchArpRoundTrip(n); });
 
   return true;

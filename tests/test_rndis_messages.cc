@@ -63,7 +63,7 @@ TEST_SUITE("rndis.messages") {
 // Constant self-checks
 // ---------------------------------------------------------------------------
 
-TEST_CASE("协议常量与规范一致") {
+TEST_CASE("protocol constants match the spec") {
   CHECK(ToRaw(MessageType::kPacket) == 0x0000'0001U);
   CHECK(ToRaw(MessageType::kInitialize) == 0x0000'0002U);
   CHECK(ToRaw(MessageType::kInitializeComplete) == 0x8000'0002U);
@@ -90,7 +90,7 @@ TEST_CASE("协议常量与规范一致") {
   CHECK(kHardHeaderBytes == 58);
 }
 
-TEST_CASE("偏移基准点常量：DataOffset 内联值必须是 36 而不是 44") {
+TEST_CASE("offset base: the inline DataOffset must be 36, not 44") {
   // This is RNDIS's number one trap: the base point of offset fields is message start +8.
   CHECK(kPacketInlineDataOffset == 36);
   CHECK(kPacketMsgHeaderBytes == 44);
@@ -99,13 +99,13 @@ TEST_CASE("偏移基准点常量：DataOffset 内联值必须是 36 而不是 44
   CHECK(kQueryCmpltInlineInfoOffset == 16);
 }
 
-TEST_CASE("MaxTransferSize 推导与 Linux 一致") {
+TEST_CASE("MaxTransferSize is derived as on Linux") {
   CHECK(MaxTransferSizeFor(1500, 512) == 2048);  // high speed
   CHECK(MaxTransferSizeFor(1500, 64) == 1600);   // full speed
   CHECK(HardMtuFor(1500) == 1558);
 }
 
-TEST_CASE("状态码与 OID 的名字可查") {
+TEST_CASE("status codes and OIDs have names") {
   CHECK(StatusName(0xC000'00BBU) == "RNDIS_STATUS_NOT_SUPPORTED");
   CHECK(StatusName(0x4001'000BU) == "RNDIS_STATUS_MEDIA_CONNECT");
   CHECK(StatusName(0xDEAD'BEEFU).empty());
@@ -118,7 +118,7 @@ TEST_CASE("状态码与 OID 的名字可查") {
   CHECK_FALSE(IsCondis(ToRaw(MessageType::kPacket)));
 }
 
-TEST_CASE("变长与定长 OID 的区分") {
+TEST_CASE("variable- vs fixed-length OIDs") {
   CHECK(IsVariableLengthOid(Oid::kGenSupportedList));
   CHECK(IsVariableLengthOid(Oid::kGenVendorDescription));
   CHECK_FALSE(IsVariableLengthOid(Oid::kEthernetPermanentAddress));
@@ -129,7 +129,7 @@ TEST_CASE("变长与定长 OID 的区分") {
 // INITIALIZE
 // ---------------------------------------------------------------------------
 
-TEST_CASE("编码 INITIALIZE_MSG") {
+TEST_CASE("encode INITIALIZE_MSG") {
   std::array<std::byte, 64> buffer{};
   const auto written = Encode(
       InitializeRequest{.request_id = 7, .max_transfer_size = 2048}, buffer);
@@ -144,12 +144,12 @@ TEST_CASE("编码 INITIALIZE_MSG") {
   CHECK(LoadLe32(buffer.data() + kInitializeMaxTransferSizeOffset) == 2048);
 }
 
-TEST_CASE("编码 INITIALIZE_MSG 缓冲不足时报错") {
+TEST_CASE("encoding INITIALIZE_MSG into a short buffer fails") {
   std::array<std::byte, 16> too_small{};
   CHECK_FALSE(Encode(InitializeRequest{}, too_small).has_value());
 }
 
-TEST_CASE("解码 INITIALIZE_CMPLT") {
+TEST_CASE("decode INITIALIZE_CMPLT") {
   const auto buffer = MakeInitializeComplete();
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -160,7 +160,7 @@ TEST_CASE("解码 INITIALIZE_CMPLT") {
   CHECK(complete->max_packets_per_message == 1);
 }
 
-TEST_CASE("解码 INITIALIZE_CMPLT：设备返回失败状态") {
+TEST_CASE("decode INITIALIZE_CMPLT: device returns a failure status") {
   const auto buffer = MakeInitializeComplete(2048, 1, 0, ToRaw(StatusCode::kFailure));
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE_FALSE(complete.has_value());
@@ -169,29 +169,29 @@ TEST_CASE("解码 INITIALIZE_CMPLT：设备返回失败状态") {
   CHECK(complete.error().ToString().find("RNDIS_STATUS_FAILURE") != std::string::npos);
 }
 
-TEST_CASE("解码 INITIALIZE_CMPLT：畸形输入一律报错不崩溃") {
-  SUBCASE("缓冲区太短") {
+TEST_CASE("decode INITIALIZE_CMPLT: malformed input errors without crashing") {
+  SUBCASE("buffer too short") {
     std::array<std::byte, 8> tiny{};
     StoreLe32(tiny.data(), ToRaw(MessageType::kInitializeComplete));
     StoreLe32(tiny.data() + 4, kInitializeCmpltBytes);
     CHECK_FALSE(DecodeInitializeComplete(tiny).has_value());
   }
-  SUBCASE("消息类型不对") {
+  SUBCASE("wrong message type") {
     auto buffer = MakeInitializeComplete();
     StoreLe32(buffer.data() + kMessageTypeOffset, ToRaw(MessageType::kQueryComplete));
     CHECK_FALSE(DecodeInitializeComplete(buffer).has_value());
   }
-  SUBCASE("MessageLength 超出缓冲") {
+  SUBCASE("MessageLength beyond the buffer") {
     auto buffer = MakeInitializeComplete();
     StoreLe32(buffer.data() + kMessageLengthOffset, 0xFFFF'FFFFU);
     CHECK_FALSE(DecodeInitializeComplete(buffer).has_value());
   }
-  SUBCASE("MessageLength 小于最小长度") {
+  SUBCASE("MessageLength below the minimum") {
     auto buffer = MakeInitializeComplete();
     StoreLe32(buffer.data() + kMessageLengthOffset, 12);
     CHECK_FALSE(DecodeInitializeComplete(buffer).has_value());
   }
-  SUBCASE("空缓冲") {
+  SUBCASE("empty buffer") {
     CHECK_FALSE(DecodeInitializeComplete({}).has_value());
   }
 }
@@ -200,7 +200,7 @@ TEST_CASE("解码 INITIALIZE_CMPLT：畸形输入一律报错不崩溃") {
 // Negotiation and normalization of device quirks
 // ---------------------------------------------------------------------------
 
-TEST_CASE("协商：Android 主线 gadget 的典型参数") {
+TEST_CASE("negotiation: typical mainline Android gadget parameters") {
   const auto buffer = MakeInitializeComplete(2048, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -213,7 +213,7 @@ TEST_CASE("协商：Android 主线 gadget 的典型参数") {
   CHECK(params->tx_alignment_bytes == 1);  // factor 0 -> alignment of 1 byte
 }
 
-TEST_CASE("协商 quirk：MaxPacketsPerMessage 为 0 时按 1 处理") {
+TEST_CASE("negotiation quirk: MaxPacketsPerMessage 0 is treated as 1") {
   const auto buffer = MakeInitializeComplete(2048, 0, 0);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -222,7 +222,7 @@ TEST_CASE("协商 quirk：MaxPacketsPerMessage 为 0 时按 1 处理") {
   CHECK(params->max_packets_per_message == 1);
 }
 
-TEST_CASE("协商 quirk：PacketAlignmentFactor 越界时钳到 7") {
+TEST_CASE("negotiation quirk: an out-of-range PacketAlignmentFactor is clamped to 7") {
   const auto buffer = MakeInitializeComplete(2048, 1, 31);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -232,7 +232,7 @@ TEST_CASE("协商 quirk：PacketAlignmentFactor 越界时钳到 7") {
   CHECK(params->tx_alignment_bytes == 128);
 }
 
-TEST_CASE("协商 quirk：高通聚合补丁报 MaxPacketsPerMessage=3") {
+TEST_CASE("negotiation quirk: the Qualcomm aggregation patch reports MaxPacketsPerMessage=3") {
   const auto buffer = MakeInitializeComplete(3 * 1580, 3, 2);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -242,7 +242,7 @@ TEST_CASE("协商 quirk：高通聚合补丁报 MaxPacketsPerMessage=3") {
   CHECK(params->tx_alignment_bytes == 4);  // 1 << 2
 }
 
-TEST_CASE("协商 quirk：设备 MaxTransferSize 小于满帧时下调 MTU") {
+TEST_CASE("negotiation quirk: the MTU drops when the device's MaxTransferSize cannot hold a full frame") {
   // Measured case: the HTC Diamond reports 1536, less than hard_mtu(1558).
   const auto buffer = MakeInitializeComplete(1536, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
@@ -252,7 +252,7 @@ TEST_CASE("协商 quirk：设备 MaxTransferSize 小于满帧时下调 MTU") {
   CHECK(params->mtu == 1536 - kHardHeaderBytes);  // 1478
 }
 
-TEST_CASE("协商 quirk：WinCE 报 16KB 巨帧时钳到 host 上限") {
+TEST_CASE("negotiation quirk: WinCE's 16 KB jumbo frames are clamped to the host limit") {
   const auto buffer = MakeInitializeComplete(16384, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
@@ -262,14 +262,14 @@ TEST_CASE("协商 quirk：WinCE 报 16KB 巨帧时钳到 host 上限") {
   CHECK(params->mtu == 1500);  // still fits a full frame, MTU unchanged
 }
 
-TEST_CASE("协商失败：MaxTransferSize 装不下头部") {
+TEST_CASE("negotiation fails: MaxTransferSize cannot hold the header") {
   const auto buffer = MakeInitializeComplete(40, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
   REQUIRE(complete.has_value());
   CHECK_FALSE(Negotiate(*complete, 1500, 65536).has_value());
 }
 
-TEST_CASE("协商失败：非以太网介质") {
+TEST_CASE("negotiation fails: non-Ethernet medium") {
   const auto buffer =
       MakeInitializeComplete(2048, 1, 0, 0, static_cast<std::uint32_t>(Medium::kWirelessLan));
   const auto complete = DecodeInitializeComplete(buffer);
@@ -277,7 +277,7 @@ TEST_CASE("协商失败：非以太网介质") {
   CHECK_FALSE(Negotiate(*complete, 1500, 65536).has_value());
 }
 
-TEST_CASE("协商失败：面向连接设备") {
+TEST_CASE("negotiation fails: connection-oriented device") {
   const auto buffer = MakeInitializeComplete(
       2048, 1, 0, 0, 0, static_cast<std::uint32_t>(DeviceFlags::kConnectionOriented));
   const auto complete = DecodeInitializeComplete(buffer);
@@ -289,7 +289,7 @@ TEST_CASE("协商失败：面向连接设备") {
 // QUERY / SET
 // ---------------------------------------------------------------------------
 
-TEST_CASE("编码 QUERY_MSG：定长 OID 必须带占位长度与尾部零字节") {
+TEST_CASE("encode QUERY_MSG: fixed-length OIDs carry a placeholder length and trailing zero bytes") {
   std::array<std::byte, 128> buffer{};
   const auto written = Encode(QueryRequest{.request_id = 3,
                                            .oid = Oid::kEthernetPermanentAddress,
@@ -305,7 +305,7 @@ TEST_CASE("编码 QUERY_MSG：定长 OID 必须带占位长度与尾部零字节
   CHECK(LoadLe32(buffer.data() + kQuerySetDeviceVcHandleOffset) == 0);
 }
 
-TEST_CASE("编码 QUERY_MSG：变长 OID 的长度必须为 0") {
+TEST_CASE("encode QUERY_MSG: variable-length OIDs have length 0") {
   // Undocumented behavior of ActiveSync: passing a non-zero length for a variable-length OID gets rejected.
   std::array<std::byte, 128> buffer{};
   const auto written = Encode(QueryRequest{.request_id = 4,
@@ -319,7 +319,7 @@ TEST_CASE("编码 QUERY_MSG：变长 OID 的长度必须为 0") {
   CHECK(LoadLe32(buffer.data() + kQuerySetInfoBufferOffsetOffset) == 0);
 }
 
-TEST_CASE("解码 QUERY_CMPLT：按 +8 基准点定位信息缓冲区") {
+TEST_CASE("decode QUERY_CMPLT: the information buffer is located from the +8 base") {
   auto buffer = MakeMessage(MessageType::kQueryComplete, kQueryCmpltHeaderBytes + 6);
   StoreLe32(buffer.data() + kQueryCmpltRequestIdOffset, 9);
   StoreLe32(buffer.data() + kQueryCmpltStatusOffset, 0);
@@ -340,7 +340,7 @@ TEST_CASE("解码 QUERY_CMPLT：按 +8 基准点定位信息缓冲区") {
   CHECK(*parsed == MacAddress{0x02, 0x11, 0x22, 0x33, 0x44, 0x55});
 }
 
-TEST_CASE("解码 QUERY_CMPLT：设备返回不支持时不算致命错误") {
+TEST_CASE("decode QUERY_CMPLT: 'not supported' from the device is not fatal") {
   // An optional OID (such as OID_GEN_PHYSICAL_MEDIUM) returning NOT_SUPPORTED is a normal situation,
   // and decoding must return successfully and hand the status to the caller to judge.
   auto buffer = MakeMessage(MessageType::kQueryComplete, kQueryCmpltHeaderBytes);
@@ -351,7 +351,7 @@ TEST_CASE("解码 QUERY_CMPLT：设备返回不支持时不算致命错误") {
   CHECK(complete->information.empty());
 }
 
-TEST_CASE("解码 QUERY_CMPLT：信息缓冲区越界必须报错") {
+TEST_CASE("decode QUERY_CMPLT: an out-of-bounds information buffer is an error") {
   auto buffer = MakeMessage(MessageType::kQueryComplete, kQueryCmpltHeaderBytes + 4);
   StoreLe32(buffer.data() + kQueryCmpltStatusOffset, 0);
   StoreLe32(buffer.data() + kQueryCmpltInfoBufferLengthOffset, 1024);  // lie
@@ -359,7 +359,7 @@ TEST_CASE("解码 QUERY_CMPLT：信息缓冲区越界必须报错") {
   CHECK_FALSE(DecodeQueryComplete(buffer).has_value());
 }
 
-TEST_CASE("编码 SET_MSG 与 SET 一个 LE32") {
+TEST_CASE("encode SET_MSG and SET an LE32") {
   std::array<std::byte, 64> buffer{};
   const auto written = EncodeSetUint32(11, Oid::kGenCurrentPacketFilter, kDefaultPacketFilter,
                                        buffer);
@@ -372,7 +372,7 @@ TEST_CASE("编码 SET_MSG 与 SET 一个 LE32") {
   CHECK(LoadLe32(buffer.data() + kQuerySetHeaderBytes) == kDefaultPacketFilter);
 }
 
-TEST_CASE("解码 SET_CMPLT") {
+TEST_CASE("decode SET_CMPLT") {
   auto buffer = MakeMessage(MessageType::kSetComplete, kSetCmpltBytes);
   StoreLe32(buffer.data() + kSetCmpltRequestIdOffset, 11);
   StoreLe32(buffer.data() + kSetCmpltStatusOffset, 0);
@@ -386,7 +386,7 @@ TEST_CASE("解码 SET_CMPLT") {
 // RESET -- field offsets differ from other messages
 // ---------------------------------------------------------------------------
 
-TEST_CASE("编码 RESET_MSG：offset 8 是 Reserved 而非 RequestId") {
+TEST_CASE("encode RESET_MSG: offset 8 is Reserved, not RequestId") {
   std::array<std::byte, 32> buffer{};
   buffer[kResetReservedOffset] = std::byte{0xFF};  // pollute first, to verify it gets zeroed
   const auto written = EncodeReset(buffer);
@@ -397,7 +397,7 @@ TEST_CASE("编码 RESET_MSG：offset 8 是 Reserved 而非 RequestId") {
   CHECK(LoadLe32(buffer.data() + kResetReservedOffset) == 0);
 }
 
-TEST_CASE("解码 RESET_CMPLT：Status 在 offset 8 而不是 12") {
+TEST_CASE("decode RESET_CMPLT: Status is at offset 8, not 12") {
   auto buffer = MakeMessage(MessageType::kResetComplete, kResetCmpltBytes);
   StoreLe32(buffer.data() + kResetCmpltStatusOffset, 0);
   StoreLe32(buffer.data() + kResetCmpltAddressingResetOffset, 1);
@@ -409,7 +409,7 @@ TEST_CASE("解码 RESET_CMPLT：Status 在 offset 8 而不是 12") {
   CHECK(complete->addressing_reset);
 }
 
-TEST_CASE("解码 RESET_CMPLT：AddressingReset 为 0 时无需重放") {
+TEST_CASE("decode RESET_CMPLT: no replay when AddressingReset is 0") {
   auto buffer = MakeMessage(MessageType::kResetComplete, kResetCmpltBytes);
   StoreLe32(buffer.data() + kResetCmpltAddressingResetOffset, 0);
   const auto complete = DecodeResetComplete(buffer);
@@ -421,7 +421,7 @@ TEST_CASE("解码 RESET_CMPLT：AddressingReset 为 0 时无需重放") {
 // KEEPALIVE
 // ---------------------------------------------------------------------------
 
-TEST_CASE("KEEPALIVE 往返") {
+TEST_CASE("KEEPALIVE round trip") {
   std::array<std::byte, 32> request{};
   const auto written = EncodeKeepAlive(42, request);
   REQUIRE(written.has_value());
@@ -435,7 +435,7 @@ TEST_CASE("KEEPALIVE 往返") {
   CHECK(complete->request_id == 42);
 }
 
-TEST_CASE("host 也要能编码 KEEPALIVE_CMPLT（设备可主动发起保活）") {
+TEST_CASE("the host can encode KEEPALIVE_CMPLT too (the device may start a keep-alive)") {
   std::array<std::byte, 32> buffer{};
   const auto written = EncodeKeepAliveComplete(77, ToRaw(StatusCode::kSuccess), buffer);
   REQUIRE(written.has_value());
@@ -449,7 +449,7 @@ TEST_CASE("host 也要能编码 KEEPALIVE_CMPLT（设备可主动发起保活）
 // INDICATE_STATUS -- tolerant handling of the contradictory base point
 // ---------------------------------------------------------------------------
 
-TEST_CASE("解码 INDICATE_STATUS：MEDIA_CONNECT 无负载") {
+TEST_CASE("decode INDICATE_STATUS: MEDIA_CONNECT has no payload") {
   auto buffer = MakeMessage(MessageType::kIndicateStatus, kIndicateStatusHeaderBytes);
   StoreLe32(buffer.data() + kIndicateStatusStatusOffset, ToRaw(StatusCode::kMediaConnect));
   StoreLe32(buffer.data() + kIndicateStatusBufferLengthOffset, 0);
@@ -461,7 +461,7 @@ TEST_CASE("解码 INDICATE_STATUS：MEDIA_CONNECT 无负载") {
   CHECK_FALSE(indication->has_diagnostic_info);
 }
 
-TEST_CASE("解码 INDICATE_STATUS：按 +8 基准点解释状态缓冲区") {
+TEST_CASE("decode INDICATE_STATUS: the status buffer is read from the +8 base") {
   const std::uint32_t total = kIndicateStatusHeaderBytes + kDiagnosticInfoBytes;
   auto buffer = MakeMessage(MessageType::kIndicateStatus, total);
   StoreLe32(buffer.data() + kIndicateStatusStatusOffset, ToRaw(StatusCode::kInvalidData));
@@ -481,7 +481,7 @@ TEST_CASE("解码 INDICATE_STATUS：按 +8 基准点解释状态缓冲区") {
   CHECK(indication->diagnostic_error_offset == 36);
 }
 
-TEST_CASE("解码 INDICATE_STATUS：按消息起始基准点解释也能工作") {
+TEST_CASE("decode INDICATE_STATUS: reading from the message start also works") {
   // Some devices implement the MS documentation literally (base point = message start).
   const std::uint32_t total = kIndicateStatusHeaderBytes + kDiagnosticInfoBytes;
   auto buffer = MakeMessage(MessageType::kIndicateStatus, total);
@@ -498,7 +498,7 @@ TEST_CASE("解码 INDICATE_STATUS：按消息起始基准点解释也能工作")
   CHECK(indication->diagnostic_status == 0xAAU);
 }
 
-TEST_CASE("解码 INDICATE_STATUS：两种基准点都越界时仍返回成功") {
+TEST_CASE("decode INDICATE_STATUS: succeeds even when both bases are out of bounds") {
   // Key behavior: the status itself is useful (it may be MEDIA_DISCONNECT),
   // and the link must not be judged dead just because an optional payload cannot be parsed.
   auto buffer = MakeMessage(MessageType::kIndicateStatus, kIndicateStatusHeaderBytes);
@@ -512,7 +512,7 @@ TEST_CASE("解码 INDICATE_STATUS：两种基准点都越界时仍返回成功")
   CHECK(indication->status_buffer.empty());
 }
 
-TEST_CASE("解码 INDICATE_STATUS：类型不对时报错") {
+TEST_CASE("decode INDICATE_STATUS: wrong type is an error") {
   auto buffer = MakeMessage(MessageType::kQueryComplete, kIndicateStatusHeaderBytes);
   CHECK_FALSE(DecodeIndicateStatus(buffer).has_value());
 }
@@ -529,26 +529,26 @@ TEST_CASE("ParseUint32 / ParseCounter / ParseMac") {
   REQUIRE(value.has_value());
   CHECK(*value == 0x0000'002DU);
 
-  SUBCASE("计数器 OID 返回 4 字节") {
+  SUBCASE("counter OID returns 4 bytes") {
     const auto counter = ParseCounter(std::span<const std::byte>{payload}.first(4));
     REQUIRE(counter.has_value());
     CHECK(*counter == 0x0000'002DU);
   }
-  SUBCASE("计数器 OID 返回 8 字节") {
+  SUBCASE("counter OID returns 8 bytes") {
     StoreLe64(payload.data(), 0x0000'0001'0000'002DULL);
     const auto counter = ParseCounter(payload);
     REQUIRE(counter.has_value());
     CHECK(*counter == 0x0000'0001'0000'002DULL);
   }
-  SUBCASE("计数器 OID 返回 2 字节应报错") {
+  SUBCASE("counter OID returning 2 bytes is an error") {
     CHECK_FALSE(ParseCounter(std::span<const std::byte>{payload}.first(2)).has_value());
   }
-  SUBCASE("MAC 长度不足应报错") {
+  SUBCASE("a short MAC is an error") {
     CHECK_FALSE(ParseMac(std::span<const std::byte>{payload}.first(4)).has_value());
   }
 }
 
-TEST_CASE("FormatMac 输出规范格式") {
+TEST_CASE("FormatMac prints the canonical form") {
   const MacAddress mac{0x02, 0x00, 0xAB, 0xCD, 0xEF, 0x01};
   const auto text = FormatMac(mac);
   CHECK(std::string_view{text.data()} == "02:00:ab:cd:ef:01");
@@ -558,7 +558,7 @@ TEST_CASE("FormatMac 输出规范格式") {
 // USB descriptor signature recognition
 // ---------------------------------------------------------------------------
 
-TEST_CASE("识别四种已知的 RNDIS 通信类接口签名") {
+TEST_CASE("recognizes the four known RNDIS control interface signatures") {
   CHECK(IsRndisControlSignature({0x02, 0x02, 0xFF}));  // standard MS RNDIS
   CHECK(IsRndisControlSignature({0xEF, 0x01, 0x01}));  // ActiveSync
   CHECK(IsRndisControlSignature({0xE0, 0x01, 0x03}));  // wireless RNDIS (phone tethering)

@@ -23,6 +23,14 @@ namespace tetherkitnext::capi {
 [[nodiscard]] Result<std::string> ConfigureManagedDhcpService(
     std::string_view interface_name, bool make_primary);
 
+/// Move TetherKitNext's service for this interface to the *end* of the
+/// service order, undoing `make_primary`. Used when "route all traffic" was
+/// requested but the link turned out to have no router (a local device such
+/// as a drone or a gadget-mode board): a service that cannot reach the
+/// internet must never outrank Wi-Fi/Ethernet. Idempotent; a no-op when the
+/// service does not exist.
+[[nodiscard]] Status DemoteManagedNetworkService(std::string_view interface_name);
+
 /// Remove TetherKitNext-owned services for one feth interface. Idempotent.
 [[nodiscard]] Status RemoveManagedNetworkService(std::string_view interface_name);
 

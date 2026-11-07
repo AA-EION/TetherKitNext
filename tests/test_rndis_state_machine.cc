@@ -60,7 +60,7 @@ constexpr MacAddress kDeviceMac{0x02, 0x1A, 0x11, 0x22, 0x33, 0x44};
 
 TEST_SUITE("rndis.state_machine") {
 
-TEST_CASE("状态名齐全") {
+TEST_CASE("every state has a name") {
   CHECK_FALSE(StateName(State::kUninitialized).empty());
   CHECK_FALSE(StateName(State::kInitializing).empty());
   CHECK_FALSE(StateName(State::kInitialized).empty());
@@ -68,7 +68,7 @@ TEST_CASE("状态名齐全") {
   CHECK_FALSE(StateName(State::kHalting).empty());
 }
 
-TEST_CASE("完整启动序列：走到 kDataInitialized 并通报协商结果") {
+TEST_CASE("full startup: reaches kDataInitialized and reports the negotiated parameters") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -102,7 +102,7 @@ TEST_CASE("完整启动序列：走到 kDataInitialized 并通报协商结果") 
   CHECK(observer.link_events[0]);
 }
 
-TEST_CASE("启动序列的消息顺序：INITIALIZE 在最前，SET 包过滤在最后") {
+TEST_CASE("startup message order: INITIALIZE first, the packet-filter SET last") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -126,7 +126,7 @@ TEST_CASE("启动序列的消息顺序：INITIALIZE 在最前，SET 包过滤在
   CHECK(filter == 0x0000'002DU);
 }
 
-TEST_CASE("变长 OID 的 InformationBufferLength 必须为 0，定长必须非 0") {
+TEST_CASE("InformationBufferLength is 0 for variable-length OIDs and non-zero for fixed-length ones") {
   MockControlChannel channel;
   std::vector<std::pair<std::uint32_t, std::uint32_t>> query_oid_and_length;
   channel.SetRequestHandler(
@@ -147,10 +147,10 @@ TEST_CASE("变长 OID 的 InformationBufferLength 必须为 0，定长必须非 
   for (const auto& [oid, length] : query_oid_and_length) {
     if (IsVariableLengthOid(static_cast<Oid>(oid))) {
       // Passing a non-zero length for a variable-length OID gets rejected by the ActiveSync implementation.
-      CHECK_MESSAGE(length == 0, "变长 OID " << OidName(oid) << " 的长度应为 0");
+      CHECK_MESSAGE(length == 0, "variable-length OID " << OidName(oid) << " must have length 0");
       saw_variable = true;
     } else {
-      CHECK_MESSAGE(length > 0, "定长 OID " << OidName(oid) << " 的长度应大于 0");
+      CHECK_MESSAGE(length > 0, "fixed-length OID " << OidName(oid) << " must have a length above 0");
       saw_fixed = true;
     }
   }
@@ -158,7 +158,7 @@ TEST_CASE("变长 OID 的 InformationBufferLength 必须为 0，定长必须非 
   CHECK(saw_variable);  // OID_GEN_VENDOR_DESCRIPTION was queried in the startup sequence
 }
 
-TEST_CASE("可选 OID 返回 NOT_SUPPORTED 不影响启动") {
+TEST_CASE("an optional OID returning NOT_SUPPORTED does not stop startup") {
   // OID_GEN_PHYSICAL_MEDIUM is optional, and the device replying unsupported is entirely normal.
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
@@ -170,7 +170,7 @@ TEST_CASE("可选 OID 返回 NOT_SUPPORTED 不影响启动") {
   CHECK(observer.fatal_errors.empty());
 }
 
-TEST_CASE("拿不到永久 MAC 是致命错误，且会发 HALT") {
+TEST_CASE("no permanent MAC is fatal and sends HALT") {
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     const std::uint32_t type = LoadLe32(request.data() + kMessageTypeOffset);
@@ -196,7 +196,7 @@ TEST_CASE("拿不到永久 MAC 是致命错误，且会发 HALT") {
   CHECK(channel.CountSent(MessageType::kHalt) == 1);
 }
 
-TEST_CASE("设备拒绝初始化时不发 QUERY，直接失败") {
+TEST_CASE("if the device rejects INITIALIZE, startup fails without any QUERY") {
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     const std::uint32_t type = LoadLe32(request.data() + kMessageTypeOffset);
@@ -213,7 +213,7 @@ TEST_CASE("设备拒绝初始化时不发 QUERY，直接失败") {
   CHECK(channel.CountSent(MessageType::kQuery) == 0);
 }
 
-TEST_CASE("非以太网介质被拒绝") {
+TEST_CASE("a non-Ethernet medium is rejected") {
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     if (LoadLe32(request.data() + kMessageTypeOffset) == ToRaw(MessageType::kInitialize)) {
@@ -228,7 +228,7 @@ TEST_CASE("非以太网介质被拒绝") {
   REQUIRE_FALSE(machine.Start().has_value());
 }
 
-TEST_CASE("设备在等响应期间插入 INDICATE_STATUS，不影响请求配对") {
+TEST_CASE("an INDICATE_STATUS while waiting for a response does not break request matching") {
   // This is a path that is very common on real hardware but extremely hard to reproduce on purpose.
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
@@ -259,7 +259,7 @@ TEST_CASE("设备在等响应期间插入 INDICATE_STATUS，不影响请求配�
   CHECK(observer.link_events[0]);
 }
 
-TEST_CASE("链路已 up 之后收到 MEDIA_DISCONNECT 才产生断开事件") {
+TEST_CASE("a disconnect event fires only for MEDIA_DISCONNECT after the link is up") {
   // This is the scenario where MEDIA_DISCONNECT really should trigger an event: there is an up -> down edge.
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
@@ -292,7 +292,7 @@ TEST_CASE("链路已 up 之后收到 MEDIA_DISCONNECT 才产生断开事件") {
   CHECK(observer.link_events[2]);
 }
 
-TEST_CASE("设备主动发 KEEPALIVE_MSG 时主机必须回 KEEPALIVE_CMPLT") {
+TEST_CASE("the host answers a device-initiated KEEPALIVE_MSG with KEEPALIVE_CMPLT") {
   // If it does not reply, the device may judge the host dead and disconnect.
   MockControlChannel channel;
   constexpr std::uint32_t kDeviceKeepAliveId = 0xABCD'1234;
@@ -322,12 +322,12 @@ TEST_CASE("设备主动发 KEEPALIVE_MSG 时主机必须回 KEEPALIVE_CMPLT") {
       found = true;
     }
   }
-  CHECK_MESSAGE(found, "主机没有回复设备发起的 KEEPALIVE");
+  CHECK_MESSAGE(found, "the host did not answer the device's KEEPALIVE");
 }
 
-TEST_CASE("面向连接设备的消息被明确拒绝") {
-  // The following asserts the Chinese wording of the error message, so pin the language first.
-  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
+TEST_CASE("connection-oriented device messages are rejected explicitly") {
+  // The following asserts the wording of the error message, so pin the language first.
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kEnglish};
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     if (LoadLe32(request.data() + kMessageTypeOffset) == ToRaw(MessageType::kInitialize)) {
@@ -345,10 +345,10 @@ TEST_CASE("面向连接设备的消息被明确拒绝") {
   const auto status = machine.Start();
   REQUIRE_FALSE(status.has_value());
   // The error message must explicitly point out that it is a connection-oriented device, rather than a vague "unknown message".
-  CHECK(status.error().ToString().find("面向连接") != std::string::npos);
+  CHECK(status.error().ToString().find("connection-oriented") != std::string::npos);
 }
 
-TEST_CASE("保活正常时不报错，且设备活跃期间不发无谓保活") {
+TEST_CASE("healthy keep-alives report nothing, and none are sent while the device is active") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -363,7 +363,7 @@ TEST_CASE("保活正常时不报错，且设备活跃期间不发无谓保活") 
   CHECK(channel.CountSent(MessageType::kKeepAlive) == 0);
 }
 
-TEST_CASE("保活到期时发 KEEPALIVE 并在成功后清零失败计数") {
+TEST_CASE("a due keep-alive sends KEEPALIVE and clears the failure count on success") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -378,9 +378,9 @@ TEST_CASE("保活到期时发 KEEPALIVE 并在成功后清零失败计数") {
   CHECK(observer.fatal_errors.empty());
 }
 
-TEST_CASE("连续保活失败达到阈值后通报致命错误") {
-  // The following asserts the Chinese wording in the fatal error, so pin the language first.
-  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
+TEST_CASE("repeated keep-alive failures past the threshold are reported as fatal") {
+  // The following asserts the wording of the fatal error, so pin the language first.
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kEnglish};
   MockControlChannel channel;
   // The device replies only to INITIALIZE / QUERY / SET, and never replies to KEEPALIVE -> times out every time.
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
@@ -406,10 +406,10 @@ TEST_CASE("连续保活失败达到阈值后通报致命错误") {
   const auto third = machine.Poll();
   CHECK_FALSE(third.has_value());
   REQUIRE(observer.fatal_errors.size() == 1);
-  CHECK(observer.fatal_errors[0].find("保活") != std::string::npos);
+  CHECK(observer.fatal_errors[0].find("keep-alive") != std::string::npos);
 }
 
-TEST_CASE("软复位：AddressingReset 非零时必须重放包过滤") {
+TEST_CASE("soft reset: the packet filter is replayed when AddressingReset is non-zero") {
   // This is the easiest one to miss: without replay, data would never flow again after a reset.
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
@@ -429,11 +429,11 @@ TEST_CASE("软复位：AddressingReset 非零时必须重放包过滤") {
   // And the packet filter must have been replayed.
   std::uint32_t filter = 0;
   REQUIRE_MESSAGE(channel.FindSetUint32(Oid::kGenCurrentPacketFilter, filter),
-                  "复位后没有重放包过滤设置");
+                  "the packet filter was not replayed after the reset");
   CHECK(filter == kDefaultPacketFilter);
 }
 
-TEST_CASE("软复位：AddressingReset 为 0 时不必重放") {
+TEST_CASE("soft reset: no replay when AddressingReset is 0") {
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     const std::uint32_t type = LoadLe32(request.data() + kMessageTypeOffset);
@@ -456,7 +456,7 @@ TEST_CASE("软复位：AddressingReset 为 0 时不必重放") {
   CHECK_FALSE(channel.FindSetUint32(Oid::kGenCurrentPacketFilter, filter));
 }
 
-TEST_CASE("停机：先清零包过滤再发 HALT") {
+TEST_CASE("shutdown: clear the packet filter, then send HALT") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -477,7 +477,7 @@ TEST_CASE("停机：先清零包过滤再发 HALT") {
   CHECK(channel.SentMessageType(last) == ToRaw(MessageType::kHalt));
 }
 
-TEST_CASE("停机是幂等的") {
+TEST_CASE("shutdown is idempotent") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -490,7 +490,7 @@ TEST_CASE("停机是幂等的") {
   CHECK(channel.SentMessages().size() == after_first);
 }
 
-TEST_CASE("Start 只能在未初始化状态下调用") {
+TEST_CASE("Start is only allowed when uninitialized") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -499,7 +499,7 @@ TEST_CASE("Start 只能在未初始化状态下调用") {
   CHECK_FALSE(machine.Start().has_value());
 }
 
-TEST_CASE("设备没有中断端点时退化为轮询，仍能完成启动") {
+TEST_CASE("without an interrupt endpoint it falls back to polling and still starts") {
   // Linux's host driver ignores the interrupt endpoint entirely and relies purely on polling the control endpoint.
   MockControlChannel channel;
   channel.SetHasInterruptEndpoint(false);
@@ -512,7 +512,7 @@ TEST_CASE("设备没有中断端点时退化为轮询，仍能完成启动") {
   CHECK(machine.CurrentState() == State::kDataInitialized);
 }
 
-TEST_CASE("控制通道发送失败时启动失败且不卡在中间状态") {
+TEST_CASE("a failed control send fails startup without leaving an intermediate state") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   channel.FailSendOnCall(1);  // the first INITIALIZE cannot even be sent
@@ -523,7 +523,7 @@ TEST_CASE("控制通道发送失败时启动失败且不卡在中间状态") {
   CHECK(machine.CurrentState() == State::kUninitialized);
 }
 
-TEST_CASE("设备 quirk：高通聚合补丁（MaxPacketsPerMessage=3、对齐因子 2）") {
+TEST_CASE("device quirk: Qualcomm aggregation patch (MaxPacketsPerMessage=3, alignment factor 2)") {
   MockControlChannel channel;
   channel.SetRequestHandler(
       MakeWellBehavedDevice(kDeviceMac, /*max_transfer_size=*/3 * 1600,
@@ -536,7 +536,7 @@ TEST_CASE("设备 quirk：高通聚合补丁（MaxPacketsPerMessage=3、对齐�
   CHECK(observer.parameters_snapshot.tx_alignment_bytes == 4);  // 1 << 2
 }
 
-TEST_CASE("设备 quirk：对齐因子越界被钳到 7") {
+TEST_CASE("device quirk: an out-of-range alignment factor is clamped to 7") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac, 2048, 1, /*alignment_factor=*/31));
   RecordingObserver observer;
@@ -545,7 +545,7 @@ TEST_CASE("设备 quirk：对齐因子越界被钳到 7") {
   CHECK(observer.parameters_snapshot.tx_alignment_bytes == 128);
 }
 
-TEST_CASE("设备汇报的最大帧长小于协商 MTU 时下调 MTU") {
+TEST_CASE("the MTU drops when the device's maximum frame size is below the negotiated MTU") {
   MockControlChannel channel;
   channel.SetRequestHandler([](std::span<const std::byte> request, MockControlChannel& mock) {
     const std::uint32_t type = LoadLe32(request.data() + kMessageTypeOffset);
@@ -563,7 +563,7 @@ TEST_CASE("设备汇报的最大帧长小于协商 MTU 时下调 MTU") {
   CHECK(machine.Parameters().mtu == 1400);
 }
 
-TEST_CASE("MillisUntilNextPoll 在保活周期内返回正值") {
+TEST_CASE("MillisUntilNextPoll is positive within the keep-alive period") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -588,7 +588,7 @@ TEST_SUITE("rndis.state_machine_timeout") {
 // The reason the mock cannot catch it is that it returns immediately for any timeout.
 // So here we directly assert on the "timeout value passed down" itself.
 
-TEST_CASE("绝不给 WaitForNotification 传 0（0 在 darwin 上是无限等待）") {
+TEST_CASE("never passes 0 to WaitForNotification (0 waits forever on Darwin)") {
   MockControlChannel channel;
   channel.SetRequestHandler(MakeWellBehavedDevice(kDeviceMac));
   RecordingObserver observer;
@@ -603,11 +603,11 @@ TEST_CASE("绝不给 WaitForNotification 传 0（0 在 darwin 上是无限等待
   REQUIRE_FALSE(channel.NotificationTimeouts().empty());
   for (const std::uint32_t timeout : channel.NotificationTimeouts()) {
     CHECK_MESSAGE(timeout > 0,
-                  "WaitForNotification 收到了 0 —— 在 darwin 上等于无限等待，会卡死控制线程");
+                  "WaitForNotification got 0, which waits forever on Darwin and would hang the control thread");
   }
 }
 
-TEST_CASE("kProbeOnlyTimeoutMillis 本身必须非零") {
+TEST_CASE("kProbeOnlyTimeoutMillis is non-zero") {
   CHECK(kProbeOnlyTimeoutMillis > 0);
 }
 

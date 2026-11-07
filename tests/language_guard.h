@@ -6,8 +6,9 @@
 //   state**, whose default (English) may also be changed by other test cases -- without pinning, the success or failure of such cases
 //   depends on doctest's execution order, the hardest kind of intermittent failure to track down.
 //
-//   So: whenever an assertion contains user-facing literal text, put a
-//   `const ScopedLanguage guard{Language::kChinese};` at the start of the test case.
+//   So: whenever an assertion contains user-facing literal text, pin the language the
+//   assertion is written in, e.g. `const ScopedLanguage guard{Language::kEnglish};`, at the
+//   start of the test case.
 #pragma once
 
 #include "tetherkitnext/common/i18n.h"

@@ -40,10 +40,6 @@ class Stopwatch {
     return static_cast<double>(Elapsed()) / static_cast<double>(kNanosPerMilli);
   }
 
-  [[nodiscard]] double ElapsedSeconds() const noexcept {
-    return static_cast<double>(Elapsed()) / static_cast<double>(kNanosPerSecond);
-  }
-
  private:
   Nanos start_;
 };

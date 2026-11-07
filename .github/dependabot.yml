@@ -1,0 +1,12 @@
+# Keeps the SHA-pinned GitHub Actions in .github/workflows current.
+# Actions are pinned to full commit SHAs (a moved tag cannot swap the code
+# that runs with our signing secrets); Dependabot proposes the bumps as PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

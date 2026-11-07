@@ -1,6 +1,7 @@
 #include "tetherkitnext/common/i18n.h"
 #include "process_runner.h"
 
+#include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -60,6 +61,8 @@ Result<ProcessResult> Spawn(std::string_view executable,
     return std::unexpected(Error::FromErrno(rc, Tr(Msg::kCapiSpawnFileActionsFailed)));
   }
   // Child process: close the read end, connect the write end to stdout and stderr, then close the original write end.
+  // stdin comes from /dev/null rather than whatever the daemon inherited.
+  ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
   ::posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
   ::posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
   ::posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
@@ -74,9 +77,25 @@ Result<ProcessResult> Spawn(std::string_view executable,
   static char kLangVar[] = "LANG=C";
   std::array<char*, 3> clean_environment{kPathVar, kLangVar, nullptr};
 
+  // POSIX_SPAWN_CLOEXEC_DEFAULT (Darwin): the child inherits only the
+  // descriptors the file actions above set up (stdin/stdout/stderr). Without
+  // it every descriptor this root process holds that lacks FD_CLOEXEC -- the
+  // BPF device, feth control sockets, libusb's pipes, the XPC listener's
+  // descriptors -- would leak into ipconfig / route.
+  ::posix_spawnattr_t attributes{};
+  if (const int rc = ::posix_spawnattr_init(&attributes); rc != 0) {
+    ::posix_spawn_file_actions_destroy(&actions);
+    ::close(pipe_fds[0]);
+    ::close(pipe_fds[1]);
+    return std::unexpected(Error::FromErrno(rc, Tr(Msg::kCapiSpawnAttributesFailed)));
+  }
+  // NOLINTNEXTLINE(google-runtime-int): posix_spawnattr_setflags takes a short.
+  ::posix_spawnattr_setflags(&attributes, static_cast<short>(POSIX_SPAWN_CLOEXEC_DEFAULT));
+
   ::pid_t child = -1;
-  const int spawn_rc = ::posix_spawn(&child, executable_path.c_str(), &actions, nullptr,
+  const int spawn_rc = ::posix_spawn(&child, executable_path.c_str(), &actions, &attributes,
                                      argv.data(), clean_environment.data());
+  ::posix_spawnattr_destroy(&attributes);
   ::posix_spawn_file_actions_destroy(&actions);
   // The parent process must close the write end immediately, otherwise ReadAll will never see EOF -- it is itself still holding a
   // write end, so the pipe never closes. This is the classic pipe deadlock.

@@ -287,8 +287,10 @@ class Runtime final : public rndis::StateMachineObserver {
   std::atomic<bool> fatal_error_{false};
 
   /// Read and written only on the host thread (Start / Stop / destructor); no synchronization needed.
-  bool started_ = false;
-  bool stopped_ = false;
+  // Atomic: Stop() can race the destructor or another host thread (the C ABI calls
+  // tk_session_stop from the daemon's XPC queue).
+  std::atomic<bool> started_{false};
+  std::atomic<bool> stopped_{false};
 };
 
 }  // namespace tetherkitnext::core

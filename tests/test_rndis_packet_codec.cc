@@ -100,7 +100,7 @@ TEST_SUITE("rndis.packet_codec") {
 // Encoding
 // ---------------------------------------------------------------------------
 
-TEST_CASE("编码单帧：DataOffset 必须写 36") {
+TEST_CASE("encode one frame: DataOffset is 36") {
   std::array<std::byte, 4096> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 2048, .max_messages = 1, .alignment_bytes = 1},
@@ -132,7 +132,7 @@ TEST_CASE("编码单帧：DataOffset 必须写 36") {
   CHECK(FrameMatches(std::span<const std::byte>{transfer}.subspan(44, 1514), 1514, 0x11));
 }
 
-TEST_CASE("编码受 MaxPacketsPerMessage 限制") {
+TEST_CASE("encoding respects MaxPacketsPerMessage") {
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 8192, .max_messages = 2, .alignment_bytes = 1},
@@ -143,7 +143,7 @@ TEST_CASE("编码受 MaxPacketsPerMessage 限制") {
   CHECK(writer.MessageCount() == 2);
 }
 
-TEST_CASE("编码受设备 MaxTransferSize 限制") {
+TEST_CASE("encoding respects the device's MaxTransferSize") {
   std::array<std::byte, 8192> transfer{};
   // Only enough room for one 44+64=108-byte message (leaving 1 byte of ZLP margin).
   PacketMessageWriter writer(transfer,
@@ -154,14 +154,14 @@ TEST_CASE("编码受设备 MaxTransferSize 限制") {
   CHECK(writer.MessageCount() == 1);
 }
 
-TEST_CASE("编码空批次 Finish 返回 0") {
+TEST_CASE("Finish on an empty batch returns 0") {
   std::array<std::byte, 1024> transfer{};
   PacketMessageWriter writer(transfer, {.max_transfer_bytes = 1024}, 512);
   CHECK(writer.Empty());
   CHECK(writer.Finish() == 0);
 }
 
-TEST_CASE("多包聚合：填充归入上一个消息，最后一个不含外部填充") {
+TEST_CASE("aggregation: padding belongs to the previous message, the last has no trailing padding") {
   std::array<std::byte, 8192> transfer{};
   // Align to 8 bytes (PacketAlignmentFactor = 3).
   PacketMessageWriter writer(transfer,
@@ -191,7 +191,7 @@ TEST_CASE("多包聚合：填充归入上一个消息，最后一个不含外部
   CHECK(writer.PayloadBytes() == 61 + 70 + 64);
 }
 
-TEST_CASE("多包聚合：编码结果能被解码器完整还原") {
+TEST_CASE("aggregation: the decoder restores what was encoded") {
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 8192, .max_messages = 4, .alignment_bytes = 8},
@@ -211,7 +211,7 @@ TEST_CASE("多包聚合：编码结果能被解码器完整还原") {
   }
 }
 
-TEST_CASE("ZLP 规避：长度恰为端点最大包长整数倍时补 1 字节") {
+TEST_CASE("ZLP avoidance: one byte is added when the length is a multiple of the max packet size") {
   std::array<std::byte, 4096> transfer{};
   constexpr std::uint32_t kEndpointMaxPacket = 512;
   // Make the total length exactly 512: 44 + 468 = 512.
@@ -229,7 +229,7 @@ TEST_CASE("ZLP 规避：长度恰为端点最大包长整数倍时补 1 字节")
   CHECK(LoadLe32(transfer.data() + kMessageLengthOffset) == 512);
 }
 
-TEST_CASE("ZLP 规避：长度不是整数倍时不补字节") {
+TEST_CASE("ZLP avoidance: nothing is added otherwise") {
   std::array<std::byte, 4096> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 4096, .max_messages = 1, .alignment_bytes = 1},
@@ -240,7 +240,7 @@ TEST_CASE("ZLP 规避：长度不是整数倍时不补字节") {
   CHECK(total == kPacketMsgHeaderBytes + 100);
 }
 
-TEST_CASE("RemainingFrameCapacity 报告准确，可避免取帧后回退") {
+TEST_CASE("RemainingFrameCapacity is exact, so frames never need to be put back") {
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 200, .max_messages = 5, .alignment_bytes = 1},
@@ -256,7 +256,7 @@ TEST_CASE("RemainingFrameCapacity 报告准确，可避免取帧后回退") {
   CHECK(writer.RemainingFrameCapacity() == 0);
 }
 
-TEST_CASE("包数用满后 RemainingFrameCapacity 归零") {
+TEST_CASE("RemainingFrameCapacity is 0 once the packet count is used up") {
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
                              {.max_transfer_bytes = 8192, .max_messages = 1, .alignment_bytes = 1},
@@ -269,7 +269,7 @@ TEST_CASE("包数用满后 RemainingFrameCapacity 归零") {
 // Decoding
 // ---------------------------------------------------------------------------
 
-TEST_CASE("解码单帧：按 8 + DataOffset 定位数据") {
+TEST_CASE("decode one frame: data is at 8 + DataOffset") {
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 1514);
   const auto frame = MakeFrame(1514, 0x22);
   WritePacketMessage(transfer, frame, kPacketInlineDataOffset,
@@ -281,7 +281,7 @@ TEST_CASE("解码单帧：按 8 + DataOffset 定位数据") {
   CHECK(FrameMatches(summary.frames[0], 1514, 0x22));
 }
 
-TEST_CASE("解码：数据不紧跟头部（DataOffset 大于 36）") {
+TEST_CASE("decode: data not right after the header (DataOffset above 36)") {
   // The device is entirely free to leave a gap between the header and the data; the decoder must follow DataOffset.
   constexpr std::uint32_t kGap = 16;
   constexpr std::uint32_t kFrameLength = 100;
@@ -295,7 +295,7 @@ TEST_CASE("解码：数据不紧跟头部（DataOffset 大于 36）") {
   CHECK(FrameMatches(summary.frames[0], kFrameLength, 0x33));
 }
 
-TEST_CASE("解码：容忍尾部 1 字节 ZLP 规避填充") {
+TEST_CASE("decode: tolerates 1 trailing byte of ZLP padding") {
   // This tolerance is required -- otherwise every full transfer would falsely report one malformed message.
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64 + 1);
   WritePacketMessage(transfer, MakeFrame(64, 0x44), kPacketInlineDataOffset,
@@ -308,7 +308,7 @@ TEST_CASE("解码：容忍尾部 1 字节 ZLP 规避填充") {
   CHECK(summary.trailing_padding == 1);
 }
 
-TEST_CASE("解码：容忍最多 43 字节的尾部垃圾") {
+TEST_CASE("decode: tolerates up to 43 trailing garbage bytes") {
   // A tail shorter than one complete header (44 bytes) is always treated as padding.
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64 + 43);
   WritePacketMessage(transfer, MakeFrame(64, 0x45), kPacketInlineDataOffset,
@@ -323,14 +323,14 @@ TEST_CASE("解码：容忍最多 43 字节的尾部垃圾") {
   CHECK(summary.trailing_padding == 43);
 }
 
-TEST_CASE("解码空传输") {
+TEST_CASE("decode an empty transfer") {
   const auto summary = DecodeAll({});
   CHECK(summary.final_outcome == ReadOutcome::kEndOfTransfer);
   CHECK(summary.frames.empty());
 }
 
-TEST_CASE("解码畸形输入：全部被识别且不读越界") {
-  SUBCASE("MessageType 不是 PACKET_MSG") {
+TEST_CASE("decode malformed input: every case is detected without reading out of bounds") {
+  SUBCASE("MessageType is not PACKET_MSG") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, MakeFrame(64, 1), kPacketInlineDataOffset,
                        kPacketMsgHeaderBytes + 64, 64);
@@ -340,7 +340,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kNotPacketMessage);
   }
 
-  SUBCASE("MessageLength 小于 44") {
+  SUBCASE("MessageLength below 44") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, MakeFrame(64, 1), kPacketInlineDataOffset, 40, 64);
     const auto summary = DecodeAll(transfer);
@@ -348,7 +348,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kMessageTooShort);
   }
 
-  SUBCASE("MessageLength 超出剩余缓冲") {
+  SUBCASE("MessageLength beyond the remaining buffer") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, MakeFrame(64, 1), kPacketInlineDataOffset, 0xFFFF'FFFFU, 64);
     const auto summary = DecodeAll(transfer);
@@ -356,7 +356,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kMessageOverruns);
   }
 
-  SUBCASE("DataOffset + DataLength 越界") {
+  SUBCASE("DataOffset + DataLength out of bounds") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, {}, kPacketInlineDataOffset, kPacketMsgHeaderBytes + 64, 1000);
     const auto summary = DecodeAll(transfer);
@@ -364,7 +364,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kDataOutOfBounds);
   }
 
-  SUBCASE("DataOffset 巨大值不得整数溢出") {
+  SUBCASE("a huge DataOffset must not overflow") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, {}, 0xFFFF'FFF8U, kPacketMsgHeaderBytes + 64, 64);
     const auto summary = DecodeAll(transfer);
@@ -372,7 +372,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kDataOutOfBounds);
   }
 
-  SUBCASE("DataLength 小于以太头长度") {
+  SUBCASE("DataLength shorter than an Ethernet header") {
     std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 64);
     WritePacketMessage(transfer, MakeFrame(13, 1), kPacketInlineDataOffset,
                        kPacketMsgHeaderBytes + 64, 13);
@@ -381,7 +381,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
     CHECK(summary.reason == MalformedReason::kFrameTooShort);
   }
 
-  SUBCASE("DataLength 超过本机单帧上限") {
+  SUBCASE("DataLength above this host's frame limit") {
     const std::uint32_t message_length = kPacketMsgHeaderBytes + 3000;
     std::vector<std::byte> transfer(message_length);
     WritePacketMessage(transfer, {}, kPacketInlineDataOffset, message_length, 3000);
@@ -391,7 +391,7 @@ TEST_CASE("解码畸形输入：全部被识别且不读越界") {
   }
 }
 
-TEST_CASE("解码：前几帧有效、中途畸形时保留已解出的帧") {
+TEST_CASE("decode: frames decoded before a malformed one are kept") {
   // Required behavior when a real device has a bug: the first 2 frames must not be dropped just because the 3rd message is bad.
   std::array<std::byte, 8192> transfer{};
   PacketMessageWriter writer(transfer,
@@ -415,7 +415,7 @@ TEST_CASE("解码：前几帧有效、中途畸形时保留已解出的帧") {
   CHECK(FrameMatches(summary.frames[1], 64, 0x02));
 }
 
-TEST_CASE("解码：帧视图指向传输缓冲内部，无拷贝") {
+TEST_CASE("decode: frame views point into the transfer buffer, no copy") {
   std::vector<std::byte> transfer(kPacketMsgHeaderBytes + 100);
   WritePacketMessage(transfer, MakeFrame(100, 0x77), kPacketInlineDataOffset,
                      kPacketMsgHeaderBytes + 100, 100);
@@ -429,10 +429,10 @@ TEST_CASE("解码：帧视图指向传输缓冲内部，无拷贝") {
   CHECK(reader.BytesConsumed() == kPacketMsgHeaderBytes + 100);
 }
 
-TEST_CASE("MalformedReason 名字完整") {
+TEST_CASE("every MalformedReason has a name") {
   // The name is user-facing text that changes with language, so pin the language before asserting.
-  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kChinese};
-  CHECK(MalformedReasonName(MalformedReason::kNone) == "无");
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kEnglish};
+  CHECK(MalformedReasonName(MalformedReason::kNone) == "none");
   CHECK_FALSE(MalformedReasonName(MalformedReason::kNotPacketMessage).empty());
   CHECK_FALSE(MalformedReasonName(MalformedReason::kDataOutOfBounds).empty());
   CHECK_FALSE(MalformedReasonName(MalformedReason::kFrameTooLong).empty());
@@ -442,7 +442,7 @@ TEST_CASE("MalformedReason 名字完整") {
 // Round-trip property tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("往返：各种对齐因子与帧长组合都能无损还原") {
+TEST_CASE("round trip: every alignment factor and frame length survives losslessly") {
   std::array<std::byte, 16384> transfer{};
   for (std::uint32_t factor = 0; factor <= kMaxPacketAlignmentFactor; ++factor) {
     const std::uint32_t alignment = 1U << factor;

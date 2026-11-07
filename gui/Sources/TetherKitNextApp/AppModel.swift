@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import TetherKitNextCore
 import TetherKitNextIPC
+import TetherKitNextUIModel
 
 /// The instantaneous rate obtained from one sample.
 struct ThroughputSample: Identifiable {
@@ -168,7 +169,16 @@ final class AppModel {
     /// Waiting for some privileged operation to complete -- the UI uses it to disable buttons and show progress.
     private(set) var isBusy: Bool = false
     /// An error that needs to be popped up to the user.
-    var alertMessage: String?
+    var alertMessage: String? {
+        didSet {
+            // The alert is attached to the main window. In menu-bar-only mode (window ordered
+            // out) a failure from the menu bar panel's Connect would otherwise stay invisible
+            // until the window is next opened, so bring the window up to show it.
+            if alertMessage != nil, MainWindowController.shared?.isVisible == false {
+                MainWindowController.shared?.present()
+            }
+        }
+    }
 
     /// The known new version. Drives the "new version available" hint in the management row; nil = none or never checked.
     private(set) var availableUpdate: UpdateChecker.Release?
@@ -187,12 +197,9 @@ final class AppModel {
     /// The moment of the last device enumeration. A monotonic clock is used, avoiding negative intervals when the system time is adjusted.
     private var lastDeviceRefresh: ContinuousClock.Instant?
 
-    /// Whether the main window is currently visible. It only affects the polling pace; the Dock icon policy is handled at the view layer.
+    /// Whether the main window is currently visible. It only affects the polling pace; the Dock icon
+    /// policy is derived from AppKit window notifications in AppDelegate.
     private var isWindowVisible = true
-
-    /// The moment of the most recent "explicitly asked to show the main window". The initial value = now, because the App's launch itself
-    /// is a legitimate window presentation.
-    private var windowPresentationRequestedAt = ContinuousClock.now
 
     /// The cached authorization token. nil means the next privileged operation needs to pop up a dialog.
     ///
@@ -275,16 +282,15 @@ final class AppModel {
         Task { await checkForUpdatesQuietly() }
     }
 
-    func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
-    }
-
     /// The main window appears (including reopening from the menu bar).
     ///
     /// Refresh once immediately rather than waiting for the next period: background polling may be sleeping in a 2-second long interval,
     /// and the first glance the user gets when opening the window should not be stale data.
     func windowDidAppear() {
+        // Called on every key-window change (sheets, alerts, app switches). Refresh only when
+        // the window was really hidden: an extra refresh() interleaves with the polling loop's
+        // own at every await and can apply replies out of order.
+        guard !isWindowVisible else { return }
         isWindowVisible = true
         Task { await refresh() }
     }
@@ -292,23 +298,6 @@ final class AppModel {
     /// The main window closes. The App moves into background mode; polling continues (the menu bar relies on it for data) but slows down.
     func windowDidDisappear() {
         isWindowVisible = false
-    }
-
-    /// Registers that "this upcoming main window presentation is one we asked for ourselves".
-    ///
-    /// Registered once at App launch (initializing defaults) and once by the "open main window" button.
-    func expectWindowPresentation() {
-        windowPresentationRequestedAt = ContinuousClock.now
-    }
-
-    /// Whether this window appearance was requested by ourselves.
-    ///
-    /// SwiftUI will on its own recreate the Window scene when "an App without windows is activated" (clicking the menu bar icon triggers it),
-    /// and such a revival must be closed on the spot. A time window rather than a one-shot flag is used to decide:
-    /// "registered within the last 3 seconds" counts -- a one-shot flag would linger on paths like
-    /// "click open again while the window is already open", while a time window heals itself naturally.
-    func isWindowPresentationExpected() -> Bool {
-        ContinuousClock.now - windowPresentationRequestedAt < .seconds(3)
     }
 
     /// The polling interval that should be used right now.
@@ -338,12 +327,21 @@ final class AppModel {
             }
             helperAvailability = .available(version: version)
             helperVersionMismatch = Self.versionMismatch(installed: version, build: build)
+            // A daemon that just appeared (installed, approved, restarted or updated) starts
+            // in its default language; the push in applyLanguage only happens on a change.
+            let daemonIdentity = "\(version)|\(String(describing: build))"
+            if languageSyncedDaemon != daemonIdentity {
+                languageSyncedDaemon = daemonIdentity
+                let language = L10n.language
+                Task { await client.setLanguage(language) }
+            }
             helperNeedsApproval = false
             commandLineToolState = .current
         } catch {
             // While the daemon restarts it is briefly unreachable. Keep what we
             // had instead of flashing the setup steps as if it were not installed.
             if isRestartingHelper { return }
+            languageSyncedDaemon = nil
             helperAvailability = .missing(reason: error.localizedDescription)
             helperVersionMismatch = nil
             helperNeedsApproval = HelperInstaller.needsApproval
@@ -406,11 +404,17 @@ final class AppModel {
             sessionStartedAt = Date()
         } else if fresh.runState != .running, fresh.runState != .stopping {
             sessionStartedAt = nil
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
 
+        // Both snapshots must come from the same running session: after a failed session
+        // a new one starts with counters back near zero, and the wrapping deltas below
+        // would plot a rate of ~10^19 bit/s.
         guard let previous = previousStatus,
-              fresh.runState == .running,
-              fresh.monotonicNanos > previous.monotonicNanos else {
+              fresh.runState == .running, previous.runState == .running,
+              fresh.monotonicNanos > previous.monotonicNanos,
+              fresh.rxBytes >= previous.rxBytes, fresh.txBytes >= previous.txBytes else {
             if fresh.runState != .running {
                 throughput = .zero
             }
@@ -451,6 +455,77 @@ final class AppModel {
     /// The connected duration; nil when not connected.
     var connectedDuration: TimeInterval? {
         sessionStartedAt.map { Date().timeIntervalSince($0) }
+    }
+
+    /// What kind of link the device is: internet-capable or a local device.
+    ///
+    /// Re-judged from evidence on every poll and never stored per device, so a
+    /// phone that is merely slow is not remembered as "local" (LinkAssessment).
+    var linkAssessment: LinkAssessment {
+        LinkAssessment.assess(isRunning: status.runState == .running,
+                              connectedFor: connectedDuration ?? 0,
+                              mode: networkConfiguration.mode,
+                              network: networkState,
+                              peerAddress: status.peerAddress)
+    }
+
+    /// The status line shown in the window and the menu bar. A running link to
+    /// a local device reads "Connected · local device" rather than suggesting
+    /// internet.
+    var statusLabel: String {
+        if status.runState == .running, status.linkUp, linkAssessment.isLocalOnly {
+            return L(.statusConnectedLocal)
+        }
+        return Design.statusLabel(for: status)
+    }
+
+    /// An address applied for the current session only (local devices without
+    /// DHCP). Never written to `networkConfiguration`: the next phone must not
+    /// inherit a fixed address meant for a drone. Cleared when the session ends.
+    private(set) var sessionOnlyAddress: String?
+
+    /// The daemon (version + build) the UI language was last pushed to; nil when unreachable.
+    @ObservationIgnored private var languageSyncedDaemon: String?
+
+    /// Why automatic configuration after Connect did not finish (no lease, no
+    /// router). Shown as a quiet detail next to the link assessment instead of
+    /// an alert: for a local device this is expected. Cleared per session.
+    private(set) var autoConfigureNote: String?
+
+    /// Applies `address` (/24, no router, no DNS) to the interface for this
+    /// session only. For devices that have a fixed address and no DHCP server.
+    func useSessionOnlyAddress(_ address: String) async {
+        guard !isBusy else { return }
+        let interface = status.systemInterface
+        guard !interface.isEmpty else {
+            alertMessage = L(.interfaceNotReadyYet)
+            return
+        }
+        let configuration = NetworkConfiguration(mode: .manual, address: address,
+                                                 netmask: "255.255.255.0")
+        if let message = NetworkValidator.validationMessage(for: configuration) {
+            alertMessage = message
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        let applied = await authorized { [self] authorization in
+            try await client.applyNetwork(authorization: authorization, interface: interface,
+                                          configuration: configuration)
+            networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if applied {
+            sessionOnlyAddress = address
+            autoConfigureNote = nil
+        }
+    }
+
+    /// Drops a session-only address and re-applies the saved settings
+    /// (normally DHCP), e.g. when a slow device finally starts its DHCP server.
+    /// The session-only address and the auto-configure note are cleared by the apply
+    /// itself, and only if it succeeds.
+    func retrySavedNetworkConfiguration() async {
+        await applyNetworkConfiguration()
     }
 
     var selectedDevice: DeviceDescriptor? {
@@ -541,8 +616,17 @@ final class AppModel {
 
         let configuration = networkConfiguration
         await authorized { [self] authorization in
-            try await client.applyNetwork(authorization: authorization, interface: interface,
-                                          configuration: configuration)
+            do {
+                try await client.applyNetwork(authorization: authorization, interface: interface,
+                                              configuration: configuration)
+            } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
+                throw failure  // let `authorized` re-prompt
+            } catch {
+                // No alert: a device without a DHCP server or without a router
+                // is a normal local link, not a failure. The live link
+                // assessment explains it and offers what to do next.
+                autoConfigureNote = error.localizedDescription
+            }
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
         }
     }
@@ -574,11 +658,16 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
-        await authorized { [self] authorization in
+        let applied = await authorized { [self] authorization in
             try await client.applyNetwork(authorization: authorization, interface: interface,
                                           configuration: networkConfiguration)
             // Immediately read back once, so the UI reflects the address actually in effect right away, without waiting for the next polling period.
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if applied {
+            // The saved settings replaced whatever was applied for this session only.
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
     }
 
@@ -594,10 +683,14 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
-        await authorized { [self] authorization in
+        let cleared = await authorized { [self] authorization in
             try await client.applyNetwork(authorization: authorization, interface: interface,
                                           configuration: NetworkConfiguration(mode: .none))
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if cleared {
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
     }
 
@@ -674,6 +767,8 @@ final class AppModel {
             || HelperInstaller.status == .enabled
         isRestartingHelper = restarting
         defer { isRestartingHelper = false }
+        // The (re)started daemon begins in its default language; resend on next contact.
+        languageSyncedDaemon = nil
         do {
             if restarting {
                 try await HelperInstaller.reregister()

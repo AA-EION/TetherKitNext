@@ -21,7 +21,7 @@ using tetherkitnext::StoreLe64;
 
 TEST_SUITE("common.byte_order") {
 
-TEST_CASE("小端读取按规范解释字节序") {
+TEST_CASE("little-endian loads follow the spec's byte order") {
   // The little-endian representation of 0x44332211 is 11 22 33 44.
   const std::array<std::byte, 8> bytes{std::byte{0x11}, std::byte{0x22}, std::byte{0x33},
                                        std::byte{0x44}, std::byte{0x55}, std::byte{0x66},
@@ -31,13 +31,13 @@ TEST_CASE("小端读取按规范解释字节序") {
   CHECK(LoadLe64(bytes.data()) == 0x8877665544332211ULL);
 }
 
-TEST_CASE("大端读取按网络字节序解释") {
+TEST_CASE("big-endian loads use network byte order") {
   const std::array<std::byte, 2> bytes{std::byte{0x08}, std::byte{0x00}};
   // 0x0800 = ETHERTYPE_IP
   CHECK(LoadBe16(bytes.data()) == 0x0800U);
 }
 
-TEST_CASE("写入后读回保持一致") {
+TEST_CASE("a stored value reads back unchanged") {
   std::array<std::byte, 16> buffer{};
   StoreLe32(buffer.data(), 0xDEADBEEFU);
   CHECK(LoadLe32(buffer.data()) == 0xDEADBEEFU);
@@ -52,7 +52,7 @@ TEST_CASE("写入后读回保持一致") {
   CHECK(buffer[5] == std::byte{0xDD});
 }
 
-TEST_CASE("未对齐偏移上的读写同样正确") {
+TEST_CASE("loads and stores at unaligned offsets are correct") {
   // This is the scenario most prone to errors in this project: the start offset of the Ethernet frame after REMOTE_NDIS_PACKET_MSG
   // is determined by the device's DataOffset and may be arbitrary.
   std::array<std::byte, 32> buffer{};
@@ -65,13 +65,13 @@ TEST_CASE("未对齐偏移上的读写同样正确") {
   }
 }
 
-TEST_CASE("单字节读写不做任何转换") {
+TEST_CASE("single-byte loads and stores do no conversion") {
   std::array<std::byte, 1> buffer{};
   tetherkitnext::StoreLe<std::uint8_t>(buffer.data(), 0xA5U);
   CHECK(tetherkitnext::LoadLe<std::uint8_t>(buffer.data()) == 0xA5U);
 }
 
-TEST_CASE("AlignUp 向上对齐到 2 的幂") {
+TEST_CASE("AlignUp rounds up to a power of two") {
   CHECK(AlignUp<std::uint32_t>(0, 4) == 0);
   CHECK(AlignUp<std::uint32_t>(1, 4) == 4);
   CHECK(AlignUp<std::uint32_t>(4, 4) == 4);
@@ -81,7 +81,7 @@ TEST_CASE("AlignUp 向上对齐到 2 的幂") {
   CHECK(AlignUp<std::uint32_t>(63, 64) == 64);
 }
 
-TEST_CASE("IsPowerOfTwo 正确识别 2 的幂") {
+TEST_CASE("IsPowerOfTwo recognizes powers of two") {
   CHECK_FALSE(IsPowerOfTwo<std::uint32_t>(0));
   CHECK(IsPowerOfTwo<std::uint32_t>(1));
   CHECK(IsPowerOfTwo<std::uint32_t>(2));

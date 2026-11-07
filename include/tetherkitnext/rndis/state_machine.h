@@ -311,6 +311,11 @@ class StateMachine {
   NegotiatedParameters parameters_;
 
   std::uint32_t next_request_id_ = 1;
+
+  /// RequestId of the request Transact() is waiting on; nullopt for RESET (its
+  /// completion carries no id) and outside Transact(). PumpOnce() discards completions
+  /// of the right type but another id: late replies to requests that already timed out.
+  std::optional<std::uint32_t> awaited_request_id_;
   Nanos last_device_activity_ = 0;
   Nanos next_keepalive_deadline_ = 0;
   std::uint32_t consecutive_keepalive_failures_ = 0;

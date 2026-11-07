@@ -43,7 +43,7 @@ bool VerifyFrame(std::span<const std::byte> frame, std::uint8_t tag) {
 
 TEST_SUITE("common.frame_ring") {
 
-TEST_CASE("容量向上取整并报告存储开销") {
+TEST_CASE("capacity is rounded up and the storage cost reported") {
   FrameRing ring(100, 1514);
   CHECK(ring.Capacity() == 128);
   CHECK(ring.MaxFrameBytes() == 1514);
@@ -51,14 +51,14 @@ TEST_CASE("容量向上取整并报告存储开销") {
   CHECK(ring.StorageBytes() == 128 * 1664);
 }
 
-TEST_CASE("空队列读取返回空视图") {
+TEST_CASE("reading an empty queue returns an empty view") {
   FrameRing ring(4, 1514);
   const FrameView view = ring.BeginRead();
   CHECK(view.Empty());
   CHECK(view.data == nullptr);
 }
 
-TEST_CASE("单帧入队出队内容一致") {
+TEST_CASE("a single frame comes out as it went in") {
   FrameRing ring(4, 1514);
   const std::vector<std::byte> frame = MakeFrame(1514, 0x42);
   REQUIRE(ring.TryPush(frame));
@@ -71,7 +71,7 @@ TEST_CASE("单帧入队出队内容一致") {
   CHECK(ring.BeginRead().Empty());
 }
 
-TEST_CASE("超长帧被拒绝且不占用槽位") {
+TEST_CASE("an oversized frame is rejected without using a slot") {
   FrameRing ring(4, 128);
   const std::vector<std::byte> too_long = MakeFrame(129, 0x01);
   CHECK_FALSE(ring.TryPush(too_long));
@@ -80,7 +80,7 @@ TEST_CASE("超长帧被拒绝且不占用槽位") {
   CHECK(ring.TryPush(MakeFrame(128, 0x02)));
 }
 
-TEST_CASE("队列满后拒绝入队") {
+TEST_CASE("a full queue rejects pushes") {
   FrameRing ring(4, 64);
   for (std::uint8_t i = 0; i < 4; ++i) {
     REQUIRE(ring.TryPush(MakeFrame(64, i)));
@@ -89,7 +89,7 @@ TEST_CASE("队列满后拒绝入队") {
   CHECK_FALSE(ring.TryPush(MakeFrame(64, 9)));
 }
 
-TEST_CASE("BeginWrite/CommitWrite 零拷贝路径") {
+TEST_CASE("BeginWrite/CommitWrite zero-copy path") {
   FrameRing ring(4, 1514);
   const std::span<std::byte> dst = ring.BeginWrite();
   REQUIRE(dst.size() == 1514);
@@ -105,7 +105,7 @@ TEST_CASE("BeginWrite/CommitWrite 零拷贝路径") {
   ring.CommitRead();
 }
 
-TEST_CASE("变长帧混合、反复绕环不串数据") {
+TEST_CASE("mixed frame sizes wrapping repeatedly never mix up data") {
   FrameRing ring(4, 2048);
   // Capacity 4, run 500 rounds with a different length each round, forcing the indices to wrap around and reuse slots.
   for (std::uint32_t round = 0; round < 500; ++round) {
@@ -120,8 +120,8 @@ TEST_CASE("变长帧混合、反复绕环不串数据") {
   }
 }
 
-TEST_CASE("每帧数据区起始地址按缓存行对齐") {
-  // Performance correctness assertion: frame data must land on cache line boundaries so that memcpy and write() take the optimal path.
+TEST_CASE("every frame's data starts on a cache-line boundary") {
+  // Performance invariant: frame data must land on cache line boundaries so that memcpy and write() take the optimal path.
   FrameRing ring(8, 1514);
   for (int i = 0; i < 8; ++i) {
     const std::span<std::byte> dst = ring.BeginWrite();
@@ -196,7 +196,7 @@ TEST_CASE("park/wake handshake loses no wakeups under a bursty producer") {
   CHECK(received == kFrames);
 }
 
-TEST_CASE("并发搬运 20 万帧不丢不乱序") {
+TEST_CASE("200,000 frames across threads: none lost, none reordered") {
   constexpr std::uint32_t kTotal = 200'000;
   FrameRing ring(512, 512);
 
@@ -250,7 +250,7 @@ TEST_CASE("并发搬运 20 万帧不丢不乱序") {
 
 TEST_SUITE("common.frame_ring_batch") {
 
-TEST_CASE("批量写：暂存期间消费者看不到，发布后一次性可见") {
+TEST_CASE("batch write: invisible while staged, visible all at once after publishing") {
   FrameRing ring(16, 1514);
   {
     auto batch = ring.BeginBatchWrite();
@@ -266,7 +266,7 @@ TEST_CASE("批量写：暂存期间消费者看不到，发布后一次性可见
   CHECK(ring.SizeSnapshot() == 5);
 }
 
-TEST_CASE("批量写：显式 Publish 后可继续暂存") {
+TEST_CASE("batch write: staging continues after an explicit Publish") {
   FrameRing ring(16, 1514);
   auto batch = ring.BeginBatchWrite();
   REQUIRE(batch.Push(MakeFrame(64, 1)));
@@ -283,7 +283,7 @@ TEST_CASE("批量写：显式 Publish 后可继续暂存") {
   CHECK(ring.SizeSnapshot() == 3);
 }
 
-TEST_CASE("批量写：队列满时 Begin 返回空，已暂存的仍会发布") {
+TEST_CASE("batch write: Begin returns empty when full, and staged frames are still published") {
   FrameRing ring(4, 64);
   {
     auto batch = ring.BeginBatchWrite();
@@ -300,7 +300,7 @@ TEST_CASE("批量写：队列满时 Begin 返回空，已暂存的仍会发布")
   CHECK(ring.SizeSnapshot() == 4);
 }
 
-TEST_CASE("批量读：释放前视图有效，释放后槽位才可复用") {
+TEST_CASE("batch read: views stay valid until release, slots are reused only after it") {
   FrameRing ring(8, 1514);
   for (std::uint8_t i = 0; i < 4; ++i) {
     REQUIRE(ring.TryPush(MakeFrame(100, static_cast<std::uint8_t>(0x20 + i))));
@@ -328,7 +328,7 @@ TEST_CASE("批量读：释放前视图有效，释放后槽位才可复用") {
   CHECK(ring.SizeSnapshot() == 0);
 }
 
-TEST_CASE("批量读：显式 Release 后可继续取") {
+TEST_CASE("batch read: reading continues after an explicit Release") {
   FrameRing ring(8, 1514);
   for (std::uint8_t i = 0; i < 6; ++i) {
     REQUIRE(ring.TryPush(MakeFrame(64, i)));
@@ -348,7 +348,7 @@ TEST_CASE("批量读：显式 Release 后可继续取") {
   CHECK(ring.SizeSnapshot() == 0);
 }
 
-TEST_CASE("批量与逐帧接口混用仍保持 FIFO 与内容正确") {
+TEST_CASE("mixing batch and per-frame APIs keeps FIFO order and content") {
   FrameRing ring(16, 1514);
   // First push 2 per frame, then push 3 in a batch, then read 5 in a batch.
   REQUIRE(ring.TryPush(MakeFrame(64, 0)));
@@ -368,7 +368,7 @@ TEST_CASE("批量与逐帧接口混用仍保持 FIFO 与内容正确") {
   CHECK(batch.Next().Empty());
 }
 
-TEST_CASE("批量接口并发搬运 20 万帧不丢不乱序") {
+TEST_CASE("batch API, 200,000 frames across threads: none lost, none reordered") {
   constexpr std::uint32_t kTotal = 200'000;
   constexpr std::uint32_t kBatch = 32;
   FrameRing ring(1024, 512);

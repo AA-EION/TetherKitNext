@@ -28,7 +28,7 @@ final class HelperService: NSObject, TetherKitNextHelperProtocol, @unchecked Sen
     /// **has already** been opened by this process -- the occupancy judgment for enumeration must count it, otherwise string
     /// reads would insert one more transfer onto the control endpoint that is mid-handshake.
     private var sessionStarting = false
-    /// Hints not yet taken away by the App.
+    /// Notices the app has not drained yet.
     private var pendingNotices: [String] = []
 
     // MARK: - Probe interfaces that need no authorization
@@ -133,7 +133,7 @@ final class HelperService: NSObject, TetherKitNextHelperProtocol, @unchecked Sen
             // Typical scenario: the device is unplugged -> consecutive keepalive failures -> the session enters failed. The C++ side
             // has already torn down USB and the NIC entirely by then, and the Swift layer is left with only a shell -- but it is
             // non-nil. If we only rejected on "session != nil", after the user replugs the device it could never
-            // connect again, and only reinstalling the helper would help. This pitfall was really hit.
+            // connect again, and only reinstalling the helper would help. This happened in practice.
             if let existing = self.withState({ $0 }) {
                 let state = existing.status().runState
                 guard state == .failed || state == .stopped else {

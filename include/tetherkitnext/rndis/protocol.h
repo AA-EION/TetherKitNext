@@ -104,11 +104,6 @@ template <typename E>
   return static_cast<std::uint32_t>(value);
 }
 
-/// Whether it is a completion-type message.
-[[nodiscard]] constexpr bool IsCompletion(std::uint32_t message_type) noexcept {
-  return (message_type & kMessageCompletionFlag) != 0;
-}
-
 /// Whether it belongs to the CONDIS (connection-oriented) message family.
 [[nodiscard]] constexpr bool IsCondis(std::uint32_t message_type) noexcept {
   return (message_type & ~kMessageCompletionFlag) >= 0x0000'8000U &&
@@ -234,7 +229,7 @@ inline constexpr std::uint32_t kPacketReservedOffset = 40;
 
 /// The value DataOffset should be filled with when "the Ethernet frame immediately follows the 44-byte header". **It is 36, not 44.**
 inline constexpr std::uint32_t kPacketInlineDataOffset = kPacketMsgHeaderBytes - kOffsetFieldBase;
-static_assert(kPacketInlineDataOffset == 36, "DataOffset 基准点是消息起始 +8，见文件头规则 2");
+static_assert(kPacketInlineDataOffset == 36, "DataOffset counts from message start + 8; see rule 2 at the top of this file");
 
 /// In the device -> host direction, when multiple packets are aggregated, each PACKET_MSG should start at an offset that is a multiple of 8 bytes.
 inline constexpr std::uint32_t kDeviceToHostPacketAlignment = 8;
@@ -320,11 +315,6 @@ enum class StatusCode : std::uint32_t {
   kNoCable = 0xC001'001FU,
   kTokenRingOpenError = 0xC001'1000U,
 };
-
-/// Whether it is a failure status (0xC0000000 and above are errors by NDIS convention).
-[[nodiscard]] constexpr bool IsFailure(std::uint32_t status) noexcept {
-  return (status & 0xC000'0000U) == 0xC000'0000U;
-}
 
 /// Readable name of a status code; an unknown value returns empty.
 [[nodiscard]] std::string_view StatusName(std::uint32_t status) noexcept;

@@ -98,6 +98,7 @@ Verified on: macOS 26.5.1 (Darwin 25.5.0), Apple Silicon `arm64`, Apple Clang 21
 TetherKitNext/
 ├── AGENTS.md              Agent and maintainer working memory
 ├── README.md              User-facing documentation (English)
+├── LICENSE, NOTICE.md     MIT license; upstream attribution and third-party notices
 ├── CMakeLists.txt         Top-level CMake build configuration
 ├── .clang-format          Code formatting rules (Google style base, 100 columns)
 ├── .clang-tidy            Static analysis and naming rules
@@ -105,12 +106,15 @@ TetherKitNext/
 │   ├── FindLibUSB.cmake        libusb-1.0 discovery (pkg-config + Homebrew fallback)
 │   ├── CompilerWarnings.cmake  Warning flags INTERFACE target
 │   ├── Sanitizers.cmake        ASan/UBSan/TSan options
-│   └── Optimizations.cmake     Data-path optimization flags and trade-offs
+│   ├── Optimizations.cmake     Data-path optimization flags and trade-offs
+│   └── tetherkitnext_exports.txt  Exported-symbol allowlist for libtetherkitnext (`_tk_*`)
 ├── include/tetherkitnext/     Public headers (organized by module)
-│   ├── common/messages.def     All user-facing localized strings (X-macro, Chinese & English)
+│   ├── common/                 Errors, logging, i18n (messages.def: all C++ user-facing strings, zh + en), rings, stats
+│   ├── rndis/ usb/ net/ core/  Protocol codec + state machine, libusb transport, feth/BPF, bridge + runtime
 │   └── capi/                   C ABI — sole extern "C" boundary in the project
-├── src/                   C++ implementation
+├── src/                   C++ implementation (same modules as include/)
 │   ├── version.cc.in           CMake version template
+│   ├── common/ rndis/ usb/ net/ core/
 │   ├── capi/                   C ABI implementation (sessions, network config, logs, orphan cleanup)
 │   └── app/                    CLI entry point
 ├── gui/                   SwiftUI application (SwiftPM package; see docs/GUI-ARCHITECTURE.md)
@@ -118,12 +122,16 @@ TetherKitNext/
 │   ├── Sources/TetherKitNextIPC/   Shared between App and helper: XPC protocol, models, auth, i18n
 │   ├── Sources/TetherKitNextCore/  Swift wrapper around the C ABI
 │   ├── Sources/TetherKitNextHelper/  Privileged helper daemon (root, launched via SMAppService / launchd)
+│   ├── Sources/TetherKitNextUIModel/ Testable UI logic (sidebar panes, interface traffic); no libtetherkitnext dependency
 │   ├── Sources/TetherKitNextApp/   SwiftUI user interface
+│   ├── Tests/                  TetherKitNextIPCTests, TetherKitNextUIModelTests (XCTest)
 │   ├── Resources/              App-Info.plist, LaunchDaemon plist, AppIcon
 │   └── Scripts/                Build and helper uninstall scripts
+├── scripts/               libusb build, release build, CI certificate import, DMG packaging (dmg/ assets)
+├── .github/               CI + release workflows (SHA-pinned actions), Dependabot, release notes template
 ├── tests/                 doctest unit test suite
 ├── benchmarks/            Lightweight benchmark harness and microbenchmarks
-├── third_party/doctest/   Vendored doctest 2.4.12 single-header library
+├── third_party/           Vendored doctest 2.4.12 (tests only) and its CMakeLists.txt
 └── docs/                  Design documentation, protocol reference, benchmarks, security audit
 ```
 
@@ -238,12 +246,14 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 | 43 | `feat(gui): Touch ID confirmation for privileged actions (1.1.0)` | ✅ | `LAContext` + Team ID XPC pinning + `admin` group check; XPC rev 5 |
 | 44 | `fix(gui): make background component restart reliable on first click (1.1.1)` | ✅ | `HelperInstaller.reregister()` waits for `launchd` state transition and retries |
 | 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect (1.2.0)` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback; GUI supports 6 languages but the C++ library only en/zh (`Language.cValue` falls back to English); failed sessions stay visible (no forced reset to idle) |
+| 46 | `security` + `feat(gui)`: SHA-pinned CI actions, spawn fd hygiene, macOS 27 CI, AppKit-owned main window, SDK stamp, opt-in Advanced → Interfaces, local-link devices | 🚧 | Draft PR. libusb 1.0.30 still latest (hash re-verified). Local-link devices (drones, controllers, goggles, gadget boards): live `LinkAssessment`, passive peer IPv4 (`peer_address.h`, `tk_session_status_t.peer_ipv4`), service demotion when no router, session-only address. Then a deep cleanup: remaining Chinese translated (tests, CMake, benchmarks, CI), review-driven fixes (pitfalls 37-42), dead code removed. See docs/MACOS-27.md, docs/ADVANCED-TOOLS.md, docs/LOCAL-DEVICES.md, SECURITY-AUDIT addendum |
 
-### Current Status (TetherKitNext, 2026-10-06)
+### Current Status (TetherKitNext, 2026-11-07)
 
 - **Distribution**: Signed and notarized universal DMG (`scripts/build-release.sh`, shared across CI and releases). Security audit documented in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 - **Privileged Daemon**: `SMAppService` with label `com.tetherkitnext.helperd`, executed in-place from the `.app` bundle; automatically cleans up legacy `com.tetherkit.helper` installs on first run. XPC protocol revision 5.
-- **CI**: Native builds and tests on `macos-15`, `macos-26`, and `macos-15-intel`, universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, and `feth` ABI gate.
+- **Tests**: 24 CTest suites (incl. `core.peer_address`); SwiftPM suites `TetherKitNextIPCTests` and `TetherKitNextUIModelTests` (panes, interface traffic, link assessment). Test names and messages are English; only test data that checks multibyte handling or the zh table itself is Chinese.
+- **CI**: Native builds and tests on `macos-15`, `macos-26`, `macos-15-intel` and `xcode-27` (macOS 27 Golden Gate), universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, `feth` ABI gate (also on macOS 27), and a macOS 27 GUI build + launch smoke test. All third-party actions are pinned to commit SHAs (Dependabot updates them).
 
 ### Historical Upstream Status (Recorded at v0.1.5)
 
@@ -367,6 +377,21 @@ RNDIS negotiation complete: version 1.0, MTU 1500, device aggregation limit 1580
 25. **Preserve legacy identifiers (`com.tetherkit.helper`, `libtetherkit*`, `"TetherKit"` service prefix) in cleanup code** during renames so upgrades clean up prior installations.
 26. **`dmgbuild` background images fail to render in Finder on macOS 15/26**; `scripts/make-dmg.sh` applies the DMG window layout using Finder via AppleScript on a temporary read-write image.
 27. **`SMAppService.unregister()` returning does not mean `launchd` has finished removing the job**; always use `HelperInstaller.reregister()` (which waits for state transitions and retries) to restart the daemon.
+28. **macOS 26+ draws window chrome by the `LC_BUILD_VERSION` `sdk` stamp, not by what the code was compiled against.** A SwiftPM link can stamp the deployment target (14.0), so the app gets legacy chrome. `build-gui.sh` rewrites `sdk` with `vtool` (keeping `minos`) and fails if the signed app is below 26. Any other packaging path (e.g. a Homebrew formula) must do the same.
+29. **Don't reintroduce a SwiftUI `Window` scene for the main window.** With a `MenuBarExtra`, SwiftUI resurrects it when the app is activated. `MainWindowController` owns an `NSWindow`; reopen via `MainWindowController.shared?.present()`. Without a window scene there is no default File ▸ Close, so keep the explicit ⌘W `CommandGroup`, and use `@AppStorage` (no `@SceneStorage`, there is no scene).
+30. **`getifaddrs` byte counters (`struct if_data`) are 32-bit and wrap at 4 GiB.** Read 64-bit counters from the `NET_RT_IFLIST2` sysctl (`if_msghdr2.ifm_data`, `if_data64`); a decrease then always means the interface was recreated (`feth` pairs are, every session).
+31. **Root child processes must be spawned with `POSIX_SPAWN_CLOEXEC_DEFAULT`** (`process_runner.cc`), or they inherit the daemon's BPF / socket / libusb descriptors.
+32. **Pin GitHub Actions to full commit SHAs** (the signing jobs hold the Developer ID certificate and notary key) and keep `persist-credentials: false` on checkouts. Bump them via Dependabot, not by retagging.
+33. **⚠️ A libusb built on macOS 27 / with the macOS 27 SDK segfaults in device enumeration on macOS 15 and 26** (`capi.basics` → `tk_list_devices`), even with `MIN_MACOS=13.3`. Found when CI's xcode-27 job shared the libusb cache with macos-15/26; root cause not yet known. Shipping builds therefore select **Xcode 26** explicitly (`Xcode_26*`, not "newest"), and the libusb cache key includes the SDK + OS version. The `macos-15` DMG smoke job (`tetherkitnext-cli --list`) catches a regression.
+34. **Never persist a device's "kind" (internet vs local link).** A phone that is slow to hand out a lease or whose upstream is down would be remembered as a local device. `LinkAssessment` is recomputed from live facts every poll; addresses applied for local devices are session-only (`AppModel.sessionOnlyAddress`) and must never be written to `networkConfiguration`. Never probe internet reachability to decide it (docs/LOCAL-DEVICES.md).
+35. **"Route all traffic" must follow the router, not the request.** `ConfigureManagedDhcpService(make_primary: true)` reorders services before the lease exists; `ApplyDhcp` demotes the service again when no stable router appears (`DemoteManagedNetworkService`). Keep that pairing in any new DHCP path.
+36. **Learn the peer address only from on-link-only frames** (ARP sender; IPv4 to 255.255.255.255 or 224.0.0.0/24). A phone forwards internet traffic, so ordinary unicast sources are remote hosts.
+37. **`tx_free_slots_` is strictly SPSC: only the libusb completion callback pushes.** The send thread must never push a slot back (two producers lose slots and the 4-slot pool drains for good); an unused slot goes to `held_tx_slot_` and is reused first.
+38. **Control replies are matched by RequestId, not just type** (`StateMachine::awaited_request_id_`). A late reply to a timed-out QUERY would otherwise answer the next QUERY of the same type. RESET_CMPLT is the only completion without an id.
+39. **A failed `Bridge::Start` must shut the data channel down itself**: `running_` stays false, so `Stop()` won't, and in-flight bulk IN callbacks would write into the destroyed `rx_ring_`.
+40. **Each `DirectionCounters` has one writer.** RX drops seen by the injector thread go to `rx_inject_counters_` and are merged in `Bridge::Snapshot()`.
+41. **The orphan registry is rewritten atomically** (temp file with `O_EXCL|O_NOFOLLOW`, then `rename`), and re-creating a known interface name takes the new owner PID; a stale dead PID would make the next startup destroy a live interface.
+42. **XPC calls time out after `HelperConstants.requestTimeout`** (`HelperClient.invoke`), so a daemon that never replies cannot wedge `isBusy` and polling. Only clear the cached connection from *its own* invalidation handler.
 
 ---
 

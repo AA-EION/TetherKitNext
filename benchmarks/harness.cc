@@ -82,21 +82,21 @@ void PrintEnvironment() {
   const std::int64_t efficiency = SysctlInt("hw.perflevel1.logicalcpu");
   const std::int64_t cacheline = SysctlInt("hw.cachelinesize");
 
-  std::printf("## 测量环境\n\n");
-  std::printf("| 项目 | 值 |\n|---|---|\n");
+  std::printf("## Environment\n\n");
+  std::printf("| Item | Value |\n|---|---|\n");
   std::printf("| CPU | %s |\n", SysctlString("machdep.cpu.brand_string").c_str());
-  std::printf("| 逻辑核 | %lld（性能核 %lld / 效率核 %lld） |\n", logical, performance, efficiency);
-  std::printf("| 缓存行 | %lld 字节（kCacheLineSize = %zu） |\n", cacheline, kCacheLineSize);
-  std::printf("| 系统 | macOS %s (%s) |\n", SysctlString("kern.osproductversion").c_str(),
+  std::printf("| Logical cores | %lld (%lld performance / %lld efficiency) |\n", logical, performance, efficiency);
+  std::printf("| Cache line | %lld bytes (kCacheLineSize = %zu) |\n", cacheline, kCacheLineSize);
+  std::printf("| OS | macOS %s (%s) |\n", SysctlString("kern.osproductversion").c_str(),
               SysctlString("kern.osversion").c_str());
   const std::string build{GetBuildDescription()};
-  std::printf("| 构建 | %s |\n", build.c_str());
+  std::printf("| Build | %s |\n", build.c_str());
   std::printf("\n");
 }
 
 void PrintMarkdownReport(const std::vector<Result>& results, std::string_view title) {
   std::printf("## %.*s\n\n", static_cast<int>(title.size()), title.data());
-  std::printf("| 分组 | 基准 | 中位数 ns/op | 最好 ns/op | 速率 | 吞吐 | 离散度 |\n");
+  std::printf("| Group | Benchmark | Median ns/op | Best ns/op | Rate | Throughput | Spread |\n");
   std::printf("|---|---|---:|---:|---:|---:|---:|\n");
 
   std::string current_group;
@@ -112,8 +112,8 @@ void PrintMarkdownReport(const std::vector<Result>& results, std::string_view ti
                 FormatSpread(result).c_str());
   }
   std::printf("\n");
-  std::printf("> 离散度 =（最差轮 − 最好轮）/ 中位数。超过 30%% 会标 ⚠，说明测量期间存在\n");
-  std::printf("> 后台干扰或被调度到了效率核，此时的绝对数值仅供参考。\n\n");
+  std::printf("> Spread = (worst round − best round) / median. Above 30%% it is flagged ⚠: something ran in\n");
+  std::printf("> the background or the run landed on an efficiency core, so treat the absolute numbers as rough.\n\n");
 }
 
 }  // namespace tetherkitnext::bench

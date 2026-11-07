@@ -46,7 +46,9 @@ Runtime::~Runtime() {
 // =============================================================================
 
 Status Runtime::Start() {
-  if (started_) {
+  // A runtime is single-use. Starting after Stop() would spawn a control thread that the
+  // already-stopped destructor never joins (std::terminate on a joinable std::thread).
+  if (started_.load() || stopped_.load()) {
     return std::unexpected(Error::Generic(Tr(Msg::kCoreRuntimeAlreadyStarted)));
   }
 
@@ -73,11 +75,10 @@ void Runtime::WaitUntilStopped() {
 }
 
 void Runtime::Stop() {
-  if (stopped_) {
+  if (stopped_.exchange(true)) {
     return;
   }
-  stopped_ = true;
-  if (!started_) {
+  if (!started_.load()) {
     return;
   }
 
@@ -221,6 +222,16 @@ Status Runtime::RunStartSequence() {
     bridge_config.max_frame_bytes = parameters.mtu + rndis::kEthernetHeaderBytes;
     bridge_ = std::make_unique<Bridge>(*data_channel_, *bpf_link_, bridge_config);
     TETHERKITNEXT_RETURN_IF_ERROR(bridge_->Start());
+    // The state machine reported the initial media state before the bridge existed
+    // (OnLinkStateChanged saw bridge_ == nullptr), so apply it now.
+    bool link_up = false;
+    {
+      const std::lock_guard<std::mutex> guard(snapshot_mutex_);
+      link_up = snapshot_.link_up;
+    }
+    if (!link_up) {
+      bridge_->SetPaused(true);
+    }
   }
 
   RefreshSnapshot();
@@ -477,9 +488,17 @@ void Runtime::OnDeviceReset(bool addressing_lost) {
 
   // During a reset the device discarded all outstanding data packets. A brief pause lets the state machine finish replaying the packet filter,
   // avoiding continued flooding of data during the window when the device rebuilds its internal state.
+  // SetPaused(true) also waits for the RX injector to stop, so this drains in-flight
+  // writes. Restore the link's own state afterwards instead of forcing "running": a
+  // reset while the medium is down must leave the bridge paused.
   if (bridge_ != nullptr) {
+    bool link_up = false;
+    {
+      const std::lock_guard<std::mutex> guard(snapshot_mutex_);
+      link_up = snapshot_.link_up;
+    }
     bridge_->SetPaused(true);
-    bridge_->SetPaused(false);
+    bridge_->SetPaused(!link_up);
   }
 
   Emit(RuntimeEvent{.kind = RuntimeEvent::Kind::kDeviceReset, .a = addressing_lost ? 1 : 0});

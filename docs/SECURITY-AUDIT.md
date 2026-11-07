@@ -153,3 +153,71 @@ a string that disappeared when log messages were localized. It now pins
   of people who can act is unchanged. The residual risk moves to the app: a
   bug that skips `UserPresence.confirm` before a privileged call would skip
   the prompt. Keep every privileged call behind `AppModel.authorized`.
+
+---
+
+## Addendum: 2026-11-07 re-scan
+
+Re-scan prompted by the recent run of supply-chain attacks (hijacked
+GitHub Action tags, poisoned release tarballs). Base: `2e92841` (1.2.0).
+
+### Dependencies
+
+| Component | Pinned | Latest upstream | Verdict |
+|---|---|---|---|
+| libusb | 1.0.30 (`scripts/build-libusb.sh`) | **1.0.30** (2026-05-17); no newer release or release candidate | Up to date. The pinned SHA-256 was re-checked against the GitHub release asset: `fea36f34…dbaf`, match. |
+| doctest | 2.4.12 (vendored, test-only) | n/a | Not shipped. |
+
+libusb `master` has darwin fixes since 1.0.30 (interface claim/re-claim
+bookkeeping after a failed state restore, run-loop reference handling,
+parent-session refresh on re-enumeration) and a memory-safety fix in
+`libusb_get_port_numbers` (`1110f3a`, a write before the caller's array
+when a re-enumerated device's parent chain grows between two passes).
+TetherKitNext calls none of `libusb_get_port_numbers`,
+`libusb_set_configuration` or `libusb_reset_device`, so none of these is
+reachable from our code. **Decision: stay on the signed 1.0.30 release** and
+take 1.0.31 when it is tagged, rather than shipping an untagged snapshot.
+
+### CI supply chain (fixed)
+
+**S1. GitHub Actions were referenced by mutable tags** (`actions/checkout@v5`,
+…). A moved tag runs new code in jobs that hold the Developer ID certificate
+and notary key. All `uses:` are now pinned to full commit SHAs (same major
+versions, latest patch: checkout v5.1.0, cache v4.3.0, upload-artifact v4.6.2,
+download-artifact v4.3.0), with `.github/dependabot.yml` proposing updates.
+
+**S2. `actions/checkout` persisted the job token in `.git/config`.** No job
+pushes with git (the prerelease job uses `GH_TOKEN` via `gh`), so every
+checkout now sets `persist-credentials: false`; a compromised build step can
+no longer read the token from disk.
+
+Reviewed and fine: workflow-level `permissions: contents: read` with
+`contents: write` only on the release/prerelease jobs; no
+`pull_request_target`; secrets only reach non-PR events, so fork PRs build
+ad-hoc signed; the libusb tarball is hash-verified before use.
+
+### Code (fixed)
+
+**L3. Root child processes inherited every open descriptor.**
+`posix_spawn` without `POSIX_SPAWN_CLOEXEC_DEFAULT` passes the daemon's
+descriptors that lack `FD_CLOEXEC` (BPF device, routing / `feth` sockets,
+libusb's internal pipes) to `ipconfig` and `route`. Those are
+Apple binaries, so this was not exploitable on its own, but a root process
+should hand a child exactly stdin/stdout/stderr. `process_runner.cc` now sets
+`POSIX_SPAWN_CLOEXEC_DEFAULT` and gives the child `/dev/null` as stdin.
+
+### Re-reviewed with no new issue
+
+* RNDIS decoding of device data (`packet_codec.h`, `messages.cc`): 64-bit
+  bounds arithmetic, `MessageLength ≥ 44` guarantees forward progress,
+  alignment factor and transfer size clamps intact.
+* XPC: Team-ID requirement on every connection for signed builds; privileged
+  calls re-verify an authorization or the presence path (`admin` group);
+  unauthenticated calls are read-only (`queryNetwork` validates the interface
+  name in the C ABI).
+* CLI symlink: `lstat`/`readlink`/`symlink` never follow links; foreign
+  entries are reported, not replaced.
+* New in this change: the Advanced → Interfaces page reads `getifaddrs` and
+  the `NET_RT_IFLIST2` sysctl in the unprivileged app. It parses kernel data
+  with bounds checks (`ifm_msglen` validated against the buffer before each
+  step) and sends nothing to the daemon or the network.

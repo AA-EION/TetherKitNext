@@ -127,12 +127,12 @@ struct ParsedFormat {
 
 TEST_SUITE("common.i18n") {
 
-TEST_CASE("语言切换与查表") {
+TEST_CASE("switching language and looking up messages") {
   const Language original = tetherkitnext::GetLanguage();
 
   tetherkitnext::SetLanguage(Language::kChinese);
   CHECK(tetherkitnext::GetLanguage() == Language::kChinese);
-  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) == "运行中");
+  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) == "运行中");  // the zh table entry ("running")
 
   tetherkitnext::SetLanguage(Language::kEnglish);
   CHECK(tetherkitnext::GetLanguage() == Language::kEnglish);
@@ -141,7 +141,7 @@ TEST_CASE("语言切换与查表") {
   tetherkitnext::SetLanguage(original);
 }
 
-TEST_CASE("Tr 按当前语言渲染并替换参数") {
+TEST_CASE("Tr renders in the current language with arguments substituted") {
   const Language original = tetherkitnext::GetLanguage();
 
   tetherkitnext::SetLanguage(Language::kChinese);
@@ -156,7 +156,7 @@ TEST_CASE("Tr 按当前语言渲染并替换参数") {
   tetherkitnext::SetLanguage(original);
 }
 
-TEST_CASE("每条文案两种语言都非空") {
+TEST_CASE("every message is non-empty in both languages") {
   for (std::size_t i = 0; i < kMessageCount; ++i) {
     const auto id = static_cast<Msg>(i);
     CAPTURE(i);
@@ -165,14 +165,14 @@ TEST_CASE("每条文案两种语言都非空") {
   }
 }
 
-TEST_CASE("越界的 Msg 返回空串而不是崩溃") {
+TEST_CASE("an out-of-range Msg returns an empty string instead of crashing") {
   const auto out_of_range = static_cast<Msg>(kMessageCount);
   CHECK(tetherkitnext::Text(out_of_range).empty());
   CHECK(tetherkitnext::TextIn(Language::kChinese, out_of_range).empty());
 }
 
 // The core of this suite: the thing the compiler no longer checks is checked here entry by entry.
-TEST_CASE("两种语言的占位符下标与类型一致") {
+TEST_CASE("placeholder indices and types match in both languages") {
   for (std::size_t i = 0; i < kMessageCount; ++i) {
     const auto id = static_cast<Msg>(i);
     const ParsedFormat chinese = ParseFormat(tetherkitnext::TextIn(Language::kChinese, id));
@@ -204,7 +204,7 @@ TEST_CASE("两种语言的占位符下标与类型一致") {
   }
 }
 
-TEST_CASE("ParseLanguage 认得常见写法") {
+TEST_CASE("ParseLanguage recognizes common spellings") {
   Language language = Language::kEnglish;
 
   CHECK(tetherkitnext::ParseLanguage("zh", &language));
@@ -231,7 +231,7 @@ TEST_CASE("ParseLanguage 认得常见写法") {
   CHECK_FALSE(tetherkitnext::ParseLanguage("zh", nullptr));
 }
 
-TEST_CASE("区域设置串只按 zh 前缀判定") {
+TEST_CASE("locale strings are judged by the zh prefix only") {
   CHECK(tetherkitnext::LanguageFromLocaleString("zh_CN.UTF-8") == Language::kChinese);
   CHECK(tetherkitnext::LanguageFromLocaleString("ZH-hant") == Language::kChinese);
   CHECK(tetherkitnext::LanguageFromLocaleString("en_US.UTF-8") == Language::kEnglish);
@@ -241,19 +241,19 @@ TEST_CASE("区域设置串只按 zh 前缀判定") {
   CHECK(tetherkitnext::LanguageFromLocaleString("en_zh") == Language::kEnglish);
 }
 
-TEST_CASE("语言标签") {
+TEST_CASE("language tags") {
   CHECK(tetherkitnext::LanguageTag(Language::kChinese) == "zh");
   CHECK(tetherkitnext::LanguageTag(Language::kEnglish) == "en");
 }
 
-TEST_CASE("错误上下文的分隔符随语言变化") {
+TEST_CASE("the error context separator follows the language") {
   const Language original = tetherkitnext::GetLanguage();
 
   // Context() returns a view, so the Error must first be put into a named variable before taking it,
   // otherwise the temporary is destroyed at the end of the statement and the view dangles on the spot.
   tetherkitnext::SetLanguage(Language::kChinese);
   const tetherkitnext::Error chinese = tetherkitnext::Error::Generic("inner").WithContext("outer");
-  CHECK(chinese.Context().starts_with("outer："));
+  CHECK(chinese.Context().starts_with("outer："));  // zh uses the full-width colon U+FF1A
 
   tetherkitnext::SetLanguage(Language::kEnglish);
   const tetherkitnext::Error english = tetherkitnext::Error::Generic("inner").WithContext("outer");

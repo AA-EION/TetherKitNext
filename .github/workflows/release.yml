@@ -42,7 +42,9 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Check if release already exists
         id: existing
@@ -90,10 +92,18 @@ jobs:
             exit 1
           fi
 
-      - name: Select the newest Xcode
+      # Newest Xcode *26*, deliberately not 27: a libusb built with the macOS
+      # 27 SDK segfaults during device enumeration on macOS 15 and 26 (seen in
+      # CI, see AGENTS.md pitfall 33). Shipping builds stay on the 26 SDK until
+      # that is understood; the xcode-27 jobs cover building on macOS 27.
+      - name: Select the newest Xcode 26
         if: steps.existing.outputs.exists != 'true'
         run: |
-          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          # Release bundles only (Xcode_26.x.app), never betas/RCs; `|| true` so a missing
+          # Xcode 26 reaches the explicit error below instead of aborting silently.
+          latest="$(ls -d /Applications/Xcode_26*.app 2>/dev/null \
+            | grep -E '/Xcode_26(\.[0-9]+)*\.app$' | sort -V | tail -1 || true)"
+          [ -n "${latest}" ] || { echo "::error::no Xcode 26 on this runner"; ls -d /Applications/Xcode_*.app; exit 1; }
           sudo xcode-select -s "${latest}"
           xcodebuild -version
 

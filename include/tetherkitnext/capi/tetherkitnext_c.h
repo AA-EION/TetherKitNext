@@ -243,7 +243,7 @@ TK_API void tk_set_log_level(int32_t level);
 /// `tk_enable_log_capture(true)` at startup, and afterwards periodically `tk_drain_logs` to take them away.
 TK_API void tk_enable_log_capture(bool enabled);
 
-/// Takes away buffered log lines (first in, first out), returning the number actually taken.
+/// Drains buffered log lines (first in, first out), returning the number actually taken.
 ///
 /// The buffer is a fixed-size ring queue; when full, it discards the **oldest** records -- keeping the latest scene when the host is stuck
 /// is more useful than keeping the beginning. The number of dropped records is reported through `out_dropped`, and the GUI can use it to show
@@ -373,6 +373,12 @@ typedef struct tk_session_status {
 
   /// The cause when run_state == TK_RUN_FAILED; otherwise an empty string.
   char fatal[TK_ERROR_MESSAGE_CAPACITY];
+
+  /// The device's own IPv4 address in dotted form, learned passively from
+  /// frames only it can have sent (ARP, link-scoped broadcast/multicast).
+  /// Empty until seen. Lets the GUI find devices that have a fixed address
+  /// and no DHCP server (drones, controllers, gadget-mode boards).
+  char peer_ipv4[16];
 } tk_session_status_t;
 
 /// Opaque session handle.
@@ -403,7 +409,7 @@ TK_API void tk_session_destroy(tk_session_t* session);
 /// Takes a state snapshot. Callable from any thread.
 TK_API tk_result_t tk_session_status_get(tk_session_t* session, tk_session_status_t* out_status);
 
-/// Takes away queued events (first in, first out), returning the number actually taken.
+/// Drains queued events (first in, first out), returning the number actually taken.
 ///
 /// Like logs, it is a fixed-size ring queue that drops the oldest when full. The GUI missing a few state-transition events does not affect correctness
 /// -- the authoritative state is always the `tk_session_status_get` snapshot, and events are only used for animation and hints.
