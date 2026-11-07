@@ -123,7 +123,13 @@ The sidebar has five pages:
 | **Device** | Choose which phone to use (if you have several), plus a couple of advanced options |
 | **Network** | Automatic (DHCP) or a manual/static IP, DNS servers, and whether to send *all* traffic through the phone |
 | **Activity** | A live log, useful when something goes wrong |
-| **Settings** | Background component, command-line tool, language, menu bar, start at login, updates |
+| **Settings** | Background component, command-line tool, language, menu bar, start at login, advanced tools, updates |
+
+**Advanced tools (optional).** Turn on *Settings › Show advanced tools* to add an **Advanced**
+section to the sidebar. Its first page, **Interfaces**, lists every network interface on your Mac
+with its addresses and live speed. It only reads your Mac's own counters and changes nothing.
+More network tools are planned there ([roadmap](docs/ADVANCED-TOOLS.md)). Leave it off and the
+app looks exactly as before.
 
 **Closing the window doesn't disconnect you.** TetherKitNext moves to the menu bar (the Dock icon
 disappears) and keeps the connection up. Click the menu bar icon to see speeds, connect or

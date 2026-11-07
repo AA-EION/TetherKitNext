@@ -118,6 +118,7 @@ TetherKitNext/
 │   ├── Sources/TetherKitNextIPC/   Shared between App and helper: XPC protocol, models, auth, i18n
 │   ├── Sources/TetherKitNextCore/  Swift wrapper around the C ABI
 │   ├── Sources/TetherKitNextHelper/  Privileged helper daemon (root, launched via SMAppService / launchd)
+│   ├── Sources/TetherKitNextUIModel/ Testable UI logic (sidebar panes, interface traffic); no libtetherkitnext dependency
 │   ├── Sources/TetherKitNextApp/   SwiftUI user interface
 │   ├── Resources/              App-Info.plist, LaunchDaemon plist, AppIcon
 │   └── Scripts/                Build and helper uninstall scripts
@@ -238,12 +239,13 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 | 43 | `feat(gui): Touch ID confirmation for privileged actions (1.1.0)` | ✅ | `LAContext` + Team ID XPC pinning + `admin` group check; XPC rev 5 |
 | 44 | `fix(gui): make background component restart reliable on first click (1.1.1)` | ✅ | `HelperInstaller.reregister()` waits for `launchd` state transition and retries |
 | 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect (1.2.0)` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback; GUI supports 6 languages but the C++ library only en/zh (`Language.cValue` falls back to English); failed sessions stay visible (no forced reset to idle) |
+| 46 | `security` + `feat(gui)`: SHA-pinned CI actions, spawn fd hygiene, macOS 27 CI, AppKit-owned main window, SDK stamp, opt-in Advanced → Interfaces | 🚧 | Draft PR. libusb 1.0.30 still latest (hash re-verified). See docs/MACOS-27.md, docs/ADVANCED-TOOLS.md, SECURITY-AUDIT addendum |
 
 ### Current Status (TetherKitNext, 2026-10-06)
 
 - **Distribution**: Signed and notarized universal DMG (`scripts/build-release.sh`, shared across CI and releases). Security audit documented in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 - **Privileged Daemon**: `SMAppService` with label `com.tetherkitnext.helperd`, executed in-place from the `.app` bundle; automatically cleans up legacy `com.tetherkit.helper` installs on first run. XPC protocol revision 5.
-- **CI**: Native builds and tests on `macos-15`, `macos-26`, and `macos-15-intel`, universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, and `feth` ABI gate.
+- **CI**: Native builds and tests on `macos-15`, `macos-26`, `macos-15-intel` and `xcode-27` (macOS 27 Golden Gate), universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, `feth` ABI gate (also on macOS 27), and a macOS 27 GUI build + launch smoke test. All third-party actions are pinned to commit SHAs (Dependabot updates them).
 
 ### Historical Upstream Status (Recorded at v0.1.5)
 
@@ -367,6 +369,11 @@ RNDIS negotiation complete: version 1.0, MTU 1500, device aggregation limit 1580
 25. **Preserve legacy identifiers (`com.tetherkit.helper`, `libtetherkit*`, `"TetherKit"` service prefix) in cleanup code** during renames so upgrades clean up prior installations.
 26. **`dmgbuild` background images fail to render in Finder on macOS 15/26**; `scripts/make-dmg.sh` applies the DMG window layout using Finder via AppleScript on a temporary read-write image.
 27. **`SMAppService.unregister()` returning does not mean `launchd` has finished removing the job**; always use `HelperInstaller.reregister()` (which waits for state transitions and retries) to restart the daemon.
+28. **macOS 26+ draws window chrome by the `LC_BUILD_VERSION` `sdk` stamp, not by what the code was compiled against.** A SwiftPM link can stamp the deployment target (14.0), so the app gets legacy chrome. `build-gui.sh` rewrites `sdk` with `vtool` (keeping `minos`) and fails if the signed app is below 26. Any other packaging path (e.g. a Homebrew formula) must do the same.
+29. **Don't reintroduce a SwiftUI `Window` scene for the main window.** With a `MenuBarExtra`, SwiftUI resurrects it when the app is activated. `MainWindowController` owns an `NSWindow`; reopen via `MainWindowController.shared?.present()`. Without a window scene there is no default File ▸ Close, so keep the explicit ⌘W `CommandGroup`, and use `@AppStorage` (no `@SceneStorage`, there is no scene).
+30. **`getifaddrs` byte counters (`struct if_data`) are 32-bit and wrap at 4 GiB.** Read 64-bit counters from the `NET_RT_IFLIST2` sysctl (`if_msghdr2.ifm_data`, `if_data64`); a decrease then always means the interface was recreated (`feth` pairs are, every session).
+31. **Root child processes must be spawned with `POSIX_SPAWN_CLOEXEC_DEFAULT`** (`process_runner.cc`), or they inherit the daemon's BPF / socket / libusb descriptors.
+32. **Pin GitHub Actions to full commit SHAs** (the signing jobs hold the Developer ID certificate and notary key) and keep `persist-credentials: false` on checkouts. Bump them via Dependabot, not by retagging.
 
 ---
 

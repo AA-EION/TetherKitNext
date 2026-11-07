@@ -73,8 +73,10 @@ gui/
 │   ├── TetherKitNextIPC/                      Shared between App & helper: XPC protocol, models, auth, i18n
 │   ├── TetherKitNextCore/                     Swift wrapper over the C ABI
 │   ├── TetherKitNextHelper/                   Privileged helper daemon
-│   └── TetherKitNextApp/                      SwiftUI application
+│   ├── TetherKitNextUIModel/                  Testable UI logic: sidebar panes, interface traffic sampling
+│   └── TetherKitNextApp/                      SwiftUI application (main window owned by MainWindowController)
 ├── Tests/TetherKitNextIPCTests/               Auth token lifetime, code signing, and i18n placeholder tests
+├── Tests/TetherKitNextUIModelTests/           Sidebar/selection rules, rate tracker, live getifaddrs/sysctl smoke
 ├── Resources/                                 App-Info.plist, LaunchDaemon plist, AppIcon
 └── Scripts/                                   GUI packaging and helper uninstallation scripts
 ```
@@ -159,6 +161,9 @@ Therefore, the App caches `AuthorizationToken` across operations for up to 5 min
 - **Throughput calculations divide byte deltas by the library's monotonic timestamp delta**, not the nominal UI timer interval.
 - **Fixed-size C `char` arrays import into Swift as tuples**; always decode them via `CInterop.swift` by scanning up to the first `NUL` or the buffer bound rather than `String(cString:)`.
 - **Adaptive polling**: 500 ms when a session is active/starting/stopping or the main window is visible; 2 seconds when idle in the background.
+- **The main window is an AppKit `NSWindow` (`MainWindowController`), not a SwiftUI `Window` scene.** With a `MenuBarExtra` present, SwiftUI recreated a closed `Window` scene whenever the windowless app was activated (clicking the menu bar item), so the old code had to dismiss "unexpected" windows after the fact. The only SwiftUI scene is now the `MenuBarExtra`, and app-wide `.commands` attach to it. Rules: create and present the window from `AppDelegate.applicationDidFinishLaunching`; reopen through `MainWindowController.shared?.present()` (menu bar panel, `applicationShouldHandleReopen`); closing only orders the window out (`isReleasedWhenClosed = false`); File ▸ Close (⌘W) is our own `CommandGroup` item, since SwiftUI provides none without a window scene; the `NSHostingController` uses `sceneBridgingOptions = [.toolbars, .title]` so `.toolbar` / `.navigationTitle` keep working, and `sizingOptions = [.minSize]` so pages with different intrinsic heights never resize the window.
+- **Persist UI state with `@AppStorage`, not `@SceneStorage`.** The main window has no SwiftUI scene to store into. The sidebar selection is stored as `Pane.rawValue` and read back through `Pane.resolveStored`, which drops values for hidden advanced pages.
+- **Advanced tools are opt-in** (`PreferenceKey.advancedToolsEnabled`, default off). Pages with `Pane.isAdvanced` appear in a separate "Advanced" sidebar section; see [ADVANCED-TOOLS.md](ADVANCED-TOOLS.md).
 
 ### 4.7b Interface Localization
 
@@ -176,6 +181,7 @@ Switching languages in `AppModel.applyLanguage` updates three places atomically:
 
 - **Always copy dylibs with `cp -a` rather than `install`** to preserve versioned symlinks (`libtetherkitnext.dylib` → `libtetherkitnext.0.dylib`).
 - **Always re-sign binaries after modifying Mach-O headers with `install_name_tool`**, otherwise macOS on Apple Silicon terminates the process with `Killed: 9` (`SIGKILL` due to invalid code signature).
+- **The app binary must be stamped with SDK ≥ 26 (`LC_BUILD_VERSION` `sdk`).** macOS 26+ picks the window chrome from that field, and a SwiftPM link can stamp the deployment target instead. `build-gui.sh` rewrites only `sdk` with `vtool` (using `xcrun --show-sdk-version`; `minos` stays 14.0) before `lipo`, and fails the build if the signed binary is still below 26. `swift run` binaries skip this and may show legacy chrome; that is expected. See [MACOS-27.md](MACOS-27.md).
 - **Bundle `libusb-1.0.0.dylib` inside `Contents/Frameworks/`** and sign it with the same identity so Hardened Runtime library validation succeeds.
 - **Strip build-directory `@rpath` entries** from release binaries so dyld always loads the bundled Frameworks rather than development paths on the build machine.
 
@@ -280,6 +286,7 @@ Troubleshooting quick reference:
 | Clicking "Install Helper" reports missing payload | Running a bare `swift run` executable instead of the `.app` bundle assembled by `build-gui.sh`. |
 | Authorization prompt asks for password instead of Touch ID | `AuthorizationCopyRights` only supports password entry on ad-hoc builds; signed builds (1.1.0+) use `LAContext` for Touch ID (see Section 4.5). |
 | Re-plugging device and clicking "Connect" says session is already running | Running an older helper daemon that did not clear `failed`/`stopped` sessions; update/restart the background component. |
-| Double-clicking Finder icon does nothing in Menu Bar Only mode | Known trade-off when activation policy is `.accessory` (see `MainWindowRoot`); open the main window from the menu bar panel (`Open TetherKitNext`). |
+| Double-clicking Finder icon does nothing in Menu Bar Only mode | Fixed: with the AppKit-owned main window `applicationShouldHandleReopen` reaches `AppDelegate` and reopens it. |
+| Window chrome looks like an old app on macOS 26+ (small traffic lights) | The binary's `LC_BUILD_VERSION` `sdk` stamp is below 26. `build-gui.sh` rewrites and then checks it; verify with `otool -l …/MacOS/TetherKitNext \| grep -A4 LC_BUILD_VERSION`. |
 
 
