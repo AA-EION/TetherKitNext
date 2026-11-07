@@ -49,7 +49,7 @@ struct IfDrv {
 
 // The size must be exactly 40 bytes: it participates in the ioctl number computation of _IOW('i', 123, struct ifdrv),
 // and if computed wrongly the result is a nonexistent ioctl number. Measured SIOCSDRVSPEC = 0x8028697b.
-static_assert(sizeof(IfDrv) == 40, "struct ifdrv 必须是 40 字节，否则 ioctl 编号会算错");
+static_assert(sizeof(IfDrv) == 40, "struct ifdrv must be 40 bytes, or the ioctl number is wrong");
 static_assert(offsetof(IfDrv, ifd_cmd) == 16);
 static_assert(offsetof(IfDrv, ifd_len) == 24);
 static_assert(offsetof(IfDrv, ifd_data) == 32);
@@ -59,8 +59,8 @@ inline constexpr unsigned long kSetDriverSpec = _IOW('i', 123, IfDrv);
 /// Reads driver-private parameters.
 inline constexpr unsigned long kGetDriverSpec = _IOWR('i', 123, IfDrv);
 
-static_assert(kSetDriverSpec == 0x8028'697BUL, "SIOCSDRVSPEC 编号与实测值不符");
-static_assert(kGetDriverSpec == 0xC028'697BUL, "SIOCGDRVSPEC 编号与实测值不符");
+static_assert(kSetDriverSpec == 0x8028'697BUL, "SIOCSDRVSPEC differs from the measured value");
+static_assert(kGetDriverSpec == 0xC028'697BUL, "SIOCGDRVSPEC differs from the measured value");
 
 // =============================================================================
 // if_fake (feth) private ABI
@@ -116,7 +116,7 @@ struct FethRequest {
   } u;
 };
 
-static_assert(sizeof(FethRequest) == 160, "struct if_fake_request 必须是 160 字节");
+static_assert(sizeof(FethRequest) == 160, "struct if_fake_request must be 160 bytes");
 static_assert(offsetof(FethRequest, u) == 32);
 static_assert(sizeof(FethRequest::u) == 128);
 static_assert(alignof(FethRequest) == 8);
@@ -135,14 +135,14 @@ static_assert(alignof(FethRequest) == 8);
 ///
 /// Precondition: BIOCSHDRCMPLT must already be set to 1, and BIOCSETTC must not have been set.
 inline constexpr unsigned long kBpfSetBatchWrite = _IOW('B', 143, int);
-static_assert(kBpfSetBatchWrite == 0x8004'428FUL, "BIOCSBATCHWRITE 编号与实测值不符");
+static_assert(kBpfSetBatchWrite == 0x8004'428FUL, "BIOCSBATCHWRITE differs from the measured value");
 
 /// Turns off capture timestamps so catchpacket skips the microtime() call.
 ///
 /// We do not need timestamps (frames are forwarded directly to USB); turning them off saves one clock read per frame.
 /// Also feature-probed; failure is harmless.
 inline constexpr unsigned long kBpfSetNoTimestamp = _IOW('B', 145, int);
-static_assert(kBpfSetNoTimestamp == 0x8004'4291UL, "BIOCSNOTSTAMP 编号与实测值不符");
+static_assert(kBpfSetNoTimestamp == 0x8004'4291UL, "BIOCSNOTSTAMP differs from the measured value");
 
 /// Explicitly sets the capture direction (a more precise version of BIOCSSEESENT).
 inline constexpr unsigned long kBpfSetDirection = _IOW('B', 138, unsigned int);
@@ -177,9 +177,9 @@ inline constexpr std::uint32_t kBpfMinBufferBytes = 32;
 inline constexpr std::uint32_t kBpfHeaderMinBytes = 18;
 
 static_assert(sizeof(struct bpf_hdr) == 20,
-              "LP64 下 sizeof(struct bpf_hdr) 应为 20（内容 18 字节 + 2 字节填充）");
+              "on LP64 sizeof(struct bpf_hdr) must be 20 (18 bytes of fields + 2 of padding)");
 static_assert(sizeof(struct BPF_TIMEVAL) == 8,
-              "LP64 下 BPF 时间戳是 timeval32（8 字节），不是 64 位 timeval");
+              "on LP64 the BPF timestamp is timeval32 (8 bytes), not a 64-bit timeval");
 
 // =============================================================================
 // sysctls snapshotted at feth creation time

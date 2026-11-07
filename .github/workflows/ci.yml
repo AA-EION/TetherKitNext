@@ -342,10 +342,10 @@ jobs:
           sudo env TETHERKITNEXT_ROOT_TESTS=1 TETHERKITNEXT_LANG=en \
             ctest --test-dir build -V -R 'net\.' 2>&1 | tee abi.log
           # Skip notice is hard-coded in tests/test_net_link.cc.
-          if grep -q "需要 root 且需设置" abi.log; then
+          if grep -q "needs root and TETHERKITNEXT_ROOT_TESTS=1" abi.log; then
             echo "::error::feth cases were skipped; the ABI check did not run"; exit 1
           fi
-          # kNetCreated. (The previous gate grepped for "创建了 feth", a string
+          # kNetCreated. (The previous gate grepped for a Chinese message ("feth created"), a string
           # that stopped existing when log messages were localized — it could
           # never pass.)
           if ! grep -q "created virtual interface feth" abi.log; then

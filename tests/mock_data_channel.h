@@ -50,7 +50,7 @@ class MockDataChannel final : public usb::DataChannel {
 
   [[nodiscard]] Result<usb::SendOutcome> SendFrames(std::span<const FrameView> frames) override {
     if (send_should_fail_.load(std::memory_order_acquire)) {
-      return std::unexpected(Error::Generic("mock：按测试设置让发送失败"));
+      return std::unexpected(Error::Generic("mock: send failure injected by the test"));
     }
 
     // Simulates the limited capacity of the transfer pool: accepts at most accept_limit_ frames at a time, and anything beyond is backpressure.

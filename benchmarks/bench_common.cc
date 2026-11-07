@@ -245,48 +245,48 @@ void RegisterCommonBenchmarks(Runner& runner) {
   constexpr std::uint64_t kMicroOps = 2'000'000;
   constexpr std::uint64_t kFrameOps = 500'000;
 
-  runner.Add("memcpy 基线", "1514 字节帧",
+  runner.Add("memcpy baseline", "1514-byte frame",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchMemcpy(n, kFullFrameBytes); });
-  runner.Add("memcpy 基线", "64 字节帧",
+  runner.Add("memcpy baseline", "64-byte frame",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchMemcpy(n, kSmallFrameBytes); });
 
-  runner.Add("字节序", "解析 44 字节 RNDIS 包头（未对齐）", Config{.ops_per_round = kMicroOps},
+  runner.Add("Byte order", "Parse a 44-byte RNDIS header (unaligned)", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchParsePacketHeader(n); });
 
-  runner.Add("SPSC 队列", "单线程 push+pop", Config{.ops_per_round = kMicroOps},
+  runner.Add("SPSC queue", "Single-thread push+pop", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchSpscRoundTripSameThread(n); });
-  runner.Add("SPSC 队列", "跨线程搬运", Config{.measure_rounds = 5, .ops_per_round = kFrameOps},
+  runner.Add("SPSC queue", "Cross-thread transfer", Config{.measure_rounds = 5, .ops_per_round = kFrameOps},
              [](std::uint64_t n) { return BenchSpscCrossThread(n); });
 
-  runner.Add("FrameRing", "单线程往返（1514 字节）",
+  runner.Add("FrameRing", "Single-thread round trip (1514 bytes)",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchFrameRingRoundTrip(n, kFullFrameBytes); });
-  runner.Add("FrameRing", "单线程往返（64 字节）",
+  runner.Add("FrameRing", "Single-thread round trip (64 bytes)",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchFrameRingRoundTrip(n, kSmallFrameBytes); });
   // Comparison of the effect of batch publishing. This is the most important group of numbers for the whole data path: the same queue,
   // the same amount moved, changing only "how many frames each release store publishes".
   for (const std::uint32_t batch : {1U, 4U, 8U, 32U, 64U}) {
     runner.Add(
-        "FrameRing 批量发布",
-        std::format("跨线程 1514 字节 × batch={}", batch),
+        "FrameRing batch publish",
+        std::format("Cross-thread 1514 bytes × batch={}", batch),
         Config{.measure_rounds = 5, .ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
         [batch](std::uint64_t n) { return BenchFrameRingCrossThread(n, kFullFrameBytes, batch); });
   }
   runner.Add(
-      "FrameRing 批量发布", "跨线程 64 字节 × batch=1",
+      "FrameRing batch publish", "Cross-thread 64 bytes × batch=1",
       Config{.measure_rounds = 5, .ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
       [](std::uint64_t n) { return BenchFrameRingCrossThread(n, kSmallFrameBytes, 1); });
   runner.Add(
-      "FrameRing 批量发布", "跨线程 64 字节 × batch=32",
+      "FrameRing batch publish", "Cross-thread 64 bytes × batch=32",
       Config{.measure_rounds = 5, .ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
       [](std::uint64_t n) { return BenchFrameRingCrossThread(n, kSmallFrameBytes, 32); });
 
-  runner.Add("统计计数器", "relaxed load+store（本项目做法）", Config{.ops_per_round = kMicroOps},
+  runner.Add("Stats counter", "relaxed load+store (this project)", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchCounterUpdate(n); });
-  runner.Add("统计计数器", "fetch_add 对比", Config{.ops_per_round = kMicroOps},
+  runner.Add("Stats counter", "fetch_add, for comparison", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchCounterUpdateFetchAdd(n); });
 }
 

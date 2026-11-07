@@ -13,6 +13,7 @@
 #include <doctest.h>
 
 #include "capi_support.h"
+#include "language_guard.h"
 #include "process_runner.h"
 #include "tetherkitnext/capi/tetherkitnext_c.h"
 #include "tetherkitnext/common/logging.h"
@@ -22,20 +23,20 @@ using tetherkitnext::capi::IsValidFethName;
 
 TEST_SUITE("capi.support") {
 
-TEST_CASE("CopyText 正常拷贝并补终止符") {
+TEST_CASE("CopyText copies and NUL-terminates") {
   std::array<char, 16> buffer{};
   CopyText(buffer.data(), buffer.size(), "feth0");
   CHECK(std::string{buffer.data()} == "feth0");
 }
 
-TEST_CASE("CopyText 容量为 0 或目标为空时不写内存") {
+TEST_CASE("CopyText writes nothing when capacity is 0 or the destination is null") {
   CopyText(nullptr, 16, "x");  // passing if it does not crash
   std::array<char, 4> buffer{'a', 'b', 'c', 'd'};
   CopyText(buffer.data(), 0, "xyz");
   CHECK(buffer[0] == 'a');
 }
 
-TEST_CASE("CopyText 截断落在 UTF-8 字符边界上") {
+TEST_CASE("CopyText truncates on a UTF-8 character boundary") {
   // "设备" ("device") = 6 bytes (3 bytes per character). With a capacity of 6 bytes (5 usable + the terminator),
   // only the first character fits; cutting hard by bytes would leave half of "备", and on the Swift side the whole string would become replacement characters.
   std::array<char, 6> buffer{};
@@ -44,37 +45,37 @@ TEST_CASE("CopyText 截断落在 UTF-8 字符边界上") {
   CHECK(std::strlen(buffer.data()) == 3);
 }
 
-TEST_CASE("CopyText 恰好装得下时不截断") {
+TEST_CASE("CopyText does not truncate text that fits exactly") {
   std::array<char, 7> buffer{};
   CopyText(buffer.data(), buffer.size(), "设备");
   CHECK(std::string{buffer.data()} == "设备");
 }
 
-TEST_CASE("CopyText 首字符就装不下时得到空串而非半个字符") {
+TEST_CASE("CopyText yields an empty string, not half a character, when even the first character does not fit") {
   std::array<char, 3> buffer{};  // 2 usable bytes, cannot fit the 3-byte "设"
   CopyText(buffer.data(), buffer.size(), "设备");
   CHECK(std::string{buffer.data()}.empty());
 }
 
-TEST_CASE("IsValidFethName 只接受 feth+数字") {
+TEST_CASE("IsValidFethName accepts only feth + digits") {
   CHECK(IsValidFethName("feth0"));
   CHECK(IsValidFethName("feth12"));
 
-  SUBCASE("拒绝真实物理网卡 —— 防止误把用户的 Wi-Fi 配置冲掉") {
+  SUBCASE("rejects real interfaces, so the user's Wi-Fi settings are never wiped by mistake") {
     CHECK_FALSE(IsValidFethName("en0"));
     CHECK_FALSE(IsValidFethName("bridge0"));
   }
-  SUBCASE("拒绝缺少编号与非数字后缀") {
+  SUBCASE("rejects a missing number and non-numeric suffixes") {
     CHECK_FALSE(IsValidFethName("feth"));
     CHECK_FALSE(IsValidFethName("fethX"));
     CHECK_FALSE(IsValidFethName("feth0a"));
   }
-  SUBCASE("拒绝壳元字符与路径分隔符") {
+  SUBCASE("rejects shell metacharacters and path separators") {
     CHECK_FALSE(IsValidFethName("feth0; rm -rf /"));
     CHECK_FALSE(IsValidFethName("../feth0"));
     CHECK_FALSE(IsValidFethName(""));
   }
-  SUBCASE("拒绝超过 IFNAMSIZ 的名字") {
+  SUBCASE("rejects names longer than IFNAMSIZ") {
     CHECK_FALSE(IsValidFethName("feth123456789012345"));
   }
 }
@@ -101,7 +102,7 @@ tk_device_info_t DeviceInfo(const DeviceIdentity& identity, const char* manufact
 
 }  // namespace
 
-TEST_CASE("ReconcileDeviceStrings 在读不到时回填上次成功读到的名字") {
+TEST_CASE("ReconcileDeviceStrings backfills the last name read successfully when a read fails") {
   // The scenario is that real defect on the GUI: after connecting the device is held exclusively and strings cannot be read,
   // and "vivo iQOO Z10x" degrades into "USB device 2d95:600b".
   const DeviceIdentity phone{.bus_number = 0, .device_address = 1,
@@ -121,7 +122,7 @@ TEST_CASE("ReconcileDeviceStrings 在读不到时回填上次成功读到的名�
   CHECK(std::string{infos[0].product} == "iQOO Z10x");
   CHECK(std::string{infos[0].serial} == "10AFAC2X72005KT");
 
-  SUBCASE("再次读到新值时覆盖记忆") {
+  SUBCASE("a newly read value replaces the remembered one") {
     infos = {DeviceInfo(phone, "vivo", "iQOO Z10x", "NEWSERIAL")};
     ReconcileDeviceStrings(memory, present, infos);
     infos = {DeviceInfo(phone, "", "", "")};
@@ -130,7 +131,7 @@ TEST_CASE("ReconcileDeviceStrings 在读不到时回填上次成功读到的名�
   }
 }
 
-TEST_CASE("ReconcileDeviceStrings 不把旧名字安给接替同一地址的另一台设备") {
+TEST_CASE("ReconcileDeviceStrings does not give an old name to another device at the same address") {
   const DeviceIdentity old_phone{.bus_number = 0, .device_address = 1,
                                  .vendor_id = 0x2d95, .product_id = 0x600b};
   std::vector<RememberedDeviceStrings> memory;
@@ -138,7 +139,7 @@ TEST_CASE("ReconcileDeviceStrings 不把旧名字安给接替同一地址的另�
   ReconcileDeviceStrings(memory, {std::vector<DeviceIdentity>{old_phone}}, infos);
   REQUIRE(memory.size() == 1);
 
-  SUBCASE("同地址但 VID:PID 不同 → 身份不同，不回填") {
+  SUBCASE("same address but a different VID:PID → different device, no backfill") {
     const DeviceIdentity other{.bus_number = 0, .device_address = 1,
                                .vendor_id = 0x18d1, .product_id = 0x4ee4};
     infos = {DeviceInfo(other, "", "", "")};
@@ -146,7 +147,7 @@ TEST_CASE("ReconcileDeviceStrings 不把旧名字安给接替同一地址的另�
     CHECK(std::string{infos[0].product}.empty());
   }
 
-  SUBCASE("设备拔掉（不在场）→ 记忆清除；重插后读不到也不回填") {
+  SUBCASE("device unplugged (absent) → memory cleared; no backfill after replugging even if reads fail") {
     // Unplugged: present is empty.
     infos.clear();
     ReconcileDeviceStrings(memory, {}, infos);
@@ -159,7 +160,7 @@ TEST_CASE("ReconcileDeviceStrings 不把旧名字安给接替同一地址的另�
   }
 }
 
-TEST_CASE("ReconcileDeviceStrings 对没有字符串的设备保持诚实的空串") {
+TEST_CASE("ReconcileDeviceStrings keeps an honest empty string for devices without strings") {
   const DeviceIdentity mute{.bus_number = 2, .device_address = 7,
                             .vendor_id = 0x1234, .product_id = 0x5678};
   std::vector<RememberedDeviceStrings> memory;
@@ -170,7 +171,7 @@ TEST_CASE("ReconcileDeviceStrings 对没有字符串的设备保持诚实的空�
   CHECK(std::string{infos[0].product}.empty());
 }
 
-TEST_CASE("ReconcileDeviceStrings 不清除仍在场但没被填出的设备的记忆") {
+TEST_CASE("ReconcileDeviceStrings keeps the memory of a device that is present but not filled in") {
   // When the caller's array capacity is insufficient, present is longer than infos -- the excess was merely not filled,
   // not unplugged.
   const DeviceIdentity first{.bus_number = 0, .device_address = 1,
@@ -200,7 +201,7 @@ TEST_CASE("ReconcileDeviceStrings 不清除仍在场但没被填出的设备的�
 
 TEST_SUITE("capi.basics") {
 
-TEST_CASE("tk_version 填出非空的版本串") {
+TEST_CASE("tk_version fills in a non-empty version string") {
   tk_version_info_t version{};
   tk_version(&version);
   CHECK(std::strlen(version.text) > 0);
@@ -208,12 +209,12 @@ TEST_CASE("tk_version 填出非空的版本串") {
   CHECK(std::strlen(version.libusb) > 0);
   CHECK(version.major + version.minor + version.patch > 0);
 
-  SUBCASE("传 nullptr 是空操作而非崩溃") {
+  SUBCASE("nullptr is a no-op, not a crash") {
     tk_version(nullptr);
   }
 }
 
-TEST_CASE("tk_check_environment 永远成功，只在字段里表达结论") {
+TEST_CASE("tk_check_environment always succeeds and reports its findings in the fields") {
   tk_environment_t environment{};
   CHECK(tk_check_environment(&environment) == TK_OK);
   // The test process is not root, so this one is certain.
@@ -223,12 +224,12 @@ TEST_CASE("tk_check_environment 永远成功，只在字段里表达结论") {
     CHECK(std::strlen(environment.sysctl_detail) == 0);
   }
 
-  SUBCASE("传 nullptr 返回参数错误") {
+  SUBCASE("nullptr returns an argument error") {
     CHECK(tk_check_environment(nullptr) == TK_ERR_INVALID_ARGUMENT);
   }
 }
 
-TEST_CASE("tk_list_devices 允许只统计数量") {
+TEST_CASE("tk_list_devices can return just the count") {
   std::size_t count = 0;
   tk_error_t error{};
   // The development machine usually has no RNDIS device plugged in, so here we only verify "the call succeeds and does not write out of bounds",
@@ -237,15 +238,18 @@ TEST_CASE("tk_list_devices 允许只统计数量") {
   CHECK(result == TK_OK);
   CHECK(std::strlen(error.message) == 0);
 
-  SUBCASE("缺少 out_count 时拒绝调用") {
+  SUBCASE("rejects the call without out_count") {
     CHECK(tk_list_devices(nullptr, 0, nullptr, false, nullptr) == TK_ERR_INVALID_ARGUMENT);
   }
 }
 
-TEST_CASE("重复枚举不会反复初始化 libusb") {
+TEST_CASE("repeated enumeration does not reinitialize libusb") {
   // The GUI refreshes the device list periodically. If every enumeration created a new libusb context, every time it would
   // start and stop one event thread and one IOKit runloop thread, and the log would be flooded with "libusb initialized"
   // -- this problem really happened, and this test case pins the fix.
+  // The check below matches the English log text; without pinning it could
+  // never match under another language and would pass vacuously.
+  const tetherkitnext::testing::ScopedLanguage guard{tetherkitnext::Language::kEnglish};
   tk_enable_log_capture(true);
   const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
   tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
@@ -268,7 +272,7 @@ TEST_CASE("重复枚举不会反复初始化 libusb") {
   std::size_t taken = 0;
   while ((taken = tk_drain_logs(records.data(), records.size(), &dropped)) > 0) {
     for (std::size_t i = 0; i < taken; ++i) {
-      if (std::string{records[i].message}.find("libusb 已初始化") != std::string::npos) {
+      if (std::string{records[i].message}.find("libusb initialized") != std::string::npos) {
         ++initialization_lines;
       }
     }
@@ -283,22 +287,22 @@ TEST_CASE("重复枚举不会反复初始化 libusb") {
 
 TEST_SUITE("capi.log_ring") {
 
-TEST_CASE("日志捕获关闭时不产生记录") {
+TEST_CASE("no records while log capture is off") {
   tk_enable_log_capture(false);
-  TETHERKITNEXT_ERROR("这条不该被捕获");
+  TETHERKITNEXT_ERROR("this line must not be captured");
 
   std::array<tk_log_record_t, 4> records{};
   std::uint64_t dropped = 0;
   CHECK(tk_drain_logs(records.data(), records.size(), &dropped) == 0);
 }
 
-TEST_CASE("开启捕获后能按序取回日志") {
+TEST_CASE("with capture on, logs are drained in order") {
   tk_enable_log_capture(true);
   const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
   tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
 
-  TETHERKITNEXT_INFO("第一条");
-  TETHERKITNEXT_WARN("第二条");
+  TETHERKITNEXT_INFO("first");
+  TETHERKITNEXT_WARN("second");
 
   std::array<tk_log_record_t, 8> records{};
   std::uint64_t dropped = 0;
@@ -306,13 +310,13 @@ TEST_CASE("开启捕获后能按序取回日志") {
 
   CHECK(taken == 2);
   CHECK(dropped == 0);
-  CHECK(std::string{records[0].message} == "第一条");
+  CHECK(std::string{records[0].message} == "first");
   CHECK(records[0].level == TK_LOG_INFO);
-  CHECK(std::string{records[1].message} == "第二条");
+  CHECK(std::string{records[1].message} == "second");
   CHECK(records[1].level == TK_LOG_WARN);
   CHECK(records[0].wall_nanos > 0);
 
-  SUBCASE("取空之后再取返回 0") {
+  SUBCASE("draining again after empty returns 0") {
     CHECK(tk_drain_logs(records.data(), records.size(), &dropped) == 0);
   }
 
@@ -320,7 +324,7 @@ TEST_CASE("开启捕获后能按序取回日志") {
   tk_enable_log_capture(false);
 }
 
-TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
+TEST_CASE("a full buffer drops the oldest records and reports how many") {
   tk_enable_log_capture(true);
   const tetherkitnext::LogLevel saved_level = tetherkitnext::GetLogLevel();
   tetherkitnext::SetLogLevel(tetherkitnext::LogLevel::kInfo);
@@ -329,7 +333,7 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
   constexpr int kOverflow = 10;
   constexpr int kTotal = 256 + kOverflow;
   for (int i = 0; i < kTotal; ++i) {
-    TETHERKITNEXT_INFO("第 {} 条", i);
+    TETHERKITNEXT_INFO("record {}", i);
   }
 
   std::array<tk_log_record_t, 512> records{};
@@ -339,10 +343,10 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
   CHECK(taken == 256);
   CHECK(dropped == kOverflow);
   // What remains should be the **newest** 256, so the first one is number 10.
-  CHECK(std::string{records[0].message} == "第 10 条");
-  CHECK(std::string{records[taken - 1].message} == "第 265 条");
+  CHECK(std::string{records[0].message} == "record 10");
+  CHECK(std::string{records[taken - 1].message} == "record 265");
 
-  SUBCASE("丢弃计数取走后归零") {
+  SUBCASE("the drop count resets once read") {
     std::uint64_t again = 1;
     tk_drain_logs(records.data(), records.size(), &again);
     CHECK(again == 0);
@@ -356,7 +360,7 @@ TEST_CASE("缓冲写满时丢最旧的并汇报丢弃数") {
 
 TEST_SUITE("capi.session") {
 
-TEST_CASE("tk_session_config_init 填出可直接使用的默认值") {
+TEST_CASE("tk_session_config_init fills in usable defaults") {
   tk_session_config_t config{};
   tk_session_config_init(&config);
 
@@ -372,7 +376,7 @@ TEST_CASE("tk_session_config_init 填出可直接使用的默认值") {
   CHECK(config.product_id == 0);
 }
 
-TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
+TEST_CASE("a session can be created, queried and destroyed (no root needed)") {
   tk_session_config_t config{};
   tk_session_config_init(&config);
 
@@ -381,7 +385,7 @@ TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
   REQUIRE(session != nullptr);
   CHECK(std::strlen(error.message) == 0);
 
-  SUBCASE("未启动时是 IDLE，且各字段都是干净的零值") {
+  SUBCASE("before start it is IDLE and every field is zero") {
     tk_session_status_t status{};
     REQUIRE(tk_session_status_get(session, &status) == TK_OK);
     CHECK(status.run_state == TK_RUN_IDLE);
@@ -394,18 +398,18 @@ TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
     CHECK(status.monotonic_nanos > 0);
   }
 
-  SUBCASE("未启动时事件队列是空的") {
+  SUBCASE("before start the event queue is empty") {
     std::array<tk_event_t, 8> events{};
     CHECK(tk_session_poll_events(session, events.data(), events.size()) == 0);
   }
 
-  SUBCASE("非 root 启动返回 TK_ERR_PERMISSION 而不是笼统的失败") {
+  SUBCASE("starting without root returns TK_ERR_PERMISSION, not a generic failure") {
     // The GUI relies on this code to distinguish "should pop up authorization" from "a real error".
     CHECK(tk_session_start(session, &error) == TK_ERR_PERMISSION);
     CHECK(std::strlen(error.message) > 0);
   }
 
-  SUBCASE("重复 stop 是幂等的") {
+  SUBCASE("repeated stop is idempotent") {
     CHECK(tk_session_stop(session) == TK_OK);
     CHECK(tk_session_stop(session) == TK_OK);
   }
@@ -413,7 +417,7 @@ TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
   tk_session_destroy(session);
 }
 
-TEST_CASE("会话接口对空指针一律安全") {
+TEST_CASE("the session API is safe with null pointers") {
   tk_error_t error{};
   CHECK(tk_session_create(nullptr, &error) == nullptr);
   CHECK(std::strlen(error.message) > 0);
@@ -430,7 +434,7 @@ TEST_CASE("会话接口对空指针一律安全") {
 
 TEST_SUITE("capi.process") {
 
-TEST_CASE("RunTool 收集子进程输出并带回退出码") {
+TEST_CASE("RunTool collects the child's output and exit code") {
   const auto result = tetherkitnext::capi::RunTool("/bin/echo", {"你好", "世界"});
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 0);
@@ -438,7 +442,7 @@ TEST_CASE("RunTool 收集子进程输出并带回退出码") {
   CHECK(result->output == "你好 世界\n");
 }
 
-TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
+TEST_CASE("RunTool merges stderr, and a non-zero exit is not a call failure") {
   // sh -c 'echo boom >&2; exit 3': verifies that stderr is also collected and the exit code is carried back as-is.
   const auto result =
       tetherkitnext::capi::RunTool("/bin/sh", {"-c", "echo boom >&2; exit 3"});
@@ -448,7 +452,7 @@ TEST_CASE("RunTool 合并 stderr，且非零退出不算调用失败") {
   CHECK(result->output == "boom\n");
 }
 
-TEST_CASE("RunTool 读得下超过管道缓冲的大输出（不死锁）") {
+TEST_CASE("RunTool reads output larger than the pipe buffer (no deadlock)") {
   // The pipe buffer is 64 KiB. It must be drained first and then waitpid, otherwise once the child fills it it blocks,
   // and we wait on waitpid, and both sides freeze. This test case pins that order.
   const auto result = tetherkitnext::capi::RunTool(
@@ -480,7 +484,7 @@ TEST_CASE("RunTool children read EOF on stdin") {
   CHECK(result->output == "eof\n");
 }
 
-TEST_CASE("RunTool 对不存在的可执行文件返回错误而非崩溃") {
+TEST_CASE("RunTool returns an error, not a crash, for a missing executable") {
   const auto result = tetherkitnext::capi::RunTool("/nonexistent/tetherkitnext-test", {});
   CHECK_FALSE(result.has_value());
 }
@@ -489,7 +493,7 @@ TEST_CASE("RunTool 对不存在的可执行文件返回错误而非崩溃") {
 
 TEST_SUITE("capi.net_config") {
 
-TEST_CASE("tk_ip_config_init 默认 DHCP 且不抢全局默认路由") {
+TEST_CASE("tk_ip_config_init defaults to DHCP without taking the global default route") {
   tk_ip_config_t config{};
   tk_ip_config_init(&config);
   CHECK(config.mode == TK_IP_MODE_DHCP);
@@ -498,7 +502,7 @@ TEST_CASE("tk_ip_config_init 默认 DHCP 且不抢全局默认路由") {
   CHECK(std::strlen(config.address) == 0);
 }
 
-TEST_CASE("拒绝对非 feth 网卡下手") {
+TEST_CASE("refuses to touch non-feth interfaces") {
   tk_ip_config_t config{};
   tk_ip_config_init(&config);
   tk_error_t error{};
@@ -516,7 +520,7 @@ TEST_CASE("拒绝对非 feth 网卡下手") {
   CHECK(tk_net_apply("feth0", nullptr, &error) == TK_ERR_INVALID_ARGUMENT);
 }
 
-TEST_CASE("非 root 下写操作返回 TK_ERR_PERMISSION") {
+TEST_CASE("write operations without root return TK_ERR_PERMISSION") {
   tk_ip_config_t config{};
   tk_ip_config_init(&config);
   tk_error_t error{};
@@ -530,7 +534,7 @@ TEST_CASE("非 root 下写操作返回 TK_ERR_PERMISSION") {
   CHECK(removed == 0);
 }
 
-TEST_CASE("查询不存在的 feth 网卡是成功且全空，而不是报错") {
+TEST_CASE("querying a missing feth interface succeeds with empty results instead of failing") {
   // The GUI also refreshes network state when a session has not started, and the NIC does not exist then -- this case must be
   // "no address" rather than "query failed", otherwise a false error would hang on the UI forever.
   tk_net_state_t state{};

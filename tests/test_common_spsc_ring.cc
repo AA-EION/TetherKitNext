@@ -30,14 +30,14 @@ constexpr std::uint32_t Checksum(std::uint64_t sequence) {
 
 TEST_SUITE("common.spsc_ring") {
 
-TEST_CASE("容量向上取整到 2 的幂") {
+TEST_CASE("capacity is rounded up to a power of two") {
   CHECK(SpscRing<std::uint32_t>(1).Capacity() == 1);
   CHECK(SpscRing<std::uint32_t>(3).Capacity() == 4);
   CHECK(SpscRing<std::uint32_t>(4).Capacity() == 4);
   CHECK(SpscRing<std::uint32_t>(1000).Capacity() == 1024);
 }
 
-TEST_CASE("空队列出队失败") {
+TEST_CASE("popping an empty queue fails") {
   SpscRing<std::uint32_t> ring(4);
   std::uint32_t value = 0xFFFFFFFFU;
   CHECK_FALSE(ring.TryPop(value));
@@ -45,7 +45,7 @@ TEST_CASE("空队列出队失败") {
   CHECK(ring.SizeSnapshot() == 0);
 }
 
-TEST_CASE("满队列入队失败且容量被完整利用") {
+TEST_CASE("pushing to a full queue fails and the whole capacity is used") {
   // One of the design goals of the freely incrementing counters: no wasted slots. Capacity 4 should hold 4.
   SpscRing<std::uint32_t> ring(4);
   for (std::uint32_t i = 0; i < 4; ++i) {
@@ -55,7 +55,7 @@ TEST_CASE("满队列入队失败且容量被完整利用") {
   CHECK_FALSE(ring.TryPush(99));
 }
 
-TEST_CASE("FIFO 顺序与内容完整性") {
+TEST_CASE("FIFO order and content integrity") {
   SpscRing<Payload> ring(8);
   for (std::uint64_t i = 0; i < 8; ++i) {
     CHECK(ring.TryPush(Payload{.sequence = i, .checksum = Checksum(i)}));
@@ -69,7 +69,7 @@ TEST_CASE("FIFO 顺序与内容完整性") {
   CHECK(ring.SizeSnapshot() == 0);
 }
 
-TEST_CASE("反复绕环不丢数据") {
+TEST_CASE("wrapping around repeatedly loses no data") {
   // Capacity 4, push 1000 elements, taking one immediately after each push, forcing the indices to wrap around repeatedly.
   SpscRing<std::uint64_t> ring(4);
   for (std::uint64_t i = 0; i < 1000; ++i) {
@@ -80,7 +80,7 @@ TEST_CASE("反复绕环不丢数据") {
   }
 }
 
-TEST_CASE("索引游标各字段落在不同缓存行") {
+TEST_CASE("each index cursor sits on its own cache line") {
   // This is a performance correctness assertion: if false sharing regresses, this test case fails.
   SpscRing<std::uint32_t> ring(8);
   const auto& cursor = ring.Cursor();
@@ -91,7 +91,7 @@ TEST_CASE("索引游标各字段落在不同缓存行") {
   CHECK(base % kCacheLineSize == 0);
 }
 
-TEST_CASE("单生产者单消费者并发搬运不丢不重不乱序") {
+TEST_CASE("single producer / single consumer: nothing lost, duplicated or reordered") {
   constexpr std::uint64_t kTotal = 200'000;
   SpscRing<Payload> ring(1024);
 

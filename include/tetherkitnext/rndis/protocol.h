@@ -234,7 +234,7 @@ inline constexpr std::uint32_t kPacketReservedOffset = 40;
 
 /// The value DataOffset should be filled with when "the Ethernet frame immediately follows the 44-byte header". **It is 36, not 44.**
 inline constexpr std::uint32_t kPacketInlineDataOffset = kPacketMsgHeaderBytes - kOffsetFieldBase;
-static_assert(kPacketInlineDataOffset == 36, "DataOffset 基准点是消息起始 +8，见文件头规则 2");
+static_assert(kPacketInlineDataOffset == 36, "DataOffset counts from message start + 8; see rule 2 at the top of this file");
 
 /// In the device -> host direction, when multiple packets are aggregated, each PACKET_MSG should start at an offset that is a multiple of 8 bytes.
 inline constexpr std::uint32_t kDeviceToHostPacketAlignment = 8;

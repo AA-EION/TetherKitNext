@@ -18,7 +18,7 @@ using tetherkitnext::Stopwatch;
 
 TEST_SUITE("common.stats") {
 
-TEST_CASE("计数器累加与快照") {
+TEST_CASE("counter accumulation and snapshots") {
   DirectionCounters counters;
   counters.AddFrame(1514);
   counters.AddFrame(64);
@@ -37,7 +37,7 @@ TEST_CASE("计数器累加与快照") {
   CHECK(snapshot.TotalDropped() == 6);
 }
 
-TEST_CASE("批次计数用于计算平均批大小") {
+TEST_CASE("batch counts give the average batch size") {
   DirectionCounters counters;
   counters.AddBatch(10, 15140);
   counters.AddBatch(6, 9084);
@@ -48,7 +48,7 @@ TEST_CASE("批次计数用于计算平均批大小") {
   CHECK(snapshot.batches == 2);
 }
 
-TEST_CASE("快照相减得到窗口增量") {
+TEST_CASE("subtracting snapshots gives the window delta") {
   DirectionCounters counters;
   counters.AddFrame(100);
   const auto first = Snapshot(counters);
@@ -62,7 +62,7 @@ TEST_CASE("快照相减得到窗口增量") {
   CHECK(delta.dropped_full == 1);
 }
 
-TEST_CASE("速率采样把字节数换算成 Mbps") {
+TEST_CASE("rate sampling converts bytes to Mbps") {
   PathCounters counters;
   RateSampler sampler;
 
@@ -79,7 +79,7 @@ TEST_CASE("速率采样把字节数换算成 Mbps") {
   CHECK(report.tx_pps == doctest::Approx(0.0));
 }
 
-TEST_CASE("秒表读数单调不减") {
+TEST_CASE("stopwatch readings never decrease") {
   const Stopwatch watch;
   const auto first = watch.Elapsed();
   std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -88,7 +88,7 @@ TEST_CASE("秒表读数单调不减") {
   CHECK(watch.ElapsedMillis() >= 1.0);
 }
 
-TEST_CASE("周期定时器的默认构造仍然是「构造即开始计时」") {
+TEST_CASE("a default-constructed periodic timer still starts timing at construction") {
   PeriodicTimer timer(50 * kNanosPerMilli);
   // Should not be expired right after construction.
   CHECK_FALSE(timer.Expired());
@@ -96,7 +96,7 @@ TEST_CASE("周期定时器的默认构造仍然是「构造即开始计时」") 
   CHECK(timer.Period() == 50 * kNanosPerMilli);
 }
 
-TEST_CASE("周期定时器按累加期限推进，不随调度延迟漂移") {
+TEST_CASE("the periodic timer advances by accumulated deadlines and does not drift with scheduling delay") {
   const tetherkitnext::Nanos now = MonotonicNanos();
   // `now` must be passed in explicitly as the timing origin. If the constructor reads the clock itself, the moment it reads
   // would be slightly later than `now` here, so "now + period" would not yet be expired, and the assertion would fail at random.
@@ -113,7 +113,7 @@ TEST_CASE("周期定时器按累加期限推进，不随调度延迟漂移") {
   CHECK(timer.Expired(now + 20 * kNanosPerMilli));
 }
 
-TEST_CASE("周期定时器落后超过一个周期时不补发一串触发") {
+TEST_CASE("a periodic timer more than a period behind does not fire a burst of catch-up ticks") {
   const tetherkitnext::Nanos now = MonotonicNanos();
   PeriodicTimer timer(10 * kNanosPerMilli, now);
 

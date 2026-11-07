@@ -166,18 +166,18 @@ void RegisterRndisBenchmarks(Runner& runner) {
 
   // The effect of aggregation level on per-frame cost -- this is the basis of the --max-transfer-kb tuning knob.
   for (const std::uint32_t per_transfer : {1U, 4U, 10U}) {
-    runner.Add("RNDIS 编码",
-               std::format("1514 字节 × 每传输 {} 帧", per_transfer),
+    runner.Add("RNDIS encode",
+               std::format("1514 bytes × {} frames per transfer", per_transfer),
                Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
                [per_transfer](std::uint64_t n) {
                  return BenchEncode(n, kFullFrameBytes, per_transfer, 1);
                });
   }
-  runner.Add("RNDIS 编码", "64 字节 × 每传输 10 帧",
+  runner.Add("RNDIS encode", "64 bytes × 10 frames per transfer",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchEncode(n, kSmallFrameBytes, 10, 1); });
   // The alignment requirement (PacketAlignmentFactor) introduces extra memset and MessageLength backfilling.
-  runner.Add("RNDIS 编码", "1514 字节 × 每传输 10 帧 × 对齐 128",
+  runner.Add("RNDIS encode", "1514 bytes × 10 frames per transfer × 128-byte alignment",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchEncode(n, kFullFrameBytes, 10, 128); });
 
@@ -185,21 +185,21 @@ void RegisterRndisBenchmarks(Runner& runner) {
   // it only parses headers and returns views pointing into the transfer buffer, moving not a single byte. Computing "Gbps" for it
   // would give absurd numbers in the tens of thousands, not comparable with the encoding's throughput -- on the encoding side memcpy really happens.
   for (const std::uint32_t per_transfer : {1U, 4U, 10U}) {
-    runner.Add("RNDIS 解码（零拷贝）",
-               std::format("1514 字节 × 每传输 {} 帧", per_transfer),
+    runner.Add("RNDIS decode (zero-copy)",
+               std::format("1514 bytes × {} frames per transfer", per_transfer),
                Config{.ops_per_round = kFrameOps},
                [per_transfer](std::uint64_t n) {
                  return BenchDecode(n, kFullFrameBytes, per_transfer);
                });
   }
-  runner.Add("RNDIS 解码（零拷贝）", "64 字节 × 每传输 10 帧",
+  runner.Add("RNDIS decode (zero-copy)", "64 bytes × 10 frames per transfer",
              Config{.ops_per_round = kFrameOps},
              [](std::uint64_t n) { return BenchDecode(n, kSmallFrameBytes, 10); });
 
-  runner.Add("RNDIS 编解码往返", "1514 字节 × 每传输 10 帧",
+  runner.Add("RNDIS encode/decode round trip", "1514 bytes × 10 frames per transfer",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
              [](std::uint64_t n) { return BenchRoundTrip(n, kFullFrameBytes, 10); });
-  runner.Add("RNDIS 编解码往返", "64 字节 × 每传输 10 帧",
+  runner.Add("RNDIS encode/decode round trip", "64 bytes × 10 frames per transfer",
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchRoundTrip(n, kSmallFrameBytes, 10); });
 }
