@@ -186,14 +186,9 @@ Switching languages in `AppModel.applyLanguage` updates three places atomically:
 - **Bundle `libusb-1.0.0.dylib` inside `Contents/Frameworks/`** and sign it with the same identity so Hardened Runtime library validation succeeds.
 - **Strip build-directory `@rpath` entries** from release binaries so dyld always loads the bundled Frameworks rather than development paths on the build machine.
 
-### 4.9 In-App Privileged Helper Installation (`SMAppService` / Historical AEWP)
+### 4.9 In-App Privileged Helper Installation (`SMAppService`)
 
-> **Current (TetherKitNext 1.0+)**: `HelperInstaller.swift` manages the helper daemon via `SMAppService.daemon(plistName: "com.tetherkitnext.helperd.plist")` (see Section 0). Historical details below describe the earlier AEWP-based installer for reference.
-
-In the pre-1.0 AEWP design:
-- `AuthorizationExecuteWithPrivileges` (`dlsym`-resolved from `Security.framework`) executed a tiny C trampoline (`install-trampoline.c`) that promoted `euid=0` to real `uid/gid=0` via `setuid(0)` / `setgid(0)`, redirected `stderr` into `stdout` (`dup2`), and `exec`'d `install-helper.sh`.
-- Success was verified not via process exit code (which AEWP does not expose), but by reading `stdout` to `EOF` and then performing an XPC round-trip to confirm a matching helper version was reachable.
-- Uninstallation ran `--uninstall` → `uninstall-helper.sh` and confirmed XPC could no longer connect.
+`HelperInstaller.swift` registers, restarts and removes the daemon with `SMAppService.daemon(plistName: "com.tetherkitnext.helperd.plist")` (see Section 0). Restart through `HelperInstaller.reregister()`, which waits for `launchd` to finish the transition (AGENTS.md pitfall 27). The pre-1.0 installer based on `AuthorizationExecuteWithPrivileges` and a setuid trampoline was removed in 1.0; docs/GUI-SPIKE.md keeps its history.
 
 ### 4.10 Update Checker (`UpdateChecker.swift`)
 
