@@ -639,6 +639,8 @@ TETHERKITNEXT_MESSAGE(kCoreLinkUnrecoverable, "链路不可恢复", "the link is
 TETHERKITNEXT_MESSAGE(kCapiPipeFailed, "创建管道失败", "failed to create a pipe")
 TETHERKITNEXT_MESSAGE(kCapiSpawnFileActionsFailed, "posix_spawn_file_actions_init 失败",
                   "posix_spawn_file_actions_init failed")
+TETHERKITNEXT_MESSAGE(kCapiSpawnAttributesFailed, "posix_spawnattr_init 失败",
+                  "posix_spawnattr_init failed")
 TETHERKITNEXT_MESSAGE(kCapiExecFailed, "无法执行 {}", "cannot execute {}")
 TETHERKITNEXT_MESSAGE(kCapiWaitFailed, "等待 {} 结束失败", "failed to wait for {} to finish")
 
