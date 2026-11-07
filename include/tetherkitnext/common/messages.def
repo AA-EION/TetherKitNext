@@ -694,6 +694,10 @@ TETHERKITNEXT_MESSAGE(kCapiDhcpTimeout,
                   "DHCP server.\n"
                   "  The service keeps retrying in the background, so an address may still appear "
                   "if you refresh later; you can also switch to a static IP.")
+TETHERKITNEXT_MESSAGE(kCapiDemoteServiceFailed,
+                  "设备没有网关，但无法把 TetherKitNext 网络服务移回服务顺序末尾：{}",
+                  "the device has no router, but the TetherKitNext network service could not be moved "
+                  "back to the end of the service order: {}")
 TETHERKITNEXT_MESSAGE(kCapiDhcpNoRouter,
                   "已拿到 DHCP 租约，但租约里没有网关地址，无法把全局默认路由指向它。",
                   "got a DHCP lease, but it carries no router address, so the global default route "

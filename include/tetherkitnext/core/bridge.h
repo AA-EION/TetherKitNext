@@ -54,6 +54,7 @@
 #include "tetherkitnext/common/error.h"
 #include "tetherkitnext/common/frame_ring.h"
 #include "tetherkitnext/common/stats.h"
+#include "tetherkitnext/core/peer_address.h"
 #include "tetherkitnext/net/link_backend.h"
 #include "tetherkitnext/usb/data_channel.h"
 
@@ -107,6 +108,9 @@ struct BridgeStats {
   /// the pool limit"; its presence does not mean frames were dropped -- during the wait the frames remain safely in the batch, upstream bursts are absorbed by the
   /// kernel BPF buffer, and a real overflow would show up in link_kernel_drops.
   std::uint64_t tx_backpressure_events = 0;
+  /// The device's own IPv4 address as last seen on the link (host byte order),
+  /// 0 when unknown. See peer_address.h.
+  std::uint32_t peer_ipv4 = 0;
 };
 
 /// Data-path bridge.
@@ -196,6 +200,9 @@ class Bridge {
 
   /// The frame view array reused by the RX injection thread, avoiding an allocation per batch.
   std::vector<FrameView> rx_batch_;
+
+  /// Learns the device's own IPv4 address from frames it sends (RX thread writes).
+  PeerAddressObserver peer_observer_;
 };
 
 /// Renders a statistics snapshot into one line of human-readable text.

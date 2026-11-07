@@ -389,6 +389,7 @@ TEST_CASE("会话可创建、可查状态、可销毁（不需要 root）") {
     CHECK_FALSE(status.link_up);
     CHECK(std::strlen(status.system_interface) == 0);
     CHECK(std::strlen(status.fatal) == 0);
+    CHECK(std::strlen(status.peer_ipv4) == 0);
     CHECK(status.rx_frames == 0);
     CHECK(status.monotonic_nanos > 0);
   }

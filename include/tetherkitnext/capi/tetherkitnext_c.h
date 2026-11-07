@@ -373,6 +373,12 @@ typedef struct tk_session_status {
 
   /// The cause when run_state == TK_RUN_FAILED; otherwise an empty string.
   char fatal[TK_ERROR_MESSAGE_CAPACITY];
+
+  /// The device's own IPv4 address in dotted form, learned passively from
+  /// frames only it can have sent (ARP, link-scoped broadcast/multicast).
+  /// Empty until seen. Lets the GUI find devices that have a fixed address
+  /// and no DHCP server (drones, controllers, gadget-mode boards).
+  char peer_ipv4[16];
 } tk_session_status_t;
 
 /// Opaque session handle.

@@ -190,6 +190,12 @@ void Bridge::RunReceiveInjector() noexcept {
       }
       idle_spins = 0;
 
+      // Learn the device's own address (local-link devices often have no
+      // DHCP server). A few byte loads per frame; see peer_address.h.
+      for (const FrameView& view : rx_batch_) {
+        peer_observer_.Observe(view.Bytes());
+      }
+
       const auto result = link_->WriteFrames(rx_batch_);
       if (!result) {
         counters_.rx.AddIoError();
@@ -326,6 +332,7 @@ BridgeStats Bridge::Snapshot() const {
       .rx_queue_depth = rx_ring_->SizeSnapshot(),
       .link_kernel_drops = link_kernel_drops_.load(std::memory_order_relaxed),
       .tx_backpressure_events = tx_backpressure_events_.load(std::memory_order_relaxed),
+      .peer_ipv4 = peer_observer_.Latest(),
   };
 }
 

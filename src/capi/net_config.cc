@@ -436,6 +436,17 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   // the dynamic store; the scoped default route must be filled in explicitly by us (when feth becomes the primary service macOS may keep only the
   // global route, and NetworkExtension's scoped query for feth would get "No network route").
   const std::optional<std::string> router = WaitForStableLease(interface_name, service_id);
+  if (!router.has_value() && set_default_route && service_id.has_value()) {
+    // "Route all traffic" put our service first in the order before we knew
+    // whether the device has a router. Without one this is a local link (a
+    // drone, a controller, a gadget-mode board): it must not outrank the
+    // Mac's real internet connection. DHCP keeps running in the background;
+    // the user can re-apply once a lease with a router exists.
+    if (const auto demoted = tetherkitnext::capi::DemoteManagedNetworkService(interface_name);
+        !demoted) {
+      TETHERKITNEXT_WARN_TR(Msg::kCapiDemoteServiceFailed, demoted.error().ToString());
+    }
+  }
   if (!router.has_value()) {
     // There is no address yet -- the other side is probably not doing tethering, and this is the real timeout.
     if (!QueryAddress(interface_name, SIOCGIFADDR).has_value()) {

@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -267,6 +268,11 @@ tk_result_t tk_session_status_get(tk_session_t* session, tk_session_status_t* ou
   out_status->monotonic_nanos = static_cast<std::int64_t>(tetherkitnext::MonotonicNanos());
 
   CopyText(out_status->fatal, snapshot.fatal_message);
+
+  if (const std::uint32_t peer = snapshot.bridge.peer_ipv4; peer != 0) {
+    std::snprintf(out_status->peer_ipv4, sizeof(out_status->peer_ipv4), "%u.%u.%u.%u",
+                  (peer >> 24) & 0xFFU, (peer >> 16) & 0xFFU, (peer >> 8) & 0xFFU, peer & 0xFFU);
+  }
   return TK_OK;
 }
 
