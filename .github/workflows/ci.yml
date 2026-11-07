@@ -42,7 +42,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26, macos-15-intel]
+        # xcode-27 is GitHub's macOS 27 (Golden Gate) image: Apple silicon only.
+        os: [macos-15, macos-26, macos-15-intel, xcode-27]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -223,6 +224,53 @@ jobs:
           if-no-files-found: warn
 
   # ----------------------------------------------------------------------------
+  # macOS 27 (Golden Gate) with the Xcode 27 toolchain: the GUI builds with the
+  # macOS 27 SDK (Swift 6 strict concurrency, the @State macro), its unit tests
+  # pass, and the bundled app launches and stays up. Together with the
+  # native + feth ABI jobs on xcode-27 this is the automated part of the
+  # Golden Gate support statement (docs/MACOS-27.md lists what still needs a
+  # real device).
+  # ----------------------------------------------------------------------------
+  gui-macos-27:
+    name: GUI · macOS 27 (Xcode 27)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          sw_vers; uname -m
+          latest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "${latest}"
+          xcodebuild -version; swift --version
+      - name: Build C++ (native arch)
+        run: |
+          ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF \
+            -DTETHERKITNEXT_WARNINGS_AS_ERRORS=ON
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+      - name: Build app bundle (ad-hoc signed)
+        run: ./gui/Scripts/build-gui.sh
+      - name: Swift unit tests
+        run: TETHERKITNEXT_LIB_DIR="$PWD/build/lib" swift test --package-path gui
+      - name: Launch smoke test
+        run: |
+          app=dist/TetherKitNext.app
+          otool -l "$app/Contents/MacOS/TetherKitNext" | grep -A4 LC_BUILD_VERSION
+          "$app/Contents/MacOS/TetherKitNext" > launch.log 2>&1 &
+          pid=$!
+          sleep 15
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::TetherKitNext exited within 15 s of launch on macOS 27"
+            cat launch.log; exit 1
+          fi
+          kill "$pid"; wait "$pid" 2>/dev/null || true
+          echo "✓ app launched and stayed up on $(sw_vers -productVersion)"
+
+  # ----------------------------------------------------------------------------
   # ThreadSanitizer: the lock-free rings and the park/wake handshake.
   # ----------------------------------------------------------------------------
   tsan:
@@ -256,7 +304,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26, macos-15-intel]
+        # xcode-27 is GitHub's macOS 27 (Golden Gate) image: Apple silicon only.
+        os: [macos-15, macos-26, macos-15-intel, xcode-27]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
