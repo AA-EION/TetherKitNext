@@ -34,6 +34,10 @@ connection, so your Mac gets online through your phone's mobile data or Wi-Fi.
 - **One click to connect.** Plug in, click **Connect**, and you're online.
 - **Lives in the menu bar**, with an optional live speed readout.
 - **Command-line tool included** for scripts and power users.
+- **Not just phones.** Drones and their remote controllers, FPV goggles, boards like the
+  Raspberry Pi in USB gadget mode, cameras and other devices that use the same USB networking
+  (RNDIS) work too. TetherKitNext recognizes when a device is a private link rather than an
+  internet connection and says so ([details](#devices-that-arent-phones)).
 - **Interface in 6 languages** (English, Spanish, Chinese, Japanese, German, and Korean).
 
 Tested with real phones at about **325 Mbps download / 240–300 Mbps upload** over USB 2.0,
@@ -141,6 +145,33 @@ network service, so VPN apps such as FortiClient can use it.
 **Language**: switch between System, English, Spanish, Chinese, Japanese, German, and Korean at
 any time from the TetherKitNext menu, the menu bar panel, or Settings.
 
+### Devices that aren't phones
+
+Many gadgets use the same USB networking as Android phones but are a **private link to the
+device**, not a way onto the internet: drones and their remote controllers (for desktop
+companion apps that update firmware, calibrate or download logs), FPV goggles, single-board
+computers in USB gadget mode, cameras, and more. On a Mac those used to need HoRNDIS, a
+kernel driver that no longer loads on current macOS and never ran on Apple Silicon.
+
+Connect them the same way. TetherKitNext checks what the device actually offers and
+adjusts:
+
+| What the device does | What you see |
+|---|---|
+| Hands out an address **with** a router (a phone) | The normal connection. Nothing changes. |
+| Hands out an address **without** a router | **Connected · local device.** The Mac keeps using Wi-Fi or Ethernet for the internet; apps that work with the device can reach it. |
+| Has no DHCP server at all | After a short wait, TetherKitNext shows the device's own address if it saw it on the wire and suggests one for your Mac in the same network. One click applies it **for this connection only**. |
+
+- **Your internet is never taken over by a device that can't provide it.** "Route all traffic
+  through this interface" is only honored when the device offers a router.
+- **Nothing is remembered about the device.** The check runs live every time and keeps
+  running while you're connected. A phone that is simply slow to hand out an address shows
+  "Waiting for an address" and switches to the normal connection on its own once it does.
+  An address you set for a local device is used for that connection only and never replaces
+  your saved network settings.
+- Whether a device's own desktop software accepts the connection depends on that
+  software; TetherKitNext provides the network link it expects.
+
 **Updates**: TetherKitNext checks this project's GitHub releases once a day and tells you when
 there's a new version. You can turn this off in Settings. It never downloads or installs
 anything by itself.
@@ -187,7 +218,8 @@ Tip: `sudo` doesn't always pass your language setting through, so use `--lang en
 |---|---|
 | **"No device detected"** | Try another cable (many only charge). Make sure USB tethering is turned **on** on the phone. Unlock the phone and accept any "trust this computer" / USB prompt. |
 | **Stuck on "Allow TetherKitNext in System Settings"** | Open **System Settings › General › Login Items & Extensions** and turn TetherKitNext on. Make sure the app is in your **Applications** folder, not running from the downloaded disk image. |
-| **Connected, but no internet** | On the phone, check that mobile data or Wi-Fi actually works. On the **Network** page, turn on "route all traffic through this interface" if your Mac is also connected to another network. |
+| **Connected, but no internet** | On the phone, check that mobile data or Wi-Fi actually works. On the **Network** page, turn on "route all traffic through this interface" if your Mac is also connected to another network. If the status says **local device**, the device doesn't offer internet at all (a drone, a board); that's expected. |
+| **"No address from the device"** | A phone: check that USB tethering is on; the page updates by itself when an address arrives. A device with a fixed address: use the suggested address, or type one in the device's network. |
 | **Error about another program using the device** | Something else is holding the phone's USB connection, often an old HoRNDIS install. Remove it and restart. |
 | **Slow speeds** | Use a USB 3 port and a short, good cable. Close other tethering apps. See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for tuning. |
 | **Anything else** | The **Activity** page shows exactly what happened. Include it when you open an [issue](https://github.com/AA-EION/TetherKitNext/issues). |
@@ -209,8 +241,10 @@ requires rebooting into Recovery and lowering your security settings. TetherKitN
 job without any of that.
 
 **Which devices work?**
-Most Android phones with USB tethering. Also some Linux boards (Raspberry Pi Zero,
-BeagleBone) and older Windows phones. Run `tetherkitnext-cli --list` to check yours.
+Most Android phones with USB tethering, and other devices that use USB networking (RNDIS):
+drones and remote controllers, FPV goggles, Linux boards (Raspberry Pi Zero, BeagleBone),
+cameras and older Windows phones. Run `tetherkitnext-cli --list` to check yours. Devices that
+aren't phones are handled as local links; see [Devices that aren't phones](#devices-that-arent-phones).
 
 **Do I need this for an iPhone?**
 No. macOS supports iPhone USB tethering on its own.

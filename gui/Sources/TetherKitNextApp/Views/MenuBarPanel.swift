@@ -77,7 +77,7 @@ struct MenuBarPanel: View {
             Circle()
                 .fill(Design.accent(for: status.runState))
                 .frame(width: 8, height: 8)
-            Text(Design.statusLabel(for: status))
+            Text(model.statusLabel)
                 .font(.headline)
             Spacer()
             if let duration = model.connectedDuration {

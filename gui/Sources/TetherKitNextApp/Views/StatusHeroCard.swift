@@ -32,7 +32,7 @@ struct StatusHeroCard: View {
 
     private var headline: some View {
         HStack(spacing: Design.Spacing.small) {
-            Text(Design.statusLabel(for: model.status))
+            Text(model.statusLabel)
                 .font(.system(.title2, design: .rounded).weight(.semibold))
 
             if model.status.runState == .running {

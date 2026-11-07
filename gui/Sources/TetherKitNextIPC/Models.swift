@@ -99,6 +99,13 @@ public struct SessionStatus: Codable, Hashable, Sendable {
     /// The cause when runState == .failed.
     public var fatalMessage: String
 
+    /// The device's own IPv4 address, learned passively from frames only it
+    /// can have sent; nil until seen.
+    ///
+    /// Optional so an older daemon's JSON (without the key) still decodes:
+    /// synthesized Codable uses decodeIfPresent for optionals.
+    public var peerAddress: String?
+
     /// The empty state when not connected.
     public static let idle = SessionStatus(
         runState: .idle, rndisState: .uninitialized, linkUp: false, paused: false,
@@ -114,7 +121,7 @@ public struct SessionStatus: Codable, Hashable, Sendable {
                 deviceDescription: String, rxFrames: UInt64, rxBytes: UInt64, rxDropped: UInt64,
                 txFrames: UInt64, txBytes: UInt64, txDropped: UInt64, rxQueueDepth: UInt64,
                 linkKernelDrops: UInt64, txBackpressure: UInt64, monotonicNanos: Int64,
-                fatalMessage: String) {
+                fatalMessage: String, peerAddress: String? = nil) {
         self.runState = runState
         self.rndisState = rndisState
         self.linkUp = linkUp
@@ -137,6 +144,7 @@ public struct SessionStatus: Codable, Hashable, Sendable {
         self.txBackpressure = txBackpressure
         self.monotonicNanos = monotonicNanos
         self.fatalMessage = fatalMessage
+        self.peerAddress = peerAddress
     }
 }
 

@@ -80,7 +80,11 @@ public final class TetherKitNextSession: @unchecked Sendable {
             linkKernelDrops: raw.link_kernel_drops,
             txBackpressure: raw.tx_backpressure,
             monotonicNanos: raw.monotonic_nanos,
-            fatalMessage: String(fixedCArray: raw.fatal))
+            fatalMessage: String(fixedCArray: raw.fatal),
+            peerAddress: {
+                let peer = String(fixedCArray: raw.peer_ipv4)
+                return peer.isEmpty ? nil : peer
+            }())
     }
 
     /// Takes away the queued events, rendering them into one sentence for the user to read.

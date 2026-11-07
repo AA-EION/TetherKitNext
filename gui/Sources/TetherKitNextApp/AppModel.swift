@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import TetherKitNextCore
 import TetherKitNextIPC
+import TetherKitNextUIModel
 
 /// The instantaneous rate obtained from one sample.
 struct ThroughputSample: Identifiable {
@@ -386,6 +387,8 @@ final class AppModel {
             sessionStartedAt = Date()
         } else if fresh.runState != .running, fresh.runState != .stopping {
             sessionStartedAt = nil
+            sessionOnlyAddress = nil
+            autoConfigureNote = nil
         }
 
         guard let previous = previousStatus,
@@ -431,6 +434,74 @@ final class AppModel {
     /// The connected duration; nil when not connected.
     var connectedDuration: TimeInterval? {
         sessionStartedAt.map { Date().timeIntervalSince($0) }
+    }
+
+    /// What kind of link the device is: internet-capable or a local device.
+    ///
+    /// Re-judged from evidence on every poll and never stored per device, so a
+    /// phone that is merely slow is not remembered as "local" (LinkAssessment).
+    var linkAssessment: LinkAssessment {
+        LinkAssessment.assess(isRunning: status.runState == .running,
+                              connectedFor: connectedDuration ?? 0,
+                              mode: networkConfiguration.mode,
+                              network: networkState,
+                              peerAddress: status.peerAddress)
+    }
+
+    /// The status line shown in the window and the menu bar. A running link to
+    /// a local device reads "Connected · local device" rather than suggesting
+    /// internet.
+    var statusLabel: String {
+        if status.runState == .running, status.linkUp, linkAssessment.isLocalOnly {
+            return L(.statusConnectedLocal)
+        }
+        return Design.statusLabel(for: status)
+    }
+
+    /// An address applied for the current session only (local devices without
+    /// DHCP). Never written to `networkConfiguration`: the next phone must not
+    /// inherit a fixed address meant for a drone. Cleared when the session ends.
+    private(set) var sessionOnlyAddress: String?
+
+    /// Why automatic configuration after Connect did not finish (no lease, no
+    /// router). Shown as a quiet detail next to the link assessment instead of
+    /// an alert: for a local device this is expected. Cleared per session.
+    private(set) var autoConfigureNote: String?
+
+    /// Applies `address` (/24, no router, no DNS) to the interface for this
+    /// session only. For devices that have a fixed address and no DHCP server.
+    func useSessionOnlyAddress(_ address: String) async {
+        guard !isBusy else { return }
+        let interface = status.systemInterface
+        guard !interface.isEmpty else {
+            alertMessage = L(.interfaceNotReadyYet)
+            return
+        }
+        let configuration = NetworkConfiguration(mode: .manual, address: address,
+                                                 netmask: "255.255.255.0")
+        if let message = NetworkValidator.validationMessage(for: configuration) {
+            alertMessage = message
+            return
+        }
+        isBusy = true
+        defer { isBusy = false }
+        let applied = await authorized { [self] authorization in
+            try await client.applyNetwork(authorization: authorization, interface: interface,
+                                          configuration: configuration)
+            networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
+        }
+        if applied {
+            sessionOnlyAddress = address
+            autoConfigureNote = nil
+        }
+    }
+
+    /// Drops a session-only address and re-applies the saved settings
+    /// (normally DHCP), e.g. when a slow device finally starts its DHCP server.
+    func retrySavedNetworkConfiguration() async {
+        sessionOnlyAddress = nil
+        autoConfigureNote = nil
+        await applyNetworkConfiguration()
     }
 
     var selectedDevice: DeviceDescriptor? {
@@ -521,8 +592,17 @@ final class AppModel {
 
         let configuration = networkConfiguration
         await authorized { [self] authorization in
-            try await client.applyNetwork(authorization: authorization, interface: interface,
-                                          configuration: configuration)
+            do {
+                try await client.applyNetwork(authorization: authorization, interface: interface,
+                                              configuration: configuration)
+            } catch let failure as HelperClient.Failure where failure.isAuthorizationProblem {
+                throw failure  // let `authorized` re-prompt
+            } catch {
+                // No alert: a device without a DHCP server or without a router
+                // is a normal local link, not a failure. The live link
+                // assessment explains it and offers what to do next.
+                autoConfigureNote = error.localizedDescription
+            }
             networkState = (try? await client.queryNetwork(interface: interface)) ?? .empty
         }
     }

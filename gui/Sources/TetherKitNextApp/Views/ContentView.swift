@@ -127,6 +127,7 @@ struct ContentView: View {
                     HelperMismatchBanner(mismatch: mismatch) { requestHelperUpdate() }
                 }
                 StatusHeroCard(model: model)
+                LinkKindCard(model: model)
                 EnvironmentWarningCard(environment: model.environment)
                 ThroughputCard(model: model)
                 NetworkSummaryCard(model: model) { pane = .network }
@@ -243,7 +244,7 @@ private struct SidebarStatus: View {
                 .fill(Design.accent(for: model.status.runState))
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(Design.statusLabel(for: model.status))
+                Text(model.statusLabel)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                 if model.status.runState == .running {

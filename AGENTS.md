@@ -239,7 +239,7 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 | 43 | `feat(gui): Touch ID confirmation for privileged actions (1.1.0)` | ✅ | `LAContext` + Team ID XPC pinning + `admin` group check; XPC rev 5 |
 | 44 | `fix(gui): make background component restart reliable on first click (1.1.1)` | ✅ | `HelperInstaller.reregister()` waits for `launchd` state transition and retries |
 | 45 | `feat(gui): add Spanish/Japanese/German/Korean i18n, donations, licenses sheet, and graceful disconnect (1.2.0)` | ✅ | Full 6-language L10n tables; non-blocking deadSession teardown in helper; LicensesSheet fallback; GUI supports 6 languages but the C++ library only en/zh (`Language.cValue` falls back to English); failed sessions stay visible (no forced reset to idle) |
-| 46 | `security` + `feat(gui)`: SHA-pinned CI actions, spawn fd hygiene, macOS 27 CI, AppKit-owned main window, SDK stamp, opt-in Advanced → Interfaces | 🚧 | Draft PR. libusb 1.0.30 still latest (hash re-verified). See docs/MACOS-27.md, docs/ADVANCED-TOOLS.md, SECURITY-AUDIT addendum |
+| 46 | `security` + `feat(gui)`: SHA-pinned CI actions, spawn fd hygiene, macOS 27 CI, AppKit-owned main window, SDK stamp, opt-in Advanced → Interfaces, local-link devices | 🚧 | Draft PR. libusb 1.0.30 still latest (hash re-verified). Local-link devices (drones, controllers, goggles, gadget boards): live `LinkAssessment`, passive peer IPv4 (`peer_address.h`, `tk_session_status_t.peer_ipv4`), service demotion when no router, session-only address. See docs/MACOS-27.md, docs/ADVANCED-TOOLS.md, docs/LOCAL-DEVICES.md, SECURITY-AUDIT addendum |
 
 ### Current Status (TetherKitNext, 2026-10-06)
 
@@ -375,6 +375,9 @@ RNDIS negotiation complete: version 1.0, MTU 1500, device aggregation limit 1580
 31. **Root child processes must be spawned with `POSIX_SPAWN_CLOEXEC_DEFAULT`** (`process_runner.cc`), or they inherit the daemon's BPF / socket / libusb descriptors.
 32. **Pin GitHub Actions to full commit SHAs** (the signing jobs hold the Developer ID certificate and notary key) and keep `persist-credentials: false` on checkouts. Bump them via Dependabot, not by retagging.
 33. **⚠️ A libusb built on macOS 27 / with the macOS 27 SDK segfaults in device enumeration on macOS 15 and 26** (`capi.basics` → `tk_list_devices`), even with `MIN_MACOS=13.3`. Found when CI's xcode-27 job shared the libusb cache with macos-15/26; root cause not yet known. Shipping builds therefore select **Xcode 26** explicitly (`Xcode_26*`, not "newest"), and the libusb cache key includes the SDK + OS version. The `macos-15` DMG smoke job (`tetherkitnext-cli --list`) catches a regression.
+34. **Never persist a device's "kind" (internet vs local link).** A phone that is slow to hand out a lease or whose upstream is down would be remembered as a local device. `LinkAssessment` is recomputed from live facts every poll; addresses applied for local devices are session-only (`AppModel.sessionOnlyAddress`) and must never be written to `networkConfiguration`. Never probe internet reachability to decide it (docs/LOCAL-DEVICES.md).
+35. **"Route all traffic" must follow the router, not the request.** `ConfigureManagedDhcpService(make_primary: true)` reorders services before the lease exists; `ApplyDhcp` demotes the service again when no stable router appears (`DemoteManagedNetworkService`). Keep that pairing in any new DHCP path.
+36. **Learn the peer address only from on-link-only frames** (ARP sender; IPv4 to 255.255.255.255 or 224.0.0.0/24). A phone forwards internet traffic, so ordinary unicast sources are remote hosts.
 
 ---
 
