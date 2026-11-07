@@ -8,6 +8,8 @@
 #include <cstring>
 #include <string>
 
+#include <unistd.h>
+
 #include <doctest.h>
 
 #include "capi_support.h"
@@ -453,6 +455,28 @@ TEST_CASE("RunTool 读得下超过管道缓冲的大输出（不死锁）") {
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 0);
   CHECK(result->output.size() == 20000 * 11);
+}
+
+TEST_CASE("RunTool children inherit only stdin/stdout/stderr") {
+  // A descriptor without FD_CLOEXEC, like the daemon's BPF or routing
+  // sockets: POSIX_SPAWN_CLOEXEC_DEFAULT must keep it out of the child.
+  std::array<int, 2> leaked{-1, -1};
+  REQUIRE(::pipe(leaked.data()) == 0);
+  const std::string probe = "test -e /dev/fd/" + std::to_string(leaked[1]) +
+                            " && echo leaked || echo closed";
+  const auto result = tetherkitnext::capi::RunTool("/bin/sh", {"-c", probe});
+  ::close(leaked[0]);
+  ::close(leaked[1]);
+  REQUIRE(result.has_value());
+  CHECK(result->output == "closed\n");
+}
+
+TEST_CASE("RunTool children read EOF on stdin") {
+  // stdin is /dev/null, not whatever the (root) parent had open.
+  const auto result = tetherkitnext::capi::RunTool(
+      "/bin/sh", {"-c", "if read line; then echo data; else echo eof; fi"});
+  REQUIRE(result.has_value());
+  CHECK(result->output == "eof\n");
 }
 
 TEST_CASE("RunTool 对不存在的可执行文件返回错误而非崩溃") {

@@ -53,3 +53,41 @@ isn't stamped with SDK 26 or later. Check it on any build:
 ```bash
 otool -l dist/TetherKitNext.app/Contents/MacOS/TetherKitNext | grep -A4 LC_BUILD_VERSION
 ```
+
+## Backward compatibility of this change
+
+Deployment targets are unchanged: the app needs macOS 14.0
+(`LSMinimumSystemVersion`, `platforms: [.macOS(.v14)]`); the CLI and
+`libtetherkitnext` need 13.3. Every API this change adds was checked against
+Apple's availability data:
+
+| API | Introduced | Used in |
+|---|---|---|
+| `NSHostingController.sceneBridgingOptions` | macOS 14.0 | `MainWindowController` |
+| `NSHostingController.sizingOptions`, `.minSize` | macOS 13.0 | `MainWindowController` |
+| `NSWindow.toolbarStyle` | macOS 11.0 | `MainWindowController` |
+| `NSApplication.activate()` | macOS 14.0 | `MainWindowController.present` (already used before) |
+| `Scene.commands` on `MenuBarExtra` | macOS 13.0 (`MenuBarExtra`) | `TetherKitNextApplication` |
+| `ContinuousClock`, `Duration.components` | macOS 13.0 | `InterfaceMonitor` |
+| `UnsafeRawPointer.loadUnaligned` | inlinable, back-deploys to all | `InterfaceSampler.counters64` |
+| `getifaddrs`, `NET_RT_IFLIST2` / `if_msghdr2`, `if_indextoname` | Mac OS X era | `InterfaceSampler` |
+| `POSIX_SPAWN_CLOEXEC_DEFAULT`, `posix_spawn_file_actions_addopen` | Mac OS X 10.7 | `process_runner.cc` |
+
+Behavior notes for older systems:
+
+* **SDK stamp.** Rewriting `sdk` to 26.x matches what an Xcode-built app
+  carries. On macOS 14/15 it only turns on behaviors those releases gate on
+  "linked on 14/15 or later", which the code (compiled with the 26 SDK)
+  already expects. `minos` stays 14.0, so the launch floor is unchanged.
+* **Persisted state.** The sidebar selection moved from `@SceneStorage` to a
+  new `@AppStorage` key and the window frame to a new autosave name. On the
+  first launch after upgrading, the app opens on Overview at the default size.
+* **CLI.** The only C++ change is the spawn flag and stdin. It is covered by
+  `capi.process` tests (no inherited descriptor; stdin is EOF), which run in
+  CI on macOS 15 (arm64 and Intel), 26 and 27.
+
+Runtime coverage in CI: the shipped universal DMG is installed and its GUI
+launched on `macos-15` (arm64) and `macos-15-intel`, and built and launched
+on macOS 27. GitHub has no macOS 13 or 14 runners, so **macOS 14 needs a
+manual launch check** (window opens, sidebar and toolbar render, ⌘W, reopen
+from the menu bar), and so does the CLI on macOS 13.3.

@@ -140,12 +140,19 @@ jobs:
           if-no-files-found: error
 
   # ----------------------------------------------------------------------------
-  # Install the DMG on a real Intel Mac and run the CLI from it.
+  # Install the shipped DMG on the oldest macOS CI offers and run it: the CLI
+  # from the bundle, then the GUI for a few seconds. Covers backward
+  # compatibility of the app built on macOS 26 with the newest SDK (both
+  # architectures; the x86_64 slice only runs on the Intel image).
   # ----------------------------------------------------------------------------
   intel-smoke:
-    name: DMG on Intel
+    name: DMG on ${{ matrix.os }}
     needs: package
-    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -153,7 +160,7 @@ jobs:
           name: TetherKitNext-dmg
       - name: Mount, copy to /Applications, run
         run: |
-          uname -m
+          sw_vers; uname -m
           dmg="$(ls TetherKitNext-*.dmg)"
           mnt="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F'\t' '/\/Volumes\// {print $NF}')"
           ditto "$mnt/TetherKitNext.app" /Applications/TetherKitNext.app
@@ -162,10 +169,11 @@ jobs:
           codesign --verify --deep --strict "$app"
           "$app/Contents/MacOS/tetherkitnext-cli" --version
           "$app/Contents/MacOS/tetherkitnext-cli" --list
-          # Launch the GUI briefly: proves the x86_64 Swift slice + dylibs load.
-          "$app/Contents/MacOS/TetherKitNext" & pid=$!
+          # Launch the GUI briefly: proves this architecture's Swift slice and
+          # dylibs load, and that nothing at launch needs a newer macOS.
+          "$app/Contents/MacOS/TetherKitNext" > gui.log 2>&1 & pid=$!
           sleep 8
-          kill -0 "$pid" || { echo "::error::GUI exited early on Intel"; exit 1; }
+          kill -0 "$pid" || { echo "::error::GUI exited early on $(sw_vers -productVersion) $(uname -m)"; cat gui.log; exit 1; }
           kill "$pid"
 
   # ----------------------------------------------------------------------------
