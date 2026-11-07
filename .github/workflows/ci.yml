@@ -50,14 +50,18 @@ jobs:
           persist-credentials: false
 
       - name: Toolchain
+        id: toolchain
         run: |
           sw_vers; uname -m; cmake --version; c++ --version
+          # Part of the libusb cache key: runners of the same OS/arch (macos-15,
+          # macos-26, xcode-27) must not share a libusb built with another SDK.
+          echo "sdk=$(xcrun --sdk macosx --show-sdk-version)-$(sw_vers -productVersion)" >> "$GITHUB_OUTPUT"
 
       - name: Cache libusb
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/libusb-universal
-          key: libusb-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-libusb.sh') }}
+          key: libusb-${{ runner.os }}-${{ runner.arch }}-sdk${{ steps.toolchain.outputs.sdk }}-${{ hashFiles('scripts/build-libusb.sh') }}
 
       - name: Build libusb (universal, pinned + hash-verified)
         run: ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
