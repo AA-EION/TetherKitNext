@@ -95,15 +95,21 @@ final class HelperClient: @unchecked Sendable {
             // Only drop the cache if it still holds *this* connection: a late handler from an
             // older connection must not discard the newer one that replaced it. On interruption
             // the discarded connection is invalidated too, so it is not left resumed.
-            let discard: @Sendable (Bool) -> Void = { [weak self, weak created] invalidateIt in
-                guard let self, let created else { return }
-                let wasCached = self.connectionLock.withLock { () -> Bool in
-                    guard self.cachedConnection === created else { return false }
+            //
+            // NSXPCConnection is not Sendable, so the handler identifies its connection by
+            // ObjectIdentifier. That is sound here: while the cache holds the connection it
+            // is alive, so the identifier cannot have been reused by another object.
+            let createdID = ObjectIdentifier(created)
+            let discard: @Sendable (Bool) -> Void = { [weak self] invalidateIt in
+                guard let self else { return }
+                let discarded = self.connectionLock.withLock { () -> NSXPCConnection? in
+                    guard let cached = self.cachedConnection,
+                          ObjectIdentifier(cached) == createdID else { return nil }
                     self.cachedConnection = nil
-                    return true
+                    return cached
                 }
-                if wasCached && invalidateIt {
-                    created.invalidate()
+                if invalidateIt {
+                    discarded?.invalidate()
                 }
             }
             created.invalidationHandler = { discard(false) }

@@ -455,7 +455,10 @@ TEST_CASE("a failed link write does not stop the thread; it continues after reco
 
   // Key: the bridge layer is still running, and did not crash or exit because of write failures.
   CHECK(bridge.Running());
-  CHECK(bridge.Snapshot().rx.io_errors > 0);
+  // The injector writes asynchronously; on a slow runner the failing write may not have
+  // happened yet when the loop above ends, so wait for it instead of sampling once.
+  CHECK(WaitFor([&] { return bridge.Snapshot().rx.io_errors > 0; }));
+  CHECK(bridge.Running());
 
   bridge.Stop();
 }
