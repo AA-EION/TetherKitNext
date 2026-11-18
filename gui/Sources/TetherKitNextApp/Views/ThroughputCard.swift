@@ -97,6 +97,9 @@ struct ThroughputCard: View {
             // The horizontal axis draws no ticks: this is a rolling "last 60 seconds" curve, specific moments are meaningless,
             // and drawing them would only take up the plotting area that is not tall to begin with.
             .chartXAxis(.hidden)
+            // A new sample arrives every 500 ms; never interpolate the curve between them
+            // (an inherited animation would re-run it on every poll). From XiaoMiku01/TetherKit#25.
+            .animation(nil, value: model.throughputHistory)
             .frame(height: 120)
         } else {
             RoundedRectangle(cornerRadius: Design.Radius.control)

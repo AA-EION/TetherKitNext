@@ -30,6 +30,7 @@
 
 #include "capi_support.h"
 #include "managed_network_service.h"
+#include "net_config.h"
 #include "tetherkitnext/capi/tetherkitnext_c.h"
 #include "tetherkitnext/common/i18n.h"
 #include "tetherkitnext/common/logging.h"
@@ -199,6 +200,9 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
     } catch (...) {
       TETHERKITNEXT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, Text(Msg::kCapiCommandNoOutput));
     }
+    // If "route all traffic" pointed the kernel's default route at this interface behind
+    // configd's back, destroying it left the Mac without one; put configd's back.
+    tetherkitnext::capi::ReconcileSystemDefaultRoute(name);
   }
 }
 

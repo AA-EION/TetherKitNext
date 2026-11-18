@@ -38,6 +38,7 @@
 #include "capi_support.h"
 #include "core_foundation_support.h"
 #include "managed_network_service.h"
+#include "net_config.h"
 #include "process_runner.h"
 #include "tetherkitnext/capi/tetherkitnext_c.h"
 #include "tetherkitnext/common/i18n.h"
@@ -536,11 +537,62 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 
 [[nodiscard]] Status ApplyNone(std::string_view interface_name) {
   TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
-  return RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
-                   Text(Msg::kCapiWhatClearConfig));
+  const Status cleared = RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
+                                   Text(Msg::kCapiWhatClearConfig));
+  tetherkitnext::capi::ReconcileSystemDefaultRoute(interface_name);
+  return cleared;
+}
+
+/// The interface the kernel's IPv4 default route uses; nullopt when there is none.
+[[nodiscard]] std::optional<std::string> KernelDefaultRouteInterface() {
+  const auto result = RunTool(kRoutePath, {"-n", "get", "-inet", "default"});
+  if (!result || !result->Succeeded()) {
+    return std::nullopt;  // "route: writing to routing socket: not in table"
+  }
+  constexpr std::string_view kField = "interface: ";
+  const std::string& output = result->output;
+  const std::size_t start = output.find(kField);
+  if (start == std::string::npos) {
+    return std::nullopt;
+  }
+  const std::size_t begin = start + kField.size();
+  const std::size_t end = output.find_first_of(" \r\n", begin);
+  return output.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
 }
 
 }  // namespace
+
+namespace tetherkitnext::capi {
+
+void ReconcileSystemDefaultRoute(std::string_view interface_name) noexcept {
+  try {
+    SCDynamicStoreRef store = SharedDynamicStore();
+    if (store == nullptr) {
+      return;
+    }
+    const ScopedCFRef<CFStringRef> key = MakeCFString("State:/Network/Global/IPv4");
+    const ScopedCFRef<CFDictionaryRef> global{
+        static_cast<CFDictionaryRef>(::SCDynamicStoreCopyValue(store, key.Get()))};
+    const std::string primary = StringField(global.Get(), CFSTR("PrimaryInterface"));
+    const std::string router = StringField(global.Get(), CFSTR("Router"));
+    if (primary.empty() || primary == interface_name || !IsValidIpv4(router)) {
+      return;  // no other primary service, or configd routes through us and will reroute itself
+    }
+    const std::optional<std::string> kernel = KernelDefaultRouteInterface();
+    if (kernel.has_value() && *kernel != interface_name) {
+      return;  // a default route through something else exists (the primary, or e.g. a VPN)
+    }
+    if (const auto changed = RunTool(kRoutePath, {"-n", "change", "-inet", "default", router});
+        !changed || !changed->Succeeded()) {
+      std::ignore = RunTool(kRoutePath, {"-n", "add", "-inet", "default", router});
+    }
+    TETHERKITNEXT_INFO_TR(Msg::kCapiDefaultRouteRestored, router, primary);
+  } catch (...) {
+    // Best effort: this runs on teardown paths that must not throw.
+  }
+}
+
+}  // namespace tetherkitnext::capi
 
 void tk_ip_config_init(tk_ip_config_t* out_config) {
   if (out_config == nullptr) {

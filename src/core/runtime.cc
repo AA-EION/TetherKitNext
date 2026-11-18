@@ -242,6 +242,7 @@ Status Runtime::RunStartSequence() {
 void Runtime::RunControlLoop() {
   BridgeStats previous = bridge_->Snapshot();
   Nanos last_stats_nanos = MonotonicNanos();
+  std::uint32_t idle_stats_periods = 0;
 
   const Nanos stats_interval_nanos =
       static_cast<Nanos>(config_.stats_interval_millis) * kNanosPerMilli;
@@ -266,7 +267,20 @@ void Runtime::RunControlLoop() {
       const BridgeStats current = bridge_->Snapshot();
       const double seconds =
           static_cast<double>(now - last_stats_nanos) / static_cast<double>(kNanosPerSecond);
-      TETHERKITNEXT_INFO("{}", FormatStatsLine(previous, current, seconds));
+      // An idle link would print an identical all-zero line every period. Print the first
+      // idle line, then one every kIdleStatsEvery periods as a heartbeat (idea from
+      // XiaoMiku01/TetherKit#23); any traffic, drop or backpressure resumes every line.
+      constexpr std::uint32_t kIdleStatsEvery = 12;
+      const DirectionSnapshot rx_delta = current.rx - previous.rx;
+      const DirectionSnapshot tx_delta = current.tx - previous.tx;
+      const bool idle = rx_delta.frames == 0 && tx_delta.frames == 0 &&
+                        rx_delta.TotalDropped() == 0 && tx_delta.TotalDropped() == 0 &&
+                        current.link_kernel_drops == previous.link_kernel_drops &&
+                        current.tx_backpressure_events == previous.tx_backpressure_events;
+      idle_stats_periods = idle ? idle_stats_periods + 1 : 0;
+      if (idle_stats_periods <= 1 || idle_stats_periods % kIdleStatsEvery == 0) {
+        TETHERKITNEXT_INFO("{}", FormatStatsLine(previous, current, seconds));
+      }
       previous = current;
       last_stats_nanos = now;
     }

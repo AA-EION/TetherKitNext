@@ -694,6 +694,8 @@ TETHERKITNEXT_MESSAGE(kCapiDhcpTimeout,
                   "DHCP server.\n"
                   "  The service keeps retrying in the background, so an address may still appear "
                   "if you refresh later; you can also switch to a static IP.")
+TETHERKITNEXT_MESSAGE(kCapiDefaultRouteRestored, "默认路由已恢复为经 {}（{}）",
+                  "restored the default route via {} ({})")
 TETHERKITNEXT_MESSAGE(kCapiDemoteServiceFailed,
                   "设备没有网关，但无法把 TetherKitNext 网络服务移回服务顺序末尾：{}",
                   "the device has no router, but the TetherKitNext network service could not be moved "

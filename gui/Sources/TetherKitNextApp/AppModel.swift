@@ -6,7 +6,7 @@ import TetherKitNextIPC
 import TetherKitNextUIModel
 
 /// The instantaneous rate obtained from one sample.
-struct ThroughputSample: Identifiable {
+struct ThroughputSample: Identifiable, Equatable {
     let id = UUID()
     let timestamp: Date
     let receiveBitsPerSecond: Double
@@ -558,11 +558,18 @@ final class AppModel {
         isBusy = true
         defer { isBusy = false }
 
+        // Enumerate again first: turning USB tethering on makes Android re-enumerate with a new
+        // bus address, and the list may be up to one refresh period old.
+        await refreshDevices()
+
         var configuration = SessionConfiguration(mtu: requestedMTU,
                                                  adoptDeviceMAC: adoptDeviceMAC)
-        // Specify bus + address rather than VID/PID: two devices of the same model have exactly the same VID/PID,
-        // and only the bus address can tell them apart.
+        // Bus + address tell apart two devices of the same model; VID/PID are passed too. The
+        // C filter requires every given field to match, so if the address went stale and now
+        // belongs to another device, the start fails instead of claiming the wrong one.
         if let device = selectedDevice {
+            configuration.vendorID = device.vendorID
+            configuration.productID = device.productID
             configuration.busNumber = device.busNumber
             configuration.deviceAddress = device.deviceAddress
         }
@@ -700,6 +707,9 @@ final class AppModel {
     func refreshDevices() async {
         lastDeviceRefresh = .now
         devices = (try? await client.listDevices()) ?? []
+        if let selected = selectedDeviceID, !devices.contains(where: { $0.id == selected }) {
+            selectedDeviceID = nil
+        }
     }
 
     /// Whether it has been long enough since the last enumeration. Also records the moment of this one.

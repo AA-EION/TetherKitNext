@@ -411,6 +411,14 @@ void UsbDataChannel::OnSendComplete(Slot& slot) noexcept {
     case LIBUSB_TRANSFER_NO_DEVICE:
       break;
 
+    case LIBUSB_TRANSFER_TIMED_OUT:
+      // Mostly an idle device not reading broadcast/multicast frames (mDNS, SSDP). Still
+      // counted as an I/O error, but a WARN line every few seconds would flood the log panel.
+      // (Idea from XiaoMiku01/TetherKit#24.)
+      async_send_errors_.fetch_add(1, std::memory_order_relaxed);
+      TETHERKITNEXT_DEBUG_TR(Msg::kUsbBulkOutFailed, static_cast<int>(slot.transfer->status));
+      break;
+
     default:
       async_send_errors_.fetch_add(1, std::memory_order_relaxed);
       TETHERKITNEXT_WARN_TR(Msg::kUsbBulkOutFailed, static_cast<int>(slot.transfer->status));
