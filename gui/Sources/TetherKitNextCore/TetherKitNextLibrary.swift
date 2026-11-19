@@ -13,7 +13,7 @@ public enum TetherKitNextLibrary {
     /// and we just do not show the excess.
     private static let deviceCapacity = 16
 
-    /// The maximum number of log entries taken away at once.
+    /// The maximum number of log entries drained at once.
     ///
     /// Consistent with the C-side ring buffer's capacity (256): smaller and the backlog would never be fully drained, larger is meaningless.
     private static let logCapacity = 256
@@ -84,11 +84,7 @@ public enum TetherKitNextLibrary {
         tk_enable_log_capture(true)
     }
 
-    public static func stopLogCapture() {
-        tk_enable_log_capture(false)
-    }
-
-    /// Takes away the buffered logs. Returns the entries and "the number dropped because the buffer filled".
+    /// Drains the buffered logs. Returns the entries and "the number dropped because the buffer filled".
     public static func drainLogs() -> (entries: [LogEntry], dropped: UInt64) {
         var buffer = [tk_log_record_t](repeating: tk_log_record_t(), count: logCapacity)
         var dropped: UInt64 = 0

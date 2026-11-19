@@ -36,7 +36,7 @@ class MockControlChannel final : public rndis::ControlChannel {
     if (send_failure_countdown_ > 0) {
       --send_failure_countdown_;
       if (send_failure_countdown_ == 0) {
-        return std::unexpected(Error::Generic("mock：按测试设置让发送失败"));
+        return std::unexpected(Error::Generic("mock: send failure injected by the test"));
       }
     }
     sent_messages_.emplace_back(message.begin(), message.end());
@@ -53,7 +53,7 @@ class MockControlChannel final : public rndis::ControlChannel {
     if (receive_failure_countdown_ > 0) {
       --receive_failure_countdown_;
       if (receive_failure_countdown_ == 0) {
-        return std::unexpected(Error::Generic("mock：按测试设置让接收失败"));
+        return std::unexpected(Error::Generic("mock: receive failure injected by the test"));
       }
     }
     if (pending_responses_.empty()) {
@@ -176,7 +176,7 @@ class MockControlChannel final : public rndis::ControlChannel {
   void ClearSentMessages() { sent_messages_.clear(); }
 
  private:
-  std::string description_ = "mock 设备";
+  std::string description_ = "mock device";
   RequestHandler request_handler_;
 
   std::vector<std::vector<std::byte>> sent_messages_;

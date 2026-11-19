@@ -19,34 +19,26 @@ import TetherKitNextIPC
 @main
 struct TetherKitNextApplication: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel()
 
     var body: some Scene {
-        // Window, not WindowGroup: one connection panel. Several windows would
-        // just poll the same daemon several times.
-        Window("TetherKitNext", id: WindowID.main) {
-            MainWindowRoot(model: model)
-        }
-        .defaultSize(width: Design.Window.defaultWidth, height: Design.Window.defaultHeight)
-        .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unified)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-            CommandGroup(replacing: .appInfo) { AboutMenuItem(model: model) }
-            CommandGroup(after: .appInfo) { AppMenuItems(model: model) }
-        }
-
+        // No Window scene: the main window is an AppKit NSWindow owned by
+        // MainWindowController (see there for why). The menu bar extra is the
+        // only SwiftUI scene; app-wide commands attach to it.
         MenuBarExtra {
-            MenuBarPanel(model: model)
+            MenuBarPanel(model: appDelegate.model)
         } label: {
-            MenuBarLabel(model: model)
+            MenuBarLabel(model: appDelegate.model)
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+            // Without a Window scene SwiftUI provides no File ▸ Close; ⌘W
+            // hides the window like the red button (menu-bar-only mode).
+            CommandGroup(after: .newItem) { CloseWindowMenuItem(model: appDelegate.model) }
+            CommandGroup(replacing: .appInfo) { AboutMenuItem(model: appDelegate.model) }
+            CommandGroup(after: .appInfo) { AppMenuItems(model: appDelegate.model) }
+        }
     }
-}
-
-enum WindowID {
-    static let main = "main"
 }
 
 /// Keeps the Dock icon in sync with the main window.
@@ -58,9 +50,40 @@ enum WindowID {
 /// visible, non-panel window → `.regular`; none → `.accessory`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// The single app model, shared by the main window and the menu bar
+    /// extra. Owned here (not by the App struct) because the AppKit-owned
+    /// main window is created from `applicationDidFinishLaunching`.
+    let model = AppModel()
     private var observers: [NSObjectProtocol] = []
 
+    /// Whether macOS started the app as a login item ("Open at login" in Settings).
+    /// Read in applicationWillFinishLaunching, while the launch Apple event is current.
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The 'oapp' event of a login-item launch carries keyAEPropData = keyAELaunchedAsLogInItem.
+        // Four-char codes spelled out to avoid importing Carbon for three constants.
+        let openApplication: AEEventID = 0x6F61_7070  // 'oapp' kAEOpenApplication
+        let propertyData: AEKeyword = 0x7072_6474     // 'prdt' keyAEPropData
+        let loginItem: OSType = 0x6C67_6974           // 'lgit' keyAELaunchedAsLogInItem
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.eventID == openApplication,
+           event.paramDescriptor(forKeyword: propertyData)?.enumCodeValue == loginItem {
+            launchedAsLoginItem = true
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        model.start()
+        let windowController = MainWindowController.install(model: model)
+        if launchedAsLoginItem {
+            // Start quietly in the menu bar; the window is one click away.
+            NSApp.setActivationPolicy(.accessory)
+            model.windowDidDisappear()
+        } else {
+            windowController.present()
+        }
+
         let center = NotificationCenter.default
         for name in [NSWindow.willCloseNotification, NSWindow.didBecomeKeyNotification,
                      NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification] {
@@ -78,6 +101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Menu bar item stays; closing the last window must not quit the app.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Dock icon click or Finder double-click while the app is running.
+    /// Reaches us now that SwiftUI owns no window scene; reopen the main
+    /// window instead of doing nothing (menu-bar-only mode has no Dock icon,
+    /// but a Finder double-click still lands here).
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows flag: Bool) -> Bool {
+        if !(MainWindowController.shared?.isVisible ?? true) {
+            MainWindowController.shared?.present()
+        }
+        return true
     }
 
     static func updateActivationPolicy(excluding closing: NSWindow? = nil) {
@@ -155,39 +190,13 @@ struct LanguagePicker: View {
     }
 }
 
-private struct MainWindowRoot: View {
+/// File ▸ Close (⌘W).
+private struct CloseWindowMenuItem: View {
     var model: AppModel
-    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        ContentView(model: model)
-            .frame(minWidth: Design.Window.minWidth, minHeight: Design.Window.minHeight)
-            .id(model.languageRevision)
-            .task {
-                model.start()
-            }
-            .onAppear {
-                // SwiftUI resurrects the Window scene when a windowless app is
-                // activated (clicking the menu bar item does that). Only keep
-                // windows we asked for.
-                guard model.isWindowPresentationExpected() else {
-                    dismissWindow(id: WindowID.main)
-                    return
-                }
-                model.windowDidAppear()
-                AppDelegate.updateActivationPolicy()
-            }
-            .onDisappear {
-                model.windowDidDisappear()
-            }
+        let _ = model.languageRevision
+        Button(L(.closeWindow)) { MainWindowController.shared?.closeFrontWindow() }
+            .keyboardShortcut("w")
     }
-}
-
-/// Opens (or brings forward) the main window from the menu bar.
-@MainActor
-func presentMainWindow(_ model: AppModel, _ openWindow: OpenWindowAction) {
-    model.expectWindowPresentation()
-    NSApp.setActivationPolicy(.regular)
-    openWindow(id: WindowID.main)
-    NSApp.activate()
 }

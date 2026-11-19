@@ -99,7 +99,7 @@ class Runner {
     std::vector<Result> results;
     results.reserve(entries_.size());
     for (const Entry& entry : entries_) {
-      std::fprintf(stderr, "  正在测量 %s / %s ...\n", entry.group.c_str(), entry.name.c_str());
+      std::fprintf(stderr, "  Measuring %s / %s ...\n", entry.group.c_str(), entry.name.c_str());
       results.push_back(RunOne(entry));
     }
     return results;

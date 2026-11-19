@@ -99,6 +99,9 @@ public enum NetworkValidator {
         var address = in_addr()
         guard text.withCString({ inet_pton(AF_INET, $0, &address) }) == 1 else { return false }
         let host = UInt32(bigEndian: address.s_addr)
+        // 0.0.0.0 (/0) is contiguous but means "every address is on this link", which would
+        // send all traffic to the interface without a router.
+        guard host != 0 else { return false }
         // The necessary and sufficient condition for a contiguous mask: after inverting and adding one it is a power of 2 (or 0, corresponding to 255.255.255.255).
         let inverted = ~host
         return inverted & (inverted &+ 1) == 0

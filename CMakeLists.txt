@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 project(
   TetherKitNext
   VERSION 1.2.0
-  DESCRIPTION "macOS 用户态 RNDIS 驱动：libusb + feth + BPF"
+  DESCRIPTION "User-space RNDIS driver for macOS: libusb + feth + BPF"
   LANGUAGES CXX)
 
 # ------------------------------------------------------------------------------
@@ -12,7 +12,7 @@ project(
 # This project depends on macOS-private feth (if_fake) virtual NICs and Darwin BPF, so it cannot be cross-platform.
 # ------------------------------------------------------------------------------
 if(NOT APPLE)
-  message(FATAL_ERROR "TetherKitNext 仅支持 macOS：依赖 feth(if_fake) 与 Darwin BPF。")
+  message(FATAL_ERROR "TetherKitNext supports macOS only: it depends on feth (if_fake) and Darwin BPF.")
 endif()
 
 # ------------------------------------------------------------------------------
@@ -38,14 +38,14 @@ if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS
                                    TETHERKITNEXT_MIN_MACOS_VERSION)
   message(
     FATAL_ERROR
-      "CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET} 过低，"
-      "至少需要 ${TETHERKITNEXT_MIN_MACOS_VERSION}（libc++ 的 std::to_chars 带 availability 标注）。")
+      "CMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET} is too low; "
+      "at least ${TETHERKITNEXT_MIN_MACOS_VERSION} is required (libc++'s std::to_chars has an availability annotation).")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE
       "RelWithDebInfo"
-      CACHE STRING "构建类型" FORCE)
+      CACHE STRING "Build type" FORCE)
 endif()
 
 # Always export compile_commands.json for clangd / clang-tidy.
@@ -68,15 +68,15 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ------------------------------------------------------------------------------
 # Build options
 # ------------------------------------------------------------------------------
-option(TETHERKITNEXT_BUILD_TESTS "构建单元测试" ON)
-option(TETHERKITNEXT_BUILD_BENCHMARKS "构建性能基准" ON)
-option(TETHERKITNEXT_BUILD_SHARED_LIB "构建共享库 libtetherkitnext（GUI 与其它语言绑定需要）" ON)
-option(TETHERKITNEXT_WARNINGS_AS_ERRORS "把编译警告当作错误" OFF)
-option(TETHERKITNEXT_NATIVE_ARCH "为本机 CPU 微架构优化（-mcpu=native，产物不可移植）" OFF)
-option(TETHERKITNEXT_ENABLE_LTO "启用链接时优化（Release 类构建）" OFF)
-option(TETHERKITNEXT_ENABLE_ASAN "启用 AddressSanitizer" OFF)
-option(TETHERKITNEXT_ENABLE_UBSAN "启用 UndefinedBehaviorSanitizer" OFF)
-option(TETHERKITNEXT_ENABLE_TSAN "启用 ThreadSanitizer（验证无锁队列与线程模型）" OFF)
+option(TETHERKITNEXT_BUILD_TESTS "Build unit tests" ON)
+option(TETHERKITNEXT_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(TETHERKITNEXT_BUILD_SHARED_LIB "Build the shared library libtetherkitnext (needed by the GUI and other language bindings)" ON)
+option(TETHERKITNEXT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(TETHERKITNEXT_NATIVE_ARCH "Optimize for this CPU's microarchitecture (-mcpu=native; output is not portable)" OFF)
+option(TETHERKITNEXT_ENABLE_LTO "Enable link-time optimization (Release-type builds)" OFF)
+option(TETHERKITNEXT_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(TETHERKITNEXT_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+option(TETHERKITNEXT_ENABLE_TSAN "Enable ThreadSanitizer (validates the lock-free queues and threading model)" OFF)
 
 include(CompilerWarnings)
 include(Sanitizers)
@@ -125,7 +125,7 @@ if(TETHERKITNEXT_BUILD_SHARED_LIB AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gui/Pa
             "${CMAKE_CURRENT_SOURCE_DIR}/gui/Scripts/build-gui.sh"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     DEPENDS tetherkitnext_shared tetherkitnext
-    COMMENT "构建 TetherKitNext.app 与 tetherkitnext-helper"
+    COMMENT "Building TetherKitNext.app and tetherkitnext-helper"
     USES_TERMINAL
     VERBATIM)
   set_property(TARGET gui APPEND PROPERTY
@@ -136,20 +136,20 @@ endif()
 # Build configuration summary
 # ------------------------------------------------------------------------------
 message(STATUS "")
-message(STATUS "==== TetherKitNext ${PROJECT_VERSION} 构建配置 ====")
-message(STATUS "  构建类型          : ${CMAKE_BUILD_TYPE}")
-message(STATUS "  C++ 标准          : C++${CMAKE_CXX_STANDARD}")
+message(STATUS "==== TetherKitNext ${PROJECT_VERSION} build configuration ====")
+message(STATUS "  Build type        : ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ standard      : C++${CMAKE_CXX_STANDARD}")
 if(CMAKE_OSX_DEPLOYMENT_TARGET)
   set(_tk_deploy "macOS ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 else()
-  set(_tk_deploy "宿主默认")
+  set(_tk_deploy "host default")
 endif()
-message(STATUS "  部署目标          : ${_tk_deploy}（下限 ${TETHERKITNEXT_MIN_MACOS_VERSION}）")
-message(STATUS "  编译器            : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "  Deployment target : ${_tk_deploy} (minimum ${TETHERKITNEXT_MIN_MACOS_VERSION})")
+message(STATUS "  Compiler          : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "  libusb            : ${LibUSB_VERSION} (${LibUSB_LIBRARY})")
-message(STATUS "  单元测试          : ${TETHERKITNEXT_BUILD_TESTS}")
-message(STATUS "  性能基准          : ${TETHERKITNEXT_BUILD_BENCHMARKS}")
-message(STATUS "  本机微架构优化    : ${TETHERKITNEXT_NATIVE_ARCH}")
+message(STATUS "  Unit tests        : ${TETHERKITNEXT_BUILD_TESTS}")
+message(STATUS "  Benchmarks        : ${TETHERKITNEXT_BUILD_BENCHMARKS}")
+message(STATUS "  Native -mcpu      : ${TETHERKITNEXT_NATIVE_ARCH}")
 message(STATUS "  LTO               : ${TETHERKITNEXT_ENABLE_LTO}")
 message(STATUS "  ASan/UBSan/TSan   : ${TETHERKITNEXT_ENABLE_ASAN}/${TETHERKITNEXT_ENABLE_UBSAN}/${TETHERKITNEXT_ENABLE_TSAN}")
 message(STATUS "=========================================")

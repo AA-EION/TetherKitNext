@@ -55,3 +55,7 @@ MaxEmptyLinesToKeep: 1
 SeparateDefinitionBlocks: Always
 SpacesBeforeTrailingComments: 2
 QualifierAlignment: Left
+
+# doctest's TEST_SUITE("name") { ... } groups test cases like a namespace; format it as one
+# (contents unindented, as everywhere in tests/) instead of as a block that indents its body.
+NamespaceMacros: [TEST_SUITE]

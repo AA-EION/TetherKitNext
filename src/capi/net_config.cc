@@ -17,14 +17,20 @@
 //   MANUAL mode has no DNS source, so all we can do is add a DNS key to the service it established.
 //   This move is **not verified on real hardware**, so success is never promised to upper layers: tk_net_query always reads back
 //   the resolvers actually in effect in the system, and what the GUI shows is the readback rather than the value we applied.
-#include <SystemConfiguration/SystemConfiguration.h>
-#include <arpa/inet.h>
+#include "net_config.h"
+
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <SystemConfiguration/SystemConfiguration.h>
 #include <algorithm>
+#include <arpa/inet.h>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -39,9 +45,6 @@
 #include "core_foundation_support.h"
 #include "managed_network_service.h"
 #include "process_runner.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/i18n.h"
-#include "tetherkitnext/common/logging.h"
 
 namespace {
 
@@ -436,6 +439,17 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
   // the dynamic store; the scoped default route must be filled in explicitly by us (when feth becomes the primary service macOS may keep only the
   // global route, and NetworkExtension's scoped query for feth would get "No network route").
   const std::optional<std::string> router = WaitForStableLease(interface_name, service_id);
+  if (!router.has_value() && set_default_route && service_id.has_value()) {
+    // "Route all traffic" put our service first in the order before we knew
+    // whether the device has a router. Without one this is a local link (a
+    // drone, a controller, a gadget-mode board): it must not outrank the
+    // Mac's real internet connection. DHCP keeps running in the background;
+    // the user can re-apply once a lease with a router exists.
+    if (const auto demoted = tetherkitnext::capi::DemoteManagedNetworkService(interface_name);
+        !demoted) {
+      TETHERKITNEXT_WARN_TR(Msg::kCapiDemoteServiceFailed, demoted.error().ToString());
+    }
+  }
   if (!router.has_value()) {
     // There is no address yet -- the other side is probably not doing tethering, and this is the real timeout.
     if (!QueryAddress(interface_name, SIOCGIFADDR).has_value()) {
@@ -448,11 +462,20 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
     return tetherkitnext::Ok();
   }
 
-  TETHERKITNEXT_RETURN_IF_ERROR(InstallScopedDefaultRoute(interface_name, *router));
-  if (!set_default_route) {
-    return tetherkitnext::Ok();
+  Status routed = InstallScopedDefaultRoute(interface_name, *router);
+  if (routed && set_default_route) {
+    routed = PromoteToGlobalDefaultRoute(*router);
   }
-  return PromoteToGlobalDefaultRoute(*router);
+  if (!routed && set_default_route && service_id.has_value()) {
+    // Same rule as above: the service was ordered first before we knew routing would
+    // work. Without a working default route it must not stay primary (it would also own
+    // DNS), so hand the Mac back to its other connections.
+    if (const auto demoted = tetherkitnext::capi::DemoteManagedNetworkService(interface_name);
+        !demoted) {
+      TETHERKITNEXT_WARN_TR(Msg::kCapiDemoteServiceFailed, demoted.error().ToString());
+    }
+  }
+  return routed;
 }
 
 [[nodiscard]] Status ApplyManual(std::string_view interface_name, const tk_ip_config_t& config) {
@@ -516,11 +539,62 @@ void TryPublishDns(SCDynamicStoreRef store, std::string_view service_id,
 
 [[nodiscard]] Status ApplyNone(std::string_view interface_name) {
   TETHERKITNEXT_RETURN_IF_ERROR(tetherkitnext::capi::RemoveManagedNetworkService(interface_name));
-  return RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
-                   Text(Msg::kCapiWhatClearConfig));
+  const Status cleared = RunOrFail(kIpconfigPath, {"set", std::string{interface_name}, "NONE"},
+                                   Text(Msg::kCapiWhatClearConfig));
+  tetherkitnext::capi::ReconcileSystemDefaultRoute(interface_name);
+  return cleared;
+}
+
+/// The interface the kernel's IPv4 default route uses; nullopt when there is none.
+[[nodiscard]] std::optional<std::string> KernelDefaultRouteInterface() {
+  const auto result = RunTool(kRoutePath, {"-n", "get", "-inet", "default"});
+  if (!result || !result->Succeeded()) {
+    return std::nullopt;  // "route: writing to routing socket: not in table"
+  }
+  constexpr std::string_view kField = "interface: ";
+  const std::string& output = result->output;
+  const std::size_t start = output.find(kField);
+  if (start == std::string::npos) {
+    return std::nullopt;
+  }
+  const std::size_t begin = start + kField.size();
+  const std::size_t end = output.find_first_of(" \r\n", begin);
+  return output.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
 }
 
 }  // namespace
+
+namespace tetherkitnext::capi {
+
+void ReconcileSystemDefaultRoute(std::string_view interface_name) noexcept {
+  try {
+    SCDynamicStoreRef store = SharedDynamicStore();
+    if (store == nullptr) {
+      return;
+    }
+    const ScopedCFRef<CFStringRef> key = MakeCFString("State:/Network/Global/IPv4");
+    const ScopedCFRef<CFDictionaryRef> global{
+        static_cast<CFDictionaryRef>(::SCDynamicStoreCopyValue(store, key.Get()))};
+    const std::string primary = StringField(global.Get(), CFSTR("PrimaryInterface"));
+    const std::string router = StringField(global.Get(), CFSTR("Router"));
+    if (primary.empty() || primary == interface_name || !IsValidIpv4(router)) {
+      return;  // no other primary service, or configd routes through us and will reroute itself
+    }
+    const std::optional<std::string> kernel = KernelDefaultRouteInterface();
+    if (kernel.has_value() && *kernel != interface_name) {
+      return;  // a default route through something else exists (the primary, or e.g. a VPN)
+    }
+    if (const auto changed = RunTool(kRoutePath, {"-n", "change", "-inet", "default", router});
+        !changed || !changed->Succeeded()) {
+      std::ignore = RunTool(kRoutePath, {"-n", "add", "-inet", "default", router});
+    }
+    TETHERKITNEXT_INFO_TR(Msg::kCapiDefaultRouteRestored, router, primary);
+  } catch (...) {
+    // Best effort: this runs on teardown paths that must not throw.
+  }
+}
+
+}  // namespace tetherkitnext::capi
 
 void tk_ip_config_init(tk_ip_config_t* out_config) {
   if (out_config == nullptr) {
@@ -550,19 +624,30 @@ tk_result_t tk_net_apply(const char* interface_name, const tk_ip_config_t* confi
     return TK_ERR_PERMISSION;
   }
 
+  // The strings are fixed-size arrays filled by the caller (a Swift tuple copy, the CLI).
+  // Force NUL termination on a private copy so every later strlen stays inside them.
+  tk_ip_config_t safe = *config;
+  const auto nul_terminate = [](auto& field) { field[sizeof(field) - 1] = '\0'; };
+  nul_terminate(safe.address);
+  nul_terminate(safe.netmask);
+  nul_terminate(safe.router);
+  for (auto& server : safe.dns) {
+    nul_terminate(server);
+  }
+
   Status status = tetherkitnext::Ok();
-  switch (config->mode) {
+  switch (safe.mode) {
     case TK_IP_MODE_DHCP:
-      status = ApplyDhcp(interface_name, config->set_default_route);
+      status = ApplyDhcp(interface_name, safe.set_default_route);
       break;
     case TK_IP_MODE_MANUAL:
-      status = ApplyManual(interface_name, *config);
+      status = ApplyManual(interface_name, safe);
       break;
     case TK_IP_MODE_NONE:
       status = ApplyNone(interface_name);
       break;
     default:
-      FillGenericError(out_error, Tr(Msg::kCapiUnknownIpMode, config->mode));
+      FillGenericError(out_error, Tr(Msg::kCapiUnknownIpMode, safe.mode));
       return TK_ERR_INVALID_ARGUMENT;
   }
 

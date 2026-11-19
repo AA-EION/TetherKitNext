@@ -52,8 +52,9 @@ void SetLogColorEnabled(bool enabled) noexcept;
 /// Also calls pthread_setname_np so it is visible in Instruments / lldb too.
 void SetCurrentThreadName(std::string_view name) noexcept;
 
-/// Log sink: **additionally** forwards already-formatted log lines to the host (the GUI needs to show logs in the interface,
-/// while the logs themselves only go to stderr). stderr output is unaffected; the two run in parallel.
+/// Log sink: **additionally** forwards already-formatted log lines to the host (the GUI needs to
+/// show logs in the interface, while the logs themselves only go to stderr). stderr output is
+/// unaffected; the two run in parallel.
 ///
 /// * Three hard constraints when implementing a log sink *
 ///   1. It is called on **any thread** (including the libusb event thread);
@@ -61,7 +62,8 @@ void SetCurrentThreadName(std::string_view name) noexcept;
 ///      (std::mutex is not reentrant and would deadlock on the spot);
 ///   3. It must never do blocking I/O -- it would hold up all threads that are currently logging.
 ///
-/// The only reasonable implementation satisfying these three is "copy into a fixed-size ring buffer that the host polls and takes away".
+/// The only reasonable implementation satisfying these three is "copy into a fixed-size ring buffer
+/// that the host polls and drains".
 using LogSink = void (*)(LogLevel level, std::string_view thread_name, std::string_view message,
                          void* user) noexcept;
 

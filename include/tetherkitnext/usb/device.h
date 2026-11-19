@@ -153,9 +153,7 @@ class Device {
     return interrupt_max_packet_size_;
   }
 
-  /// The device's USB speed, used for logs and throughput expectations.
-  [[nodiscard]] int Speed() const noexcept { return speed_; }
-
+  /// The device's USB speed ("high-speed", ...), used for logs and throughput expectations.
   [[nodiscard]] std::string_view SpeedName() const noexcept;
 
   /// Clears the halt state of an endpoint.

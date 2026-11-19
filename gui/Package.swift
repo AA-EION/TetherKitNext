@@ -103,9 +103,17 @@ let package = Package(
 
         // The SwiftUI App that users see (running as an ordinary user).
         .executableTarget(name: "TetherKitNextApp",
-                          dependencies: ["TetherKitNextCore", "TetherKitNextIPC"]),
+                          dependencies: ["TetherKitNextCore", "TetherKitNextIPC",
+                                         "TetherKitNextUIModel"]),
 
-        // Tests only TetherKitNextIPC: it is the only "pure logic, touches no hardware and needs no root" layer.
+        // UI logic that deserves unit tests: sidebar composition and
+        // persisted-selection rules, interface traffic sampling. A library of
+        // its own because an executable target cannot be @testable-imported.
+        // No libtetherkitnext dependency, so its tests run without the C++ build.
+        .target(name: "TetherKitNextUIModel", dependencies: ["TetherKitNextIPC"]),
+
+        // Tests cover the pure-logic layers (TetherKitNextIPC, TetherKitNextUIModel): no hardware, no root.
         // Tests of sessions and NIC configuration are on the C++ side (tests/test_capi.cc), and are not repeated here.
         .testTarget(name: "TetherKitNextIPCTests", dependencies: ["TetherKitNextIPC"]),
+        .testTarget(name: "TetherKitNextUIModelTests", dependencies: ["TetherKitNextUIModel"]),
     ])

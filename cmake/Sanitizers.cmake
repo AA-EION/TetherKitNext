@@ -12,7 +12,7 @@
 add_library(tetherkitnext_sanitizers INTERFACE)
 
 if(TETHERKITNEXT_ENABLE_ASAN AND TETHERKITNEXT_ENABLE_TSAN)
-  message(FATAL_ERROR "AddressSanitizer 与 ThreadSanitizer 不能同时启用。")
+  message(FATAL_ERROR "AddressSanitizer and ThreadSanitizer cannot be enabled together.")
 endif()
 
 set(_tk_san_list "")
@@ -37,7 +37,7 @@ if(_tk_san_list)
   target_compile_options(tetherkitnext_sanitizers INTERFACE -fsanitize=${_tk_san_flags}
                                                         -fno-omit-frame-pointer -g)
   target_link_options(tetherkitnext_sanitizers INTERFACE -fsanitize=${_tk_san_flags})
-  message(STATUS "已启用消毒器: ${_tk_san_flags}")
+  message(STATUS "Sanitizers enabled: ${_tk_san_flags}")
 else()
   set(TETHERKITNEXT_SANITIZER_SUMMARY "none")
 endif()

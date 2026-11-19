@@ -135,15 +135,29 @@ struct NetworkCard: View {
 
     /// One DNS entry: input cell + delete, and the last one also carries an "Add".
     private func dnsField(at index: Int) -> some View {
-        HStack(spacing: Design.Spacing.tight) {
+        // Bounds-checked binding: after a row is removed SwiftUI can still evaluate the old
+        // row's binding once before rebuilding, and a plain array subscript would trap.
+        let text = Binding<String>(
+            get: {
+                let servers = model.networkConfiguration.dnsServers
+                return servers.indices.contains(index) ? servers[index] : ""
+            },
+            set: { newValue in
+                if model.networkConfiguration.dnsServers.indices.contains(index) {
+                    model.networkConfiguration.dnsServers[index] = newValue
+                }
+            })
+        return HStack(spacing: Design.Spacing.tight) {
             AddressField(label: index == 0 ? "DNS" : "",
-                         placeholder: "223.5.5.5",
-                         text: $model.networkConfiguration.dnsServers[index],
-                         isValid: model.networkConfiguration.dnsServers[index].isEmpty
-                             || NetworkValidator.isValidIPv4(model.networkConfiguration.dnsServers[index]))
+                         placeholder: "1.1.1.1",
+                         text: text,
+                         isValid: text.wrappedValue.isEmpty
+                             || NetworkValidator.isValidIPv4(text.wrappedValue))
 
             Button {
-                model.networkConfiguration.dnsServers.remove(at: index)
+                if model.networkConfiguration.dnsServers.indices.contains(index) {
+                    model.networkConfiguration.dnsServers.remove(at: index)
+                }
             } label: {
                 Image(systemName: "minus.circle")
             }

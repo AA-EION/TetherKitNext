@@ -20,6 +20,7 @@ add_executable(
   test_rndis_state_machine.cc
   test_net_link.cc
   test_core_bridge.cc
+  test_core_peer_address.cc
   test_capi.cc)
 
 # tk_rndis / tk_net both link tk_common PUBLICly, so there is no need to list it again (otherwise the linker reports
@@ -70,6 +71,7 @@ set(TETHERKITNEXT_TEST_SUITES
     net.loopback
     net.feth
     core.bridge
+    core.peer_address
     capi.support
     capi.basics
     capi.log_ring

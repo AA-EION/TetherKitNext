@@ -46,7 +46,9 @@ Runtime::~Runtime() {
 // =============================================================================
 
 Status Runtime::Start() {
-  if (started_) {
+  // A runtime is single-use. Starting after Stop() would spawn a control thread that the
+  // already-stopped destructor never joins (std::terminate on a joinable std::thread).
+  if (started_.load() || stopped_.load()) {
     return std::unexpected(Error::Generic(Tr(Msg::kCoreRuntimeAlreadyStarted)));
   }
 
@@ -73,11 +75,10 @@ void Runtime::WaitUntilStopped() {
 }
 
 void Runtime::Stop() {
-  if (stopped_) {
+  if (stopped_.exchange(true)) {
     return;
   }
-  stopped_ = true;
-  if (!started_) {
+  if (!started_.load()) {
     return;
   }
 
@@ -221,6 +222,16 @@ Status Runtime::RunStartSequence() {
     bridge_config.max_frame_bytes = parameters.mtu + rndis::kEthernetHeaderBytes;
     bridge_ = std::make_unique<Bridge>(*data_channel_, *bpf_link_, bridge_config);
     TETHERKITNEXT_RETURN_IF_ERROR(bridge_->Start());
+    // The state machine reported the initial media state before the bridge existed
+    // (OnLinkStateChanged saw bridge_ == nullptr), so apply it now.
+    bool link_up = false;
+    {
+      const std::lock_guard<std::mutex> guard(snapshot_mutex_);
+      link_up = snapshot_.link_up;
+    }
+    if (!link_up) {
+      bridge_->SetPaused(true);
+    }
   }
 
   RefreshSnapshot();
@@ -231,6 +242,7 @@ Status Runtime::RunStartSequence() {
 void Runtime::RunControlLoop() {
   BridgeStats previous = bridge_->Snapshot();
   Nanos last_stats_nanos = MonotonicNanos();
+  std::uint32_t idle_stats_periods = 0;
 
   const Nanos stats_interval_nanos =
       static_cast<Nanos>(config_.stats_interval_millis) * kNanosPerMilli;
@@ -255,7 +267,20 @@ void Runtime::RunControlLoop() {
       const BridgeStats current = bridge_->Snapshot();
       const double seconds =
           static_cast<double>(now - last_stats_nanos) / static_cast<double>(kNanosPerSecond);
-      TETHERKITNEXT_INFO("{}", FormatStatsLine(previous, current, seconds));
+      // An idle link would print an identical all-zero line every period. Print the first
+      // idle line, then one every kIdleStatsEvery periods as a heartbeat (idea from
+      // XiaoMiku01/TetherKit#23); any traffic, drop or backpressure resumes every line.
+      constexpr std::uint32_t kIdleStatsEvery = 12;
+      const DirectionSnapshot rx_delta = current.rx - previous.rx;
+      const DirectionSnapshot tx_delta = current.tx - previous.tx;
+      const bool idle = rx_delta.frames == 0 && tx_delta.frames == 0 &&
+                        rx_delta.TotalDropped() == 0 && tx_delta.TotalDropped() == 0 &&
+                        current.link_kernel_drops == previous.link_kernel_drops &&
+                        current.tx_backpressure_events == previous.tx_backpressure_events;
+      idle_stats_periods = idle ? idle_stats_periods + 1 : 0;
+      if (idle_stats_periods <= 1 || idle_stats_periods % kIdleStatsEvery == 0) {
+        TETHERKITNEXT_INFO("{}", FormatStatsLine(previous, current, seconds));
+      }
       previous = current;
       last_stats_nanos = now;
     }
@@ -475,11 +500,19 @@ void Runtime::OnDeviceReset(bool addressing_lost) {
   TETHERKITNEXT_WARN_TR(Msg::kCoreDeviceReset,
                     Text(addressing_lost ? Msg::kCoreAddressingLost : Msg::kCoreAddressingKept));
 
-  // During a reset the device discarded all outstanding data packets. A brief pause lets the state machine finish replaying the packet filter,
-  // avoiding continued flooding of data during the window when the device rebuilds its internal state.
+  // During a reset the device discarded all outstanding data packets. A brief pause lets the state
+  // machine finish replaying the packet filter, avoiding continued flooding of data during the
+  // window when the device rebuilds its internal state. SetPaused(true) also waits for the RX
+  // injector to stop, so this drains in-flight writes. Restore the link's own state afterwards
+  // instead of forcing "running": a reset while the medium is down must leave the bridge paused.
   if (bridge_ != nullptr) {
+    bool link_up = false;
+    {
+      const std::lock_guard<std::mutex> guard(snapshot_mutex_);
+      link_up = snapshot_.link_up;
+    }
     bridge_->SetPaused(true);
-    bridge_->SetPaused(false);
+    bridge_->SetPaused(!link_up);
   }
 
   Emit(RuntimeEvent{.kind = RuntimeEvent::Kind::kDeviceReset, .a = addressing_lost ? 1 : 0});

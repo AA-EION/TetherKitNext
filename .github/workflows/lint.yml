@@ -1,0 +1,130 @@
+# Lint: formatting and static checks for C/C++.
+#
+# clang-format (blocking) checks only the lines a change touches: most files
+# predate .clang-format and reformatting them all at once would bury real
+# history. The repo-wide count is reported as an advisory summary.
+#
+# clang-tidy (advisory) runs on the changed C++ sources and reports findings as
+# annotations without failing the run, until the existing backlog is cleared.
+#
+# clang-format 18 from Ubuntu 24.04 is pinned so CI and local runs agree:
+#   git clang-format --binary clang-format-18 --extensions c,h,cc,cpp,hpp --diff origin/main
+
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EXTENSIONS: c,h,cc,cpp,hpp
+
+jobs:
+  clang-format:
+    name: clang-format (changed lines)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q clang-format-18
+          clang-format-18 --version
+
+      - name: Determine the diff base
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            base="$(git merge-base "$PR_BASE" HEAD)"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] \
+               && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            base="$(git rev-parse HEAD~1)"
+          fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+          echo "Diff base: $base"
+
+      - name: Check the formatting of changed lines
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          diff="$(git clang-format-18 --binary clang-format-18 --extensions "$EXTENSIONS" \
+                    --diff "$BASE" 2>&1 || true)"
+          if printf '%s\n' "$diff" | grep -q '^@@'; then
+            echo "::error::Changed lines are not clang-formatted. Fix with:"
+            echo "::error::git clang-format --binary clang-format-18 --extensions $EXTENSIONS $BASE"
+            printf '%s\n' "$diff"
+            exit 1
+          fi
+          echo "✓ changed lines are formatted"
+
+      - name: Repo-wide backlog (advisory)
+        if: always()
+        run: |
+          total=0; unformatted=0
+          while IFS= read -r file; do
+            total=$((total + 1))
+            clang-format-18 --dry-run -Werror "$file" >/dev/null 2>&1 || unformatted=$((unformatted + 1))
+          done < <(git ls-files '*.c' '*.h' '*.cc' '*.cpp' '*.hpp' | grep -v '^third_party/')
+          echo "### clang-format backlog: ${unformatted} of ${total} files not fully formatted" >> "$GITHUB_STEP_SUMMARY"
+
+  clang-tidy:
+    name: clang-tidy (changed files, advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Changed C++ sources
+        id: files
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="$(git merge-base "$PR_BASE" HEAD)"
+          files="$(git diff --name-only --diff-filter=AM "$base" HEAD -- 'src/*.cc' | tr '\n' ' ')"
+          echo "list=$files" >> "$GITHUB_OUTPUT"
+          echo "Changed: ${files:-none}"
+
+      - name: Configure (compile_commands.json)
+        if: steps.files.outputs.list != ''
+        run: |
+          brew install --quiet llvm libusb
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DTETHERKITNEXT_BUILD_TESTS=OFF -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF
+
+      - name: clang-tidy
+        if: steps.files.outputs.list != ''
+        env:
+          FILES: ${{ steps.files.outputs.list }}
+        run: |
+          tidy="$(brew --prefix llvm)/bin/clang-tidy"
+          "$tidy" --version
+          # Advisory: findings become annotations; the step never fails the run.
+          for file in $FILES; do
+            "$tidy" -p build --quiet "$file" 2>/dev/null \
+              | sed -nE 's#^(/[^:]+):([0-9]+):([0-9]+): (warning|error): (.*)$#::warning file=\1,line=\2,col=\3::\5#p' \
+              || true
+          done

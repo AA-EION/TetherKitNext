@@ -19,7 +19,7 @@ final class AuthorizationTests: XCTestCase {
         var external = AuthorizationExternalForm()
         let status = AuthorizationMakeExternalForm(authorization, &external)
         try XCTSkipUnless(status == errAuthorizationSuccess,
-                          "AuthorizationMakeExternalForm 失败（\(status)），跳过")
+                          "AuthorizationMakeExternalForm failed (\(status)); skipping")
         return withUnsafeBytes(of: &external) { Data($0) }
     }
 
@@ -47,7 +47,7 @@ final class AuthorizationTests: XCTestCase {
                                        externalForm: try externalForm(of: reference))
 
         XCTAssertEqual(restore(token.externalForm), errAuthorizationSuccess,
-                       "令牌还活着的时候，helper 侧必须能还原出凭据")
+                       "while the token is alive, the helper side must be able to restore the credential")
 
         withExtendedLifetime(token) {}
     }
@@ -69,6 +69,6 @@ final class AuthorizationTests: XCTestCase {
         }  // token is destroyed here, together with the rights
 
         XCTAssertEqual(restore(capturedForm), errAuthorizationDenied,
-                       "令牌释放后外部形式必须失效；当初就是它导致了 -60005")
+                       "once the token is released the external form must stop working; this caused -60005")
     }
 }

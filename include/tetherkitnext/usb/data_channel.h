@@ -251,8 +251,15 @@ class UsbDataChannel final : public DataChannel {
   /// Index queue of free TX slots.
   ///
   /// Producer = the libusb event thread (the send completion callback returns slots),
-  /// consumer = the BPF read thread (takes slots to assemble the next batch). Exactly SPSC.
+  /// consumer = the BPF read thread (takes slots to assemble the next batch). Exactly SPSC:
+  /// the consumer must never push. A slot it took but could not use goes to held_tx_slot_.
   std::unique_ptr<SpscRing<std::uint32_t>> tx_free_slots_;
+
+  /// A free slot the send thread popped but did not submit (nothing to send, or a submit
+  /// failure). Reused by the next SendFrames before popping again. Touched only by the send
+  /// thread, so pushing it back into tx_free_slots_ (a second producer) is never needed.
+  static constexpr std::uint32_t kNoHeldSlot = 0xFFFF'FFFFU;
+  std::uint32_t held_tx_slot_ = kNoHeldSlot;
 
   /// Receive target. Non-null after StartReceiving.
   FrameRing* rx_ring_ = nullptr;

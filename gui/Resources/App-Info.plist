@@ -3,7 +3,7 @@
   Info.plist template for TetherKitNext.app.
 
   Scripts/build-gui.sh replaces __TETHERKITNEXT_VERSION__ with the real version number and copies it into
-  TetherKitNext.app/Contents/。
+  TetherKitNext.app/Contents/.
 
   No entitlements are needed (hardened runtime, Developer ID): the app runs as
   the user and never touches USB or network interfaces itself; privileged work

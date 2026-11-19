@@ -30,7 +30,7 @@ final class HelperConstantsTests: XCTestCase {
         XCTAssertEqual(revision, 0)
         XCTAssertEqual(version, "TetherKitNext 0.1.2 (C++23, macOS 13.3+)")
         XCTAssertNotEqual(revision, HelperConstants.protocolRevision,
-                          "0 必须与任何真实修订号都不同，否则旧组件会被当成匹配的")
+                          "0 must differ from every real revision, or an old component would count as a match")
     }
 
     // MARK: - Build identity

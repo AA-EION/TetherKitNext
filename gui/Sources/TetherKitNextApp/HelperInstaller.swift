@@ -60,6 +60,7 @@ enum HelperInstaller {
     /// caller checks `needsApproval` and guides the user to System Settings.
     static func register() throws {
         if let problem = locationProblem { throw problem }
+        clearQuarantineOnDaemonPlist()
         do {
             try service.register()
         } catch {
@@ -67,6 +68,24 @@ enum HelperInstaller {
             // approval" — not a failure from the user's point of view.
             if status == .requiresApproval || status == .enabled { return }
             throw Failure.registrationFailed(error.localizedDescription)
+        }
+    }
+
+    /// Removes `com.apple.quarantine` from the bundled LaunchDaemon plist.
+    ///
+    /// macOS 27 release notes (166415497): launchd no longer loads property lists that
+    /// carry the quarantine attribute, and a DMG download marks every file in the bundle.
+    /// Whether SMAppService plists of notarized apps are exempt is undocumented, so drop
+    /// the attribute from this one file before registering (as XiaoMiku01/TetherKit#6
+    /// does for its installer). Extended attributes are not part of the code signature,
+    /// and Gatekeeper has already assessed the app by the time it runs. Best effort:
+    /// errors are ignored (the file may be read-only or carry no attribute).
+    static func clearQuarantineOnDaemonPlist() {
+        let plist = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/LaunchDaemons")
+            .appendingPathComponent(HelperConstants.daemonPlistName)
+        _ = plist.withUnsafeFileSystemRepresentation { path in
+            path.map { removexattr($0, "com.apple.quarantine", XATTR_NOFOLLOW) }
         }
     }
 

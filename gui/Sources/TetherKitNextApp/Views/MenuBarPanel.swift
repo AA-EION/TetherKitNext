@@ -34,7 +34,6 @@ struct MenuBarLabel: View {
 /// (open the main window, quit). Configuration, charts and logs all stay in the main window -- the panel is not a second UI.
 struct MenuBarPanel: View {
     var model: AppModel
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
 
     private var status: SessionStatus { model.status }
@@ -78,7 +77,7 @@ struct MenuBarPanel: View {
             Circle()
                 .fill(Design.accent(for: status.runState))
                 .frame(width: 8, height: 8)
-            Text(Design.statusLabel(for: status))
+            Text(model.statusLabel)
                 .font(.headline)
             Spacer()
             if let duration = model.connectedDuration {
@@ -120,7 +119,7 @@ struct MenuBarPanel: View {
             HStack {
                 Button(L(.openMainWindow)) {
                     dismiss()
-                    presentMainWindow(model, openWindow)
+                    MainWindowController.shared?.present()
                 }
                 .secondaryActionButtonStyle()
                 .controlSize(.small)

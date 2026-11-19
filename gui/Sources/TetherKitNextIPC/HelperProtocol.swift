@@ -55,7 +55,7 @@ import Foundation
     /// Reads back the IP state the NIC actually has in effect.
     func queryNetwork(interface: String, reply: @escaping @Sendable (Data?, String?) -> Void)
 
-    /// Takes away the logs and hints accumulated on the helper side.
+    /// Drains the logs and notices accumulated on the helper side.
     func drainFeed(reply: @escaping @Sendable (Data?) -> Void)
 
     /// Tells the helper which language to render the text it produces in. **Does not require authorization** -- it only affects

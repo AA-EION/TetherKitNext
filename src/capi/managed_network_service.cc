@@ -284,6 +284,67 @@ Result<std::string> ConfigureManagedDhcpService(std::string_view interface_name,
   return service_id;
 }
 
+Status DemoteManagedNetworkService(std::string_view interface_name) {
+  const ScopedCFRef<SCPreferencesRef> preferences = CreatePreferences();
+  if (!preferences) {
+    return SystemConfigurationFailure("SCPreferencesCreate");
+  }
+  const PreferencesLock lock{preferences.Get()};
+  if (!lock.Locked()) {
+    return SystemConfigurationFailure("SCPreferencesLock");
+  }
+
+  const ScopedCFRef<SCNetworkSetRef> network_set{::SCNetworkSetCopyCurrent(preferences.Get())};
+  if (!network_set) {
+    return SystemConfigurationFailure("SCNetworkSetCopyCurrent");
+  }
+  const CFArrayRef current_order = ::SCNetworkSetGetServiceOrder(network_set.Get());
+  if (current_order == nullptr) {
+    return tetherkitnext::Ok();
+  }
+
+  // IDs of our service(s) for this interface.
+  const ScopedCFRef<CFArrayRef> services{::SCNetworkServiceCopyAll(preferences.Get())};
+  if (!services) {
+    return SystemConfigurationFailure("SCNetworkServiceCopyAll");
+  }
+  const ScopedCFRef<CFMutableArrayRef> ours{
+      ::CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks)};
+  for (CFIndex index = 0; index < ::CFArrayGetCount(services.Get()); ++index) {
+    const auto service =
+        static_cast<SCNetworkServiceRef>(::CFArrayGetValueAtIndex(services.Get(), index));
+    if (IsManagedService(service, interface_name)) {
+      ::CFArrayAppendValue(ours.Get(), ::SCNetworkServiceGetServiceID(service));
+    }
+  }
+  const CFRange all_ours = ::CFRangeMake(0, ::CFArrayGetCount(ours.Get()));
+  if (all_ours.length == 0) {
+    return tetherkitnext::Ok();
+  }
+
+  // Everyone else keeps their relative order; ours go last.
+  const ScopedCFRef<CFMutableArrayRef> new_order{
+      ::CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks)};
+  const CFIndex count = ::CFArrayGetCount(current_order);
+  for (CFIndex i = 0; i < count; ++i) {
+    const void* const id = ::CFArrayGetValueAtIndex(current_order, i);
+    if (::CFArrayContainsValue(ours.Get(), all_ours, id) == 0) {
+      ::CFArrayAppendValue(new_order.Get(), id);
+    }
+  }
+  if (::CFArrayGetCount(new_order.Get()) == count) {
+    return tetherkitnext::Ok();  // ours were not in the order at all
+  }
+  ::CFArrayAppendArray(new_order.Get(), ours.Get(), all_ours);
+  if (::CFEqual(new_order.Get(), current_order) != 0) {
+    return tetherkitnext::Ok();  // already last
+  }
+  if (::SCNetworkSetSetServiceOrder(network_set.Get(), new_order.Get()) == 0) {
+    return SystemConfigurationFailure("SCNetworkSetSetServiceOrder");
+  }
+  return CommitAndApply(preferences.Get());
+}
+
 Status RemoveManagedNetworkService(std::string_view interface_name) {
   return RemoveManagedServices(interface_name);
 }

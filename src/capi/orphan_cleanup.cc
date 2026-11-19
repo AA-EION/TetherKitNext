@@ -11,13 +11,18 @@
 // * Why not "destroy all feth at startup" *
 //   feth is a shared facility, and other programs (or the user manually running ifconfig) may be using it too. Destroying only the ones
 //   we registered ourselves avoids collateral damage.
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/net/feth_device.h"
+
+#include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
-
-#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
@@ -29,10 +34,7 @@
 
 #include "capi_support.h"
 #include "managed_network_service.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/i18n.h"
-#include "tetherkitnext/common/logging.h"
-#include "tetherkitnext/net/feth_device.h"
+#include "net_config.h"
 
 namespace {
 
@@ -103,12 +105,42 @@ void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
     ::unlink(kRegistryPath);
     return;
   }
-  std::ofstream output{kRegistryPath, std::ios::trunc};
-  if (!output) {
+  std::string content;
+  for (const RegistryEntry& entry : entries) {
+    content += entry.name;
+    content += ' ';
+    content += std::to_string(entry.owner);
+    content += '\n';
+  }
+
+  // Write a temporary file and rename it over the registry: a crash mid-write then leaves
+  // the old registry instead of a truncated one (which would leak every interface it
+  // listed), and O_NOFOLLOW + O_EXCL mean root never writes through a planted symlink.
+  const std::string temporary = std::string{kRegistryPath} + ".tmp";
+  ::unlink(temporary.c_str());
+  const int fd =
+      ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+  if (fd < 0) {
     return;
   }
-  for (const RegistryEntry& entry : entries) {
-    output << entry.name << ' ' << entry.owner << '\n';
+  const char* cursor = content.data();
+  std::size_t remaining = content.size();
+  bool ok = true;
+  while (remaining > 0) {
+    const ssize_t written = ::write(fd, cursor, remaining);
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      ok = false;
+      break;
+    }
+    cursor += written;
+    remaining -= static_cast<std::size_t>(written);
+  }
+  ok = (::close(fd) == 0) && ok;
+  if (!ok || ::rename(temporary.c_str(), kRegistryPath) != 0) {
+    ::unlink(temporary.c_str());
   }
 }
 
@@ -139,12 +171,19 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
     std::vector<RegistryEntry> entries = ReadRegistry();
 
     if (created) {
-      for (const RegistryEntry& existing : entries) {
+      // A stale entry with the same name (left by a process that died) must take the new
+      // owner: keeping the dead PID would let the next startup cleanup treat this live
+      // interface as an orphan and destroy it.
+      bool found = false;
+      for (RegistryEntry& existing : entries) {
         if (existing.name == name) {
-          return;
+          existing.owner = ::getpid();
+          found = true;
         }
       }
-      entries.push_back(RegistryEntry{.name = std::string{name}, .owner = ::getpid()});
+      if (!found) {
+        entries.push_back(RegistryEntry{.name = std::string{name}, .owner = ::getpid()});
+      }
     } else {
       std::erase_if(entries, [name](const RegistryEntry& entry) { return entry.name == name; });
     }
@@ -161,6 +200,9 @@ void OnInterfaceChanged(std::string_view name, bool created) noexcept {
     } catch (...) {
       TETHERKITNEXT_WARN_TR(Msg::kCapiServiceRemoveFailed, name, Text(Msg::kCapiCommandNoOutput));
     }
+    // If "route all traffic" pointed the kernel's default route at this interface behind
+    // configd's back, destroying it left the Mac without one; put configd's back.
+    tetherkitnext::capi::ReconcileSystemDefaultRoute(name);
   }
 }
 
