@@ -150,8 +150,10 @@ Result<StateMachine::Exchange> StateMachine::Transact(std::span<const std::byte>
   // Remember which RequestId the reply must echo (see PumpOnce). RESET has none.
   struct AwaitGuard {
     std::optional<std::uint32_t>& slot;
+
     ~AwaitGuard() { slot.reset(); }
   } const await_guard{awaited_request_id_};
+
   if (expected_reply != MessageType::kResetComplete && request.size() >= 12) {
     awaited_request_id_ = LoadLe32(request.data() + 8);
   }

@@ -135,7 +135,8 @@ static_assert(alignof(FethRequest) == 8);
 ///
 /// Precondition: BIOCSHDRCMPLT must already be set to 1, and BIOCSETTC must not have been set.
 inline constexpr unsigned long kBpfSetBatchWrite = _IOW('B', 143, int);
-static_assert(kBpfSetBatchWrite == 0x8004'428FUL, "BIOCSBATCHWRITE differs from the measured value");
+static_assert(kBpfSetBatchWrite == 0x8004'428FUL,
+              "BIOCSBATCHWRITE differs from the measured value");
 
 /// Turns off capture timestamps so catchpacket skips the microtime() call.
 ///
@@ -170,8 +171,8 @@ inline constexpr std::uint32_t kBpfMinBufferBytes = 32;
 
 /// Minimum length of a BPF record header.
 ///
-/// Gotcha: `sizeof(struct bpf_hdr)` is **20** on LP64 (the 18 bytes of content are padded by the compiler
-/// to 20), while the `bh_hdrlen` the kernel actually writes for DLT_EN10MB is **18**
+/// Gotcha: `sizeof(struct bpf_hdr)` is **20** on LP64 (the 18 bytes of content are padded by the
+/// compiler to 20), while the `bh_hdrlen` the kernel actually writes for DLT_EN10MB is **18**
 /// (SIZEOF_BPF_HDR=18, bif_hdrlen = BPF_WORDALIGN(14+18) - 14 = 18).
 /// **When reading, the bh_hdrlen in the record must be used; using sizeof misaligns immediately.**
 inline constexpr std::uint32_t kBpfHeaderMinBytes = 18;

@@ -166,8 +166,7 @@ void RegisterRndisBenchmarks(Runner& runner) {
 
   // The effect of aggregation level on per-frame cost -- this is the basis of the --max-transfer-kb tuning knob.
   for (const std::uint32_t per_transfer : {1U, 4U, 10U}) {
-    runner.Add("RNDIS encode",
-               std::format("1514 bytes × {} frames per transfer", per_transfer),
+    runner.Add("RNDIS encode", std::format("1514 bytes × {} frames per transfer", per_transfer),
                Config{.ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
                [per_transfer](std::uint64_t n) {
                  return BenchEncode(n, kFullFrameBytes, per_transfer, 1);
@@ -187,8 +186,7 @@ void RegisterRndisBenchmarks(Runner& runner) {
   for (const std::uint32_t per_transfer : {1U, 4U, 10U}) {
     runner.Add("RNDIS decode (zero-copy)",
                std::format("1514 bytes × {} frames per transfer", per_transfer),
-               Config{.ops_per_round = kFrameOps},
-               [per_transfer](std::uint64_t n) {
+               Config{.ops_per_round = kFrameOps}, [per_transfer](std::uint64_t n) {
                  return BenchDecode(n, kFullFrameBytes, per_transfer);
                });
   }

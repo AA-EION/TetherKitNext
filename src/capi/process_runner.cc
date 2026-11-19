@@ -1,5 +1,6 @@
-#include "tetherkitnext/common/i18n.h"
 #include "process_runner.h"
+
+#include "tetherkitnext/common/i18n.h"
 
 #include <fcntl.h>
 #include <spawn.h>
@@ -60,8 +61,8 @@ Result<ProcessResult> Spawn(std::string_view executable,
     ::close(pipe_fds[1]);
     return std::unexpected(Error::FromErrno(rc, Tr(Msg::kCapiSpawnFileActionsFailed)));
   }
-  // Child process: close the read end, connect the write end to stdout and stderr, then close the original write end.
-  // stdin comes from /dev/null rather than whatever the daemon inherited.
+  // Child process: close the read end, connect the write end to stdout and stderr, then close the
+  // original write end. stdin comes from /dev/null rather than whatever the daemon inherited.
   ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
   ::posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
   ::posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);

@@ -85,7 +85,8 @@ void PrintEnvironment() {
   std::printf("## Environment\n\n");
   std::printf("| Item | Value |\n|---|---|\n");
   std::printf("| CPU | %s |\n", SysctlString("machdep.cpu.brand_string").c_str());
-  std::printf("| Logical cores | %lld (%lld performance / %lld efficiency) |\n", logical, performance, efficiency);
+  std::printf("| Logical cores | %lld (%lld performance / %lld efficiency) |\n", logical,
+              performance, efficiency);
   std::printf("| Cache line | %lld bytes (kCacheLineSize = %zu) |\n", cacheline, kCacheLineSize);
   std::printf("| OS | macOS %s (%s) |\n", SysctlString("kern.osproductversion").c_str(),
               SysctlString("kern.osversion").c_str());
@@ -112,8 +113,12 @@ void PrintMarkdownReport(const std::vector<Result>& results, std::string_view ti
                 FormatSpread(result).c_str());
   }
   std::printf("\n");
-  std::printf("> Spread = (worst round − best round) / median. Above 30%% it is flagged ⚠: something ran in\n");
-  std::printf("> the background or the run landed on an efficiency core, so treat the absolute numbers as rough.\n\n");
+  std::printf(
+      "> Spread = (worst round − best round) / median. Above 30%% it is flagged ⚠: something ran "
+      "in\n");
+  std::printf(
+      "> the background or the run landed on an efficiency core, so treat the absolute numbers as "
+      "rough.\n\n");
 }
 
 }  // namespace tetherkitnext::bench

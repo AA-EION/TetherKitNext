@@ -161,7 +161,8 @@ TEST_CASE("Finish on an empty batch returns 0") {
   CHECK(writer.Finish() == 0);
 }
 
-TEST_CASE("aggregation: padding belongs to the previous message, the last has no trailing padding") {
+TEST_CASE(
+    "aggregation: padding belongs to the previous message, the last has no trailing padding") {
   std::array<std::byte, 8192> transfer{};
   // Align to 8 bytes (PacketAlignmentFactor = 3).
   PacketMessageWriter writer(transfer,

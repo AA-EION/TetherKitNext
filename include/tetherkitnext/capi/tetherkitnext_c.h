@@ -245,9 +245,10 @@ TK_API void tk_enable_log_capture(bool enabled);
 
 /// Drains buffered log lines (first in, first out), returning the number actually taken.
 ///
-/// The buffer is a fixed-size ring queue; when full, it discards the **oldest** records -- keeping the latest scene when the host is stuck
-/// is more useful than keeping the beginning. The number of dropped records is reported through `out_dropped`, and the GUI can use it to show
-/// "the log has gaps".
+/// The buffer is a fixed-size ring queue; when full, it discards the **oldest** records -- keeping
+/// the latest scene when the host is stuck is more useful than keeping the beginning. The number of
+/// dropped records is reported through `out_dropped`, and the GUI can use it to show "the log has
+/// gaps".
 TK_API size_t tk_drain_logs(tk_log_record_t* out_records, size_t capacity,
                             uint64_t* out_dropped);
 
@@ -411,8 +412,10 @@ TK_API tk_result_t tk_session_status_get(tk_session_t* session, tk_session_statu
 
 /// Drains queued events (first in, first out), returning the number actually taken.
 ///
-/// Like logs, it is a fixed-size ring queue that drops the oldest when full. The GUI missing a few state-transition events does not affect correctness
-/// -- the authoritative state is always the `tk_session_status_get` snapshot, and events are only used for animation and hints.
+/// Like logs, it is a fixed-size ring queue that drops the oldest when full. The GUI missing a few
+/// state-transition events does not affect correctness
+/// -- the authoritative state is always the `tk_session_status_get` snapshot, and events are only
+/// used for animation and hints.
 TK_API size_t tk_session_poll_events(tk_session_t* session, tk_event_t* out_events,
                                      size_t capacity);
 

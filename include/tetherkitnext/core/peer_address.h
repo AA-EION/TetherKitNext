@@ -23,12 +23,12 @@
 // store only when the address changes.
 #pragma once
 
+#include "tetherkitnext/common/byte_order.h"
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <span>
-
-#include "tetherkitnext/common/byte_order.h"
 
 namespace tetherkitnext::core {
 
@@ -38,7 +38,7 @@ inline constexpr std::uint16_t kEtherTypeArp = 0x0806;
 /// Whether `address` (host order) can be a unicast interface address.
 [[nodiscard]] constexpr bool IsPlausibleHostIpv4(std::uint32_t address) noexcept {
   const std::uint32_t first_octet = address >> 24;
-  return address != 0 && address != 0xFFFFFFFFU  // unspecified, broadcast
+  return address != 0 && address != 0xFFFFFFFFU     // unspecified, broadcast
          && first_octet != 0 && first_octet != 127  // "this network", loopback
          && first_octet < 224;                      // multicast and reserved
 }
@@ -59,8 +59,8 @@ inline constexpr std::uint16_t kEtherTypeArp = 0x0806;
       return 0;
     }
     const std::byte* arp = base + kEthernetHeader;
-    if (LoadBe16(arp) != 1 || LoadBe16(arp + 2) != kEtherTypeIpv4 ||
-        arp[4] != std::byte{6} || arp[5] != std::byte{4}) {
+    if (LoadBe16(arp) != 1 || LoadBe16(arp + 2) != kEtherTypeIpv4 || arp[4] != std::byte{6} ||
+        arp[5] != std::byte{4}) {
       return 0;
     }
     const std::uint32_t sender = LoadBe<std::uint32_t>(arp + 14);

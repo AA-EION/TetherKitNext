@@ -221,7 +221,8 @@ TEST_CASE("a full RX queue drops and counts without blocking the producer") {
   bridge.Stop();
 }
 
-TEST_CASE("TX backpressure: waits instead of dropping when the pool is full, then delivers everything") {
+TEST_CASE(
+    "TX backpressure: waits instead of dropping when the pool is full, then delivers everything") {
   // This is a regression test for the root cause of dropped frames on real hardware: the old implementation immediately dropped the batch's remaining frames when SendFrames returned 0
   // (bridge.cc once had a wrong argument that "waiting turns into invisible kernel drops"),
   // dropping 30%+ of TX traffic at the door of the transfer pool under high load. The correct behavior is to wait for a slot to free up and then retry
@@ -272,7 +273,8 @@ TEST_CASE("TX backpressure: waits instead of dropping when the pool is full, the
   bridge.Stop();
 }
 
-TEST_CASE("TX backpressure: after a partial accept the rest is retried, with no loss or reordering") {
+TEST_CASE(
+    "TX backpressure: after a partial accept the rest is retried, with no loss or reordering") {
   // The pool is not full but cannot fit a whole slice at once (SendFrames partially accepts): the remaining frames must be retried in place.
   // At most 7 frames each time and a slice of 32 frames, forcing out the path of "multiple partial accepts completing one slice".
   MockDataChannel channel;
@@ -327,7 +329,8 @@ TEST_CASE("TX backpressure: Stop() returns promptly while waiting") {
   CHECK(bridge.Snapshot().tx.TotalDropped() > 0);
 }
 
-TEST_CASE("TX backpressure: pausing while waiting drops the remaining frames and the thread survives") {
+TEST_CASE(
+    "TX backpressure: pausing while waiting drops the remaining frames and the thread survives") {
   // Pausing (RNDIS soft reset) takes priority over waiting: the device will discard outstanding packets anyway, and hoarding them is meaningless.
   MockDataChannel channel;
   LoopbackLink link(LoopbackConfig{.inbound_capacity = 4096, .max_frames_per_batch = 64});

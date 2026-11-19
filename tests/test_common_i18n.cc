@@ -132,7 +132,8 @@ TEST_CASE("switching language and looking up messages") {
 
   tetherkitnext::SetLanguage(Language::kChinese);
   CHECK(tetherkitnext::GetLanguage() == Language::kChinese);
-  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) == "运行中");  // the zh table entry ("running")
+  CHECK(tetherkitnext::Text(Msg::kCoreRunStateRunning) ==
+        "运行中");  // the zh table entry ("running")
 
   tetherkitnext::SetLanguage(Language::kEnglish);
   CHECK(tetherkitnext::GetLanguage() == Language::kEnglish);

@@ -286,7 +286,8 @@ class Runtime final : public rndis::StateMachineObserver {
   std::atomic<bool> stop_requested_{false};
   std::atomic<bool> fatal_error_{false};
 
-  /// Read and written only on the host thread (Start / Stop / destructor); no synchronization needed.
+  /// Read and written only on the host thread (Start / Stop / destructor); no synchronization
+  /// needed.
   // Atomic: Stop() can race the destructor or another host thread (the C ABI calls
   // tk_session_stop from the daemon's XPC queue).
   std::atomic<bool> started_{false};

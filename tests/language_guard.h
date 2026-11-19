@@ -2,9 +2,10 @@
 //
 // * Why it is needed *
 //
-//   Every test case that asserts "the error message mentions XXX" depends on the current language. And the language is **process-wide
-//   state**, whose default (English) may also be changed by other test cases -- without pinning, the success or failure of such cases
-//   depends on doctest's execution order, the hardest kind of intermittent failure to track down.
+//   Every test case that asserts "the error message mentions XXX" depends on the current language.
+//   And the language is **process-wide state**, whose default (English) may also be changed by
+//   other test cases -- without pinning, the success or failure of such cases depends on doctest's
+//   execution order, the hardest kind of intermittent failure to track down.
 //
 //   So: whenever an assertion contains user-facing literal text, pin the language the
 //   assertion is written in, e.g. `const ScopedLanguage guard{Language::kEnglish};`, at the

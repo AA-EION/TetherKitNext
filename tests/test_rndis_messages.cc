@@ -242,7 +242,8 @@ TEST_CASE("negotiation quirk: the Qualcomm aggregation patch reports MaxPacketsP
   CHECK(params->tx_alignment_bytes == 4);  // 1 << 2
 }
 
-TEST_CASE("negotiation quirk: the MTU drops when the device's MaxTransferSize cannot hold a full frame") {
+TEST_CASE(
+    "negotiation quirk: the MTU drops when the device's MaxTransferSize cannot hold a full frame") {
   // Measured case: the HTC Diamond reports 1536, less than hard_mtu(1558).
   const auto buffer = MakeInitializeComplete(1536, 1, 0);
   const auto complete = DecodeInitializeComplete(buffer);
@@ -289,7 +290,8 @@ TEST_CASE("negotiation fails: connection-oriented device") {
 // QUERY / SET
 // ---------------------------------------------------------------------------
 
-TEST_CASE("encode QUERY_MSG: fixed-length OIDs carry a placeholder length and trailing zero bytes") {
+TEST_CASE(
+    "encode QUERY_MSG: fixed-length OIDs carry a placeholder length and trailing zero bytes") {
   std::array<std::byte, 128> buffer{};
   const auto written = Encode(QueryRequest{.request_id = 3,
                                            .oid = Oid::kEthernetPermanentAddress,

@@ -2,6 +2,13 @@
 //
 // This layer has almost no logic and does only three things: POD configuration -> RuntimeConfig, RuntimeSnapshot ->
 // POD status, RuntimeEvent -> ring queue. The real orchestration is all in core::Runtime.
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/time.h"
+#include "tetherkitnext/core/runtime.h"
+#include "tetherkitnext/net/feth_device.h"
+#include "tetherkitnext/rndis/state_machine.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -15,12 +22,6 @@
 #include <utility>
 
 #include "capi_support.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/i18n.h"
-#include "tetherkitnext/common/time.h"
-#include "tetherkitnext/core/runtime.h"
-#include "tetherkitnext/net/feth_device.h"
-#include "tetherkitnext/rndis/state_machine.h"
 
 namespace {
 

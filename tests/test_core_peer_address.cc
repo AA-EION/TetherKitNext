@@ -3,15 +3,15 @@
 // The rules decide which frames prove "the device owns this address". A false
 // positive would suggest a wrong subnet to the user (e.g. taking a remote web
 // server's address that a phone forwarded); these cases pin that down.
+#include "tetherkitnext/core/peer_address.h"
+
+#include <doctest.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <vector>
-
-#include <doctest.h>
-
-#include "tetherkitnext/core/peer_address.h"
 
 namespace {
 
@@ -76,8 +76,7 @@ TEST_CASE("link-local addresses count: devices without DHCP often use 169.254/16
 TEST_CASE("IPv4 to link-scoped destinations proves the source is on the link") {
   // mDNS (224.0.0.251) and limited broadcast (DHCP server replies).
   CHECK(OnLinkSenderIpv4(Ipv4Frame(Ip(10, 0, 0, 5), Ip(224, 0, 0, 251))) == Ip(10, 0, 0, 5));
-  CHECK(OnLinkSenderIpv4(Ipv4Frame(Ip(10, 0, 0, 5), Ip(255, 255, 255, 255))) ==
-        Ip(10, 0, 0, 5));
+  CHECK(OnLinkSenderIpv4(Ipv4Frame(Ip(10, 0, 0, 5), Ip(255, 255, 255, 255))) == Ip(10, 0, 0, 5));
 }
 
 TEST_CASE("routed unicast and global multicast do not count") {

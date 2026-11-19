@@ -394,7 +394,8 @@ TEST_CASE("check the feth creation-time sysctls (read-only, no root)") {
   const auto status = VerifyFethSysctls();
   if (!status) {
     // Not a test failure -- this machine's sysctl has been modified. Report it so that people know.
-    MESSAGE(std::format("this Mac's feth sysctls do not meet the requirements: {}", status.error().ToString()));
+    MESSAGE(std::format("this Mac's feth sysctls do not meet the requirements: {}",
+                        status.error().ToString()));
   }
   // Passing as long as it can be read; the specific value depends on the machine configuration.
   CHECK(true);
@@ -470,8 +471,8 @@ TEST_CASE("full BPF open/configure flow, checking direction semantics and loop s
   auto link = BpfLink::Open(pair->DriverSide().Name(), BpfConfig{});
   REQUIRE_MESSAGE(link.has_value(), Why(link));
 
-  MESSAGE(std::format("BPF device {}, kernel buffer {} bytes, batch write {}", (*link)->DevicePath(),
-                      (*link)->KernelBufferBytes(),
+  MESSAGE(std::format("BPF device {}, kernel buffer {} bytes, batch write {}",
+                      (*link)->DevicePath(), (*link)->KernelBufferBytes(),
                       (*link)->SupportsBatchWrite() ? "available" : "unavailable"));
 
   // The buffer actually in effect in the kernel should not be 0, and should not exceed the 32 MiB upper limit.
@@ -548,7 +549,9 @@ TEST_CASE("ARP round trip: frames written via BPF really reach the peer feth's I
   }
 
   // This one assertion is the core premise of the whole scheme: the peer IP stack **received and processed** the frame we wrote in.
-  CHECK_MESSAGE(saw_reply, "no ARP reply from the system-side feth: the BPF write did not reach the peer IP stack");
+  CHECK_MESSAGE(
+      saw_reply,
+      "no ARP reply from the system-side feth: the BPF write did not reach the peer IP stack");
   if (saw_reply) {
     // The responder must be exactly the system-side feth, and not a frame from some other interface leaking in.
     CHECK(reply_mac == *system_mac);

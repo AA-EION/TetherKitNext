@@ -11,14 +11,18 @@
 // * Why not "destroy all feth at startup" *
 //   feth is a shared facility, and other programs (or the user manually running ifconfig) may be using it too. Destroying only the ones
 //   we registered ourselves avoids collateral damage.
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+#include "tetherkitnext/net/feth_device.h"
+
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
-
-#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <fstream>
@@ -31,10 +35,6 @@
 #include "capi_support.h"
 #include "managed_network_service.h"
 #include "net_config.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/i18n.h"
-#include "tetherkitnext/common/logging.h"
-#include "tetherkitnext/net/feth_device.h"
 
 namespace {
 
@@ -118,8 +118,8 @@ void WriteRegistry(const std::vector<RegistryEntry>& entries) noexcept {
   // listed), and O_NOFOLLOW + O_EXCL mean root never writes through a planted symlink.
   const std::string temporary = std::string{kRegistryPath} + ".tmp";
   ::unlink(temporary.c_str());
-  const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-                        0600);
+  const int fd =
+      ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
   if (fd < 0) {
     return;
   }

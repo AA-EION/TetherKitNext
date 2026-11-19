@@ -301,7 +301,8 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
 
   if (fixture.batch_write_available) {
     for (const std::uint32_t per_write : {8U, 32U, 64U, 128U}) {
-      runner.Add("BPF write (BIOCSBATCHWRITE)", std::format("1514 bytes × {} frames per write", per_write),
+      runner.Add("BPF write (BIOCSBATCHWRITE)",
+                 std::format("1514 bytes × {} frames per write", per_write),
                  Config{.ops_per_round = kWriteOps, .bytes_per_op = kFullFrameBytes},
                  [per_write](std::uint64_t n) {
                    return BenchWrite(*g_fixture->driver_batched, n, kFullFrameBytes, per_write);
@@ -320,8 +321,8 @@ bool RegisterNetBenchmarks(Runner& runner, std::string& skip_reason) {
 
   // The round-trip latency is only run a few hundred times: each one has to wait for the peer IP stack to really answer, and is an operation under a millisecond yet far slower than
   // the previous items; running too many gives no extra information.
-  runner.Add("feth round-trip latency", "ARP request → system-side IP stack reply", Config{.ops_per_round = 200},
-             [](std::uint64_t n) { return BenchArpRoundTrip(n); });
+  runner.Add("feth round-trip latency", "ARP request → system-side IP stack reply",
+             Config{.ops_per_round = 200}, [](std::uint64_t n) { return BenchArpRoundTrip(n); });
 
   return true;
 }

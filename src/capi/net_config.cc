@@ -17,14 +17,20 @@
 //   MANUAL mode has no DNS source, so all we can do is add a DNS key to the service it established.
 //   This move is **not verified on real hardware**, so success is never promised to upper layers: tk_net_query always reads back
 //   the resolvers actually in effect in the system, and what the GUI shows is the readback rather than the value we applied.
-#include <SystemConfiguration/SystemConfiguration.h>
-#include <arpa/inet.h>
+#include "net_config.h"
+
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/i18n.h"
+#include "tetherkitnext/common/logging.h"
+
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <SystemConfiguration/SystemConfiguration.h>
 #include <algorithm>
+#include <arpa/inet.h>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -38,11 +44,7 @@
 #include "capi_support.h"
 #include "core_foundation_support.h"
 #include "managed_network_service.h"
-#include "net_config.h"
 #include "process_runner.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/i18n.h"
-#include "tetherkitnext/common/logging.h"
 
 namespace {
 

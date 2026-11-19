@@ -500,11 +500,11 @@ void Runtime::OnDeviceReset(bool addressing_lost) {
   TETHERKITNEXT_WARN_TR(Msg::kCoreDeviceReset,
                     Text(addressing_lost ? Msg::kCoreAddressingLost : Msg::kCoreAddressingKept));
 
-  // During a reset the device discarded all outstanding data packets. A brief pause lets the state machine finish replaying the packet filter,
-  // avoiding continued flooding of data during the window when the device rebuilds its internal state.
-  // SetPaused(true) also waits for the RX injector to stop, so this drains in-flight
-  // writes. Restore the link's own state afterwards instead of forcing "running": a
-  // reset while the medium is down must leave the bridge paused.
+  // During a reset the device discarded all outstanding data packets. A brief pause lets the state
+  // machine finish replaying the packet filter, avoiding continued flooding of data during the
+  // window when the device rebuilds its internal state. SetPaused(true) also waits for the RX
+  // injector to stop, so this drains in-flight writes. Restore the link's own state afterwards
+  // instead of forcing "running": a reset while the medium is down must leave the bridge paused.
   if (bridge_ != nullptr) {
     bool link_up = false;
     {

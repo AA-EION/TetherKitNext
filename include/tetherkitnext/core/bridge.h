@@ -45,18 +45,18 @@
 //     blocking point, so merging brings no benefit.
 #pragma once
 
-#include <atomic>
-#include <cstdint>
-#include <memory>
-#include <thread>
-#include <vector>
-
 #include "tetherkitnext/common/error.h"
 #include "tetherkitnext/common/frame_ring.h"
 #include "tetherkitnext/common/stats.h"
 #include "tetherkitnext/core/peer_address.h"
 #include "tetherkitnext/net/link_backend.h"
 #include "tetherkitnext/usb/data_channel.h"
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <thread>
+#include <vector>
 
 namespace tetherkitnext::core {
 

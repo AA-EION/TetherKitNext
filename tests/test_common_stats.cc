@@ -96,7 +96,9 @@ TEST_CASE("a default-constructed periodic timer still starts timing at construct
   CHECK(timer.Period() == 50 * kNanosPerMilli);
 }
 
-TEST_CASE("the periodic timer advances by accumulated deadlines and does not drift with scheduling delay") {
+TEST_CASE(
+    "the periodic timer advances by accumulated deadlines and does not drift with scheduling "
+    "delay") {
   const tetherkitnext::Nanos now = MonotonicNanos();
   // `now` must be passed in explicitly as the timing origin. If the constructor reads the clock itself, the moment it reads
   // would be slightly later than `now` here, so "now + period" would not yet be expired, and the assertion would fail at random.

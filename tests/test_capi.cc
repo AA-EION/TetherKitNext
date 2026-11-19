@@ -4,19 +4,20 @@
 // UTF-8 boundary truncation, NIC name validation, the drop semantics of the log ring buffer.
 //
 // Sessions and NIC configuration need root and a real device, so they are not tested here -- only their argument-validation branches are tested.
+#include "tetherkitnext/capi/tetherkitnext_c.h"
+#include "tetherkitnext/common/logging.h"
+
+#include <doctest.h>
+
+#include <unistd.h>
+
 #include <array>
 #include <cstring>
 #include <string>
 
-#include <unistd.h>
-
-#include <doctest.h>
-
 #include "capi_support.h"
 #include "language_guard.h"
 #include "process_runner.h"
-#include "tetherkitnext/capi/tetherkitnext_c.h"
-#include "tetherkitnext/common/logging.h"
 
 using tetherkitnext::capi::CopyText;
 using tetherkitnext::capi::IsValidFethName;
@@ -51,7 +52,9 @@ TEST_CASE("CopyText does not truncate text that fits exactly") {
   CHECK(std::string{buffer.data()} == "设备");
 }
 
-TEST_CASE("CopyText yields an empty string, not half a character, when even the first character does not fit") {
+TEST_CASE(
+    "CopyText yields an empty string, not half a character, when even the first character does not "
+    "fit") {
   std::array<char, 3> buffer{};  // 2 usable bytes, cannot fit the 3-byte "设"
   CopyText(buffer.data(), buffer.size(), "设备");
   CHECK(std::string{buffer.data()}.empty());
@@ -131,7 +134,8 @@ TEST_CASE("ReconcileDeviceStrings backfills the last name read successfully when
   }
 }
 
-TEST_CASE("ReconcileDeviceStrings does not give an old name to another device at the same address") {
+TEST_CASE(
+    "ReconcileDeviceStrings does not give an old name to another device at the same address") {
   const DeviceIdentity old_phone{.bus_number = 0, .device_address = 1,
                                  .vendor_id = 0x2d95, .product_id = 0x600b};
   std::vector<RememberedDeviceStrings> memory;
@@ -147,7 +151,9 @@ TEST_CASE("ReconcileDeviceStrings does not give an old name to another device at
     CHECK(std::string{infos[0].product}.empty());
   }
 
-  SUBCASE("device unplugged (absent) → memory cleared; no backfill after replugging even if reads fail") {
+  SUBCASE(
+      "device unplugged (absent) → memory cleared; no backfill after replugging even if reads "
+      "fail") {
     // Unplugged: present is empty.
     infos.clear();
     ReconcileDeviceStrings(memory, {}, infos);
@@ -244,8 +250,9 @@ TEST_CASE("tk_list_devices can return just the count") {
 }
 
 TEST_CASE("repeated enumeration does not reinitialize libusb") {
-  // The GUI refreshes the device list periodically. If every enumeration created a new libusb context, every time it would
-  // start and stop one event thread and one IOKit runloop thread, and the log would be flooded with "libusb initialized"
+  // The GUI refreshes the device list periodically. If every enumeration created a new libusb
+  // context, every time it would start and stop one event thread and one IOKit runloop thread, and
+  // the log would be flooded with "libusb initialized"
   // -- this problem really happened, and this test case pins the fix.
   // The check below matches the English log text; without pinning it could
   // never match under another language and would pass vacuously.
@@ -467,8 +474,8 @@ TEST_CASE("RunTool children inherit only stdin/stdout/stderr") {
   // sockets: POSIX_SPAWN_CLOEXEC_DEFAULT must keep it out of the child.
   std::array<int, 2> leaked{-1, -1};
   REQUIRE(::pipe(leaked.data()) == 0);
-  const std::string probe = "test -e /dev/fd/" + std::to_string(leaked[1]) +
-                            " && echo leaked || echo closed";
+  const std::string probe =
+      "test -e /dev/fd/" + std::to_string(leaked[1]) + " && echo leaked || echo closed";
   const auto result = tetherkitnext::capi::RunTool("/bin/sh", {"-c", probe});
   ::close(leaked[0]);
   ::close(leaked[1]);

@@ -126,7 +126,8 @@ TEST_CASE("startup message order: INITIALIZE first, the packet-filter SET last")
   CHECK(filter == 0x0000'002DU);
 }
 
-TEST_CASE("InformationBufferLength is 0 for variable-length OIDs and non-zero for fixed-length ones") {
+TEST_CASE(
+    "InformationBufferLength is 0 for variable-length OIDs and non-zero for fixed-length ones") {
   MockControlChannel channel;
   std::vector<std::pair<std::uint32_t, std::uint32_t>> query_oid_and_length;
   channel.SetRequestHandler(
@@ -150,7 +151,8 @@ TEST_CASE("InformationBufferLength is 0 for variable-length OIDs and non-zero fo
       CHECK_MESSAGE(length == 0, "variable-length OID " << OidName(oid) << " must have length 0");
       saw_variable = true;
     } else {
-      CHECK_MESSAGE(length > 0, "fixed-length OID " << OidName(oid) << " must have a length above 0");
+      CHECK_MESSAGE(length > 0,
+                    "fixed-length OID " << OidName(oid) << " must have a length above 0");
       saw_fixed = true;
     }
   }
@@ -603,7 +605,8 @@ TEST_CASE("never passes 0 to WaitForNotification (0 waits forever on Darwin)") {
   REQUIRE_FALSE(channel.NotificationTimeouts().empty());
   for (const std::uint32_t timeout : channel.NotificationTimeouts()) {
     CHECK_MESSAGE(timeout > 0,
-                  "WaitForNotification got 0, which waits forever on Darwin and would hang the control thread");
+                  "WaitForNotification got 0, which waits forever on Darwin and would hang the "
+                  "control thread");
   }
 }
 

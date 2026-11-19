@@ -252,12 +252,14 @@ void RegisterCommonBenchmarks(Runner& runner) {
              Config{.ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
              [](std::uint64_t n) { return BenchMemcpy(n, kSmallFrameBytes); });
 
-  runner.Add("Byte order", "Parse a 44-byte RNDIS header (unaligned)", Config{.ops_per_round = kMicroOps},
+  runner.Add("Byte order", "Parse a 44-byte RNDIS header (unaligned)",
+             Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchParsePacketHeader(n); });
 
   runner.Add("SPSC queue", "Single-thread push+pop", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchSpscRoundTripSameThread(n); });
-  runner.Add("SPSC queue", "Cross-thread transfer", Config{.measure_rounds = 5, .ops_per_round = kFrameOps},
+  runner.Add("SPSC queue", "Cross-thread transfer",
+             Config{.measure_rounds = 5, .ops_per_round = kFrameOps},
              [](std::uint64_t n) { return BenchSpscCrossThread(n); });
 
   runner.Add("FrameRing", "Single-thread round trip (1514 bytes)",
@@ -270,8 +272,7 @@ void RegisterCommonBenchmarks(Runner& runner) {
   // the same amount moved, changing only "how many frames each release store publishes".
   for (const std::uint32_t batch : {1U, 4U, 8U, 32U, 64U}) {
     runner.Add(
-        "FrameRing batch publish",
-        std::format("Cross-thread 1514 bytes × batch={}", batch),
+        "FrameRing batch publish", std::format("Cross-thread 1514 bytes × batch={}", batch),
         Config{.measure_rounds = 5, .ops_per_round = kFrameOps, .bytes_per_op = kFullFrameBytes},
         [batch](std::uint64_t n) { return BenchFrameRingCrossThread(n, kFullFrameBytes, batch); });
   }
@@ -284,7 +285,8 @@ void RegisterCommonBenchmarks(Runner& runner) {
       Config{.measure_rounds = 5, .ops_per_round = kFrameOps, .bytes_per_op = kSmallFrameBytes},
       [](std::uint64_t n) { return BenchFrameRingCrossThread(n, kSmallFrameBytes, 32); });
 
-  runner.Add("Stats counter", "relaxed load+store (this project)", Config{.ops_per_round = kMicroOps},
+  runner.Add("Stats counter", "relaxed load+store (this project)",
+             Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchCounterUpdate(n); });
   runner.Add("Stats counter", "fetch_add, for comparison", Config{.ops_per_round = kMicroOps},
              [](std::uint64_t n) { return BenchCounterUpdateFetchAdd(n); });
