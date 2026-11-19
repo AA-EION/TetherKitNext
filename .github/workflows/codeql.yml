@@ -1,0 +1,101 @@
+# CodeQL: static security analysis of the C++ driver/C ABI, the Swift app and
+# root daemon, and these GitHub Actions workflows. Results appear under
+# Security › Code scanning.
+#
+# Toolchain: macOS 26 + Xcode 26 on purpose. CodeQL cannot trace builds on
+# macOS 27 / Xcode 27 or analyze Swift 6.4 (GitHub changelog 2026-10-19,
+# "CodeQL changes for macOS 27, Xcode 27 and Swift 6.4"); Xcode 26 ships
+# Swift 6.3, which CodeQL supports.
+#
+# libusb is built *before* `init`, so CodeQL traces only our own code.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "27 3 * * 1"  # weekly, so new queries also run on unchanged code
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: CodeQL · ${{ matrix.language }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            runner: macos-26
+            build-mode: manual
+          - language: swift
+            runner: macos-26
+            build-mode: manual
+          - language: actions
+            runner: ubuntu-latest
+            build-mode: none
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 26
+        if: runner.os == 'macOS'
+        run: |
+          latest="$(ls -d /Applications/Xcode_26*.app 2>/dev/null \
+            | grep -E '/Xcode_26(\.[0-9]+)*\.app$' | sort -V | tail -1 || true)"
+          [ -n "${latest}" ] || { echo "::error::no Xcode 26 on this runner"; ls -d /Applications/Xcode_*.app; exit 1; }
+          sudo xcode-select -s "${latest}"
+          xcodebuild -version; swift --version
+
+      - name: Build libusb (not analyzed)
+        if: runner.os == 'macOS'
+        run: ./scripts/build-libusb.sh "$PWD/build/libusb-universal"
+
+      # The Swift package links libtetherkitnext, so build the C++ side first,
+      # outside the trace (the c-cpp job analyzes it).
+      - name: Build the C++ library for the Swift package (not analyzed)
+        if: matrix.language == 'swift'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" \
+            -DTETHERKITNEXT_BUILD_TESTS=OFF -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Build C++ (traced)
+        if: matrix.language == 'c-cpp'
+        run: |
+          cmake -S . -B build-codeql -DCMAKE_BUILD_TYPE=Debug \
+            -DLibUSB_ROOT="$PWD/build/libusb-universal" \
+            -DTETHERKITNEXT_BUILD_TESTS=OFF -DTETHERKITNEXT_BUILD_BENCHMARKS=OFF
+          cmake --build build-codeql -j"$(sysctl -n hw.ncpu)"
+
+      - name: Build Swift (traced)
+        if: matrix.language == 'swift'
+        run: TETHERKITNEXT_LIB_DIR="$PWD/build/lib" swift build --package-path gui
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:${{ matrix.language }}"

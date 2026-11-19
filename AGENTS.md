@@ -253,7 +253,7 @@ Legend: `✅ Completed` `🚧 In Progress` `⬜ Not Started`
 - **Distribution**: Signed and notarized universal DMG (`scripts/build-release.sh`, shared across CI and releases). Security audit documented in [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 - **Privileged Daemon**: `SMAppService` with label `com.tetherkitnext.helperd`, executed in-place from the `.app` bundle; automatically cleans up legacy `com.tetherkit.helper` installs on first run. XPC protocol revision 5.
 - **Tests**: 24 CTest suites (incl. `core.peer_address`); SwiftPM suites `TetherKitNextIPCTests` and `TetherKitNextUIModelTests` (panes, interface traffic, link assessment). Test names and messages are English; only test data that checks multibyte handling or the zh table itself is Chinese.
-- **CI**: Native builds and tests on `macos-15`, `macos-26`, `macos-15-intel` and `xcode-27` (macOS 27 Golden Gate), universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, `feth` ABI gate (also on macOS 27), and a macOS 27 GUI build + launch smoke test. All third-party actions are pinned to commit SHAs (Dependabot updates them).
+- **CI**: Native builds and tests on `macos-15`, `macos-26`, `macos-15-intel` and `xcode-27` (macOS 27 Golden Gate), universal `.app` + DMG packaging, Intel hardware DMG installation smoke test, ThreadSanitizer, `feth` ABI gate (also on macOS 27), and a macOS 27 GUI build + launch smoke test. All third-party actions are pinned to commit SHAs (Dependabot updates them). **CodeQL** (`codeql.yml`: c-cpp, swift, actions; security-extended; weekly + PRs; pinned to macOS 26 / Xcode 26) and **Lint** (`lint.yml`: clang-format 18 on changed lines, blocking; clang-tidy on changed sources, advisory).
 
 ### Historical Upstream Status (Recorded at v0.1.5)
 
@@ -394,6 +394,8 @@ RNDIS negotiation complete: version 1.0, MTU 1500, device aggregation limit 1580
 42. **XPC calls time out after `HelperConstants.requestTimeout`** (`HelperClient.invoke`), so a daemon that never replies cannot wedge `isBusy` and polling. Only clear the cached connection from *its own* invalidation handler.
 43. **After clearing a configuration or destroying the interface, reconcile the kernel default route with configd** (`ReconcileSystemDefaultRoute`, called from `ApplyNone` and the interface-destroyed callback). Manual-mode "route all traffic" changes the kernel route behind configd's back, so configd never reinstalls the primary service's route on its own. Read `State:/Network/Global/IPv4` for the target; never cache the previous gateway (stale after a network change or helper restart), and never touch a default route through another interface (VPNs).
 44. **Before talking to a device, re-enumerate and pass VID/PID with the bus address** (`AppModel.startSession`). Android re-enumerates when tethering is toggled; the C filter ANDs every given field, so a stale address can never select another device.
+45. **Format changed C/C++ lines with clang-format 18 before pushing**: `git clang-format --binary clang-format-18 --extensions c,h,cc,cpp,hpp --diff origin/main` must print no hunks (the Lint workflow blocks otherwise). Don't reformat untouched code. `.clang-format` declares `NamespaceMacros: [TEST_SUITE]` so doctest suites keep their unindented bodies.
+46. **CodeQL must stay on macOS 26 / Xcode 26** until CodeQL supports traced builds on macOS 27 and Swift 6.4; libusb (and, for the Swift job, the C++ library) are built before `init` so only our code is analyzed.
 
 ---
 

@@ -10,6 +10,17 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/AA-EION/TetherKitNext/releases/latest/download/TetherKitNext.dmg">
+    <img src="https://img.shields.io/badge/Download_for_macOS-TetherKitNext.dmg-2EA44F?style=for-the-badge&logo=apple&logoColor=white" height="56" alt="Download TetherKitNext for macOS">
+  </a>
+  <br>
+  <a href="https://github.com/AA-EION/TetherKitNext/releases/latest">
+    <img src="https://img.shields.io/github/v/release/AA-EION/TetherKitNext?label=latest%20version&style=flat-square" alt="Latest version">
+  </a>
+  <sub>&nbsp;·&nbsp;macOS 14 or later · Apple silicon and Intel · <a href="https://github.com/AA-EION/TetherKitNext/releases">all releases</a></sub>
+</p>
+
+<p align="center">
   <sub>By <a href="https://issen.kurokamicorp.com/"><b>Issen Software Group</b></a> · based on <a href="https://github.com/XiaoMiku01/TetherKit">TetherKit</a> by XiaoMiku01</sub>
 </p>
 
@@ -54,8 +65,9 @@ close to what the cable can carry.
 
 ## Install
 
-1. Download the latest **TetherKitNext .dmg** from the
-   [Releases page](https://github.com/AA-EION/TetherKitNext/releases).
+1. **[Download TetherKitNext.dmg](https://github.com/AA-EION/TetherKitNext/releases/latest/download/TetherKitNext.dmg)**
+   (always the latest version; older versions and test builds are on the
+   [Releases page](https://github.com/AA-EION/TetherKitNext/releases)).
 2. Open it and drag **TetherKitNext** into **Applications**.
 3. Open TetherKitNext from your Applications folder.
 4. Click **Enable Background Component**. macOS will ask you to allow it once, in

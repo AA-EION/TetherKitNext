@@ -164,6 +164,12 @@ jobs:
           flags=()
           if [ "$PRERELEASE" = true ]; then
             flags+=(--prerelease)
+          else
+            # A fixed-name copy for the README's download button:
+            # releases/latest/download/TetherKitNext.dmg only resolves when every stable
+            # release has an asset with exactly this name (prereleases are never "latest").
+            cp "${assets[0]}" dist/TetherKitNext.dmg
+            assets+=(dist/TetherKitNext.dmg)
           fi
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             # Creates the tag on the commit that was just built and tested.
